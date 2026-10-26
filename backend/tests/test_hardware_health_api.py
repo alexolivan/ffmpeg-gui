@@ -58,6 +58,31 @@ class TestHardwareHealthAPI(unittest.TestCase):
             self.assertEqual(data["cpu"]["package_temp"], 52.4)
             self.assertEqual(len(data["fans"]), 1)
 
+    def test_get_hardware_health_with_session_cookie(self):
+        with SessionLocal() as db:
+            s = db.query(SystemSettings).first()
+            s.gui_password = "supersecretpassword"
+            db.commit()
+
+        try:
+            # Without auth -> 401
+            res = self.client.get("/api/hardware/health")
+            self.assertEqual(res.status_code, 401)
+
+            # With valid session cookie -> 200
+            from backend.core.auth_manager import auth_manager
+            session_token = auth_manager.create_session("supersecretpassword")
+            self.client.cookies.set(auth_manager.COOKIE_NAME, session_token)
+            res = self.client.get("/api/hardware/health")
+            self.assertEqual(res.status_code, 200)
+        finally:
+            with SessionLocal() as db:
+                s = db.query(SystemSettings).first()
+                s.gui_password = None
+                db.commit()
+            if auth_manager.COOKIE_NAME in self.client.cookies:
+                del self.client.cookies[auth_manager.COOKIE_NAME]
+
     def test_get_settings_contains_thermal_fields(self):
         res = self.client.get("/api/settings")
         self.assertEqual(res.status_code, 200)

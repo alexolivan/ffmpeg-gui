@@ -298,6 +298,93 @@ class ResourceLockManager:
             )
             return True, None, lock_entry
 
+    def claim_resource(
+        self,
+        resource_type: str,
+        identifier: str,
+        owner_type: str,
+        owner_id: Any,
+        owner_name: str = ""
+    ) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+        """
+        Claims exclusive ownership of an abstract system resource (e.g. network_interface).
+        Returns:
+            (True, None, lock_entry) if successfully claimed or already claimed by same owner.
+            (False, error_message, existing_lock_entry) if currently claimed by another owner.
+        """
+        clean_id = str(identifier).strip()
+        key = f"resource:{resource_type.lower()}:{clean_id}"
+        owner_id_str = str(owner_id)
+
+        with self._lock:
+            if key in self._locks:
+                existing = self._locks[key]
+                if existing["owner_type"] == owner_type and str(existing["owner_id"]) == owner_id_str:
+                    existing["acquired_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                    return True, None, existing
+
+                err_msg = (
+                    f"Conflicto de recurso: El recurso '{clean_id}' ({resource_type}) "
+                    f"ya está reservado por {existing['owner_type']} "
+                    f"'{existing.get('owner_name', existing['owner_id'])}'."
+                )
+                logger.warning(
+                    f"[ResourceLock] Conflict on {resource_type} '{clean_id}': Requested by {owner_type}:{owner_id}, "
+                    f"held by {existing['owner_type']}:{existing['owner_id']}"
+                )
+                return False, err_msg, existing
+
+            lock_entry = {
+                "resource_key": key,
+                "lock_key": key,
+                "resource_type": resource_type,
+                "identifier": clean_id,
+                "service_type": resource_type,
+                "resource_path": clean_id,
+                "target_type": resource_type,
+                "target_id": clean_id,
+                "owner_type": owner_type,
+                "owner_id": owner_id,
+                "owner_name": owner_name or f"{owner_type}:{owner_id}",
+                "acquired_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+            }
+            self._locks[key] = lock_entry
+            logger.info(
+                f"[ResourceLock] Claimed {resource_type} '{clean_id}' by {owner_type}:{owner_id} ('{lock_entry['owner_name']}')"
+            )
+            return True, None, lock_entry
+
+    def release_resource(
+        self,
+        resource_type: str,
+        identifier: str,
+        owner_type: Optional[str] = None,
+        owner_id: Optional[Any] = None
+    ) -> bool:
+        """Releases an abstract system resource claim."""
+        clean_id = str(identifier).strip()
+        key = f"resource:{resource_type.lower()}:{clean_id}"
+        owner_id_str = str(owner_id) if owner_id is not None else None
+
+        with self._lock:
+            if key in self._locks:
+                existing = self._locks[key]
+                if owner_type and existing.get("owner_type") != owner_type:
+                    return False
+                if owner_id_str and str(existing.get("owner_id")) != owner_id_str:
+                    return False
+                del self._locks[key]
+                logger.info(f"[ResourceLock] Released {resource_type} '{clean_id}'")
+                return True
+            return False
+
+    # Aliases to support resource_manager protocols
+    def claim(self, *args, **kwargs):
+        return self.claim_resource(*args, **kwargs)
+
+    def register_resource(self, *args, **kwargs):
+        return self.claim_resource(*args, **kwargs)
+
     def release_lock(self, owner_type: str, owner_id: Any):
         """Releases any active resource locks held by the specified owner."""
         owner_id_str = str(owner_id)
@@ -361,3 +448,4 @@ class ResourceLockManager:
 
 
 resource_lock_manager = ResourceLockManager()
+resource_manager = resource_lock_manager

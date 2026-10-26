@@ -6,7 +6,7 @@ from database.models import Base, Storage, Service
 from database.db import init_db, SessionLocal
 
 def test_cache_storage_seeded():
-    """Verify that init_db() seeds a Default Cache Storage pointing to /dev/shm (or fallback)."""
+    """Verify that init_db() seeds a Default Cache Storage pointing to /dev/shm (or fallback) and ensures it exists."""
     init_db()
     with SessionLocal() as db:
         cache_storages = db.query(Storage).filter(Storage.type == "cache").all()
@@ -16,6 +16,35 @@ def test_cache_storage_seeded():
         assert "cache" in default_cache.name.lower()
         if os.path.exists("/dev/shm"):
             assert "/dev/shm" in default_cache.path
+        assert os.path.exists(default_cache.path), "Default cache storage directory must exist on disk/RAM"
+
+
+def test_cache_storage_directory_recreated_on_subsequent_boot():
+    """Verify that if a RAM-backed storage directory is wiped on reboot, init_db() or get_storages automatically recreates it."""
+    from main import app
+    from fastapi.testclient import TestClient
+    client = TestClient(app)
+
+    with SessionLocal() as db:
+        default_cache = db.query(Storage).filter(Storage.type == "cache", Storage.is_default == True).first()
+        assert default_cache is not None
+        cache_path = default_cache.path
+
+    # Simulate reboot: delete directory if empty or rmdir
+    if os.path.exists(cache_path):
+        import shutil
+        shutil.rmtree(cache_path, ignore_errors=True)
+    assert not os.path.exists(cache_path)
+
+    # Calling init_db() or querying /settings/storages must recreate it
+    res = client.get("/settings/storages")
+    assert res.status_code == 200
+    assert os.path.exists(cache_path), "Storage path must be auto-recreated"
+
+    # Verify is_writable is True
+    cache_item = next((s for s in res.json() if s["id"] == default_cache.id), None)
+    assert cache_item is not None
+    assert cache_item["is_writable"] is True
 
 
 def test_clear_kiosk_cache_running_conflict():

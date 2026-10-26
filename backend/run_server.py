@@ -168,6 +168,29 @@ def main():
     use_file = bool(log_file and logging_mode in ("file", "both"))
     use_console = bool(logging_mode in ("journalctl", "both") or not log_file)
 
+    if use_file:
+        log_dir = os.path.dirname(os.path.abspath(log_file))
+        try:
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+            # Pre-flight check: ensure log file can be opened/created for appending
+            with open(os.path.abspath(log_file), "a") as f:
+                pass
+            os.environ["LOGGING_FALLBACK_ACTIVE"] = "false"
+            os.environ["LOGGING_TARGET_FILE"] = os.path.abspath(log_file)
+            os.environ.pop("LOGGING_FALLBACK_ERROR", None)
+        except (PermissionError, OSError) as e:
+            print(
+                f"[FFMPEG-GUI WARNING] Cannot write to log file '{log_file}' ({e}). "
+                f"Falling back to console/journalctl logging to prevent daemon crash.",
+                file=sys.stderr
+            )
+            use_file = False
+            use_console = True
+            os.environ["LOGGING_FALLBACK_ACTIVE"] = "true"
+            os.environ["LOGGING_TARGET_FILE"] = os.path.abspath(log_file)
+            os.environ["LOGGING_FALLBACK_ERROR"] = str(e)
+
     general_handlers = []
     if use_console:
         general_handlers.append("default")
@@ -176,9 +199,6 @@ def main():
 
     if use_file:
         log_dir = os.path.dirname(os.path.abspath(log_file))
-        if log_dir:
-            os.makedirs(log_dir, exist_ok=True)
-        
         log_config["formatters"]["file_formatter"] = {
             "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
         }
@@ -210,8 +230,19 @@ def main():
                 target_access_log = os.path.join(log_dir, "access.log")
 
         if target_access_log:
-            os.environ["ACCESS_LOG_PATH"] = target_access_log
-            print(f"Logging HTTP accesses to {target_access_log}")
+            try:
+                with open(target_access_log, "a") as f:
+                    pass
+                os.environ["ACCESS_LOG_PATH"] = target_access_log
+                print(f"Logging HTTP accesses to {target_access_log}")
+            except (PermissionError, OSError) as e:
+                print(
+                    f"[FFMPEG-GUI WARNING] Cannot write to access log file '{target_access_log}' ({e}). "
+                    f"Disabling dedicated access file logging.",
+                    file=sys.stderr
+                )
+                target_access_log = None
+                os.environ.pop("ACCESS_LOG_PATH", None)
         else:
             os.environ.pop("ACCESS_LOG_PATH", None)
 

@@ -44,6 +44,11 @@ const SERVICE_TYPE_DEFINITIONS: Record<string, { service_type: string; category:
     category: 'VIRTUAL DESKTOP',
     defaultDesc: 'Headless X11 virtual display server (Xvfb) with real-time interactive HTML5 VNC remote access.',
   },
+  pipewire: {
+    service_type: 'pipewire_hub',
+    category: 'AUDIO HUB & AES67',
+    defaultDesc: 'Professional audio server with virtual mixing buses and AES67 / Dante network multicast streaming.',
+  },
 };
 
 export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
@@ -141,6 +146,17 @@ export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
             name: t('desktop.service_name', 'Virtual Desktop Server (X11 / VNC)'),
             category: 'VIRTUAL DESKTOP',
             description: t('desktop.service_description', 'Headless X11 virtual display server (Xvfb) with real-time interactive HTML5 VNC remote access.'),
+            is_enabled: true,
+          },
+          {
+            key: 'pipewire',
+            service_type: 'pipewire_hub',
+            name: t('services.pipewire.service_name', 'PipeWire Audio Hub'),
+            category: 'AUDIO HUB & AES67',
+            description: t(
+              'services.pipewire.service_description',
+              'Professional audio server with virtual mixing buses and AES67 / Dante network multicast streaming.'
+            ),
             is_enabled: true,
           },
           {

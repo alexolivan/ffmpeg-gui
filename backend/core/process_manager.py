@@ -13,6 +13,7 @@ import collections
 import random
 import uuid
 from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions
+from core.alsa_manager import alsa_manager
 
 class ProcessManager:
     def __init__(self, db_session_factory):
@@ -28,12 +29,17 @@ class ProcessManager:
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
         self.watchdog_low_speed_since: Dict[int, Optional[datetime]] = {}
         self.db_session_factory = db_session_factory
+        if db_session_factory:
+            self.dependency_manager.db_session_factory = db_session_factory
+            self.dependency_manager.process_manager = self
         self.logger = logging.getLogger("ProcessManager")
         self.ffmpeg_path = self._detect_ffmpeg()
         self._spawn_lock: Optional[asyncio.Lock] = None
         self.ephemeral_configs: Dict[int, str] = {}
         self.auxiliary_processes: Dict[int, List[asyncio.subprocess.Process]] = {}
         self.auxiliary_pids: Dict[int, List[int]] = {}
+        self.pipewire_supervisors: Dict[int, Any] = {}
+        self.aoip_discovery_supervisors: Dict[int, Any] = {}
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -47,9 +53,88 @@ class ProcessManager:
             return local_bin
         return "ffmpeg"
 
-    def get_service_ref_count(self, provider_id: int) -> int:
+    @property
+    def active_processes(self) -> Dict[int, Any]:
+        """Provides direct dictionary access to active processes for testing and inspection."""
+        return self.processes
+
+    @property
+    def dependency_manager(self):
         from core.dependency_manager import dependency_manager
-        return len(dependency_manager.get_active_leases(provider_id))
+        return dependency_manager
+
+    def get_service_ref_count(self, provider_id: int) -> int:
+        return len(self.dependency_manager.get_active_leases(provider_id))
+
+    async def acquire_lease(
+        self,
+        provider_id: int,
+        consumer_type: str = "service",
+        consumer_id: Optional[int] = None,
+        allow_auto_start: bool = True,
+        lease_holder: Optional[str] = None,
+        db: Optional[Any] = None
+    ) -> bool:
+        """Acquires a lease on a provider service (e.g. pipewire_hub, mediamtx, icecast)."""
+        consumer_token = str(lease_holder) if lease_holder else f"{consumer_type}:{consumer_id if consumer_id is not None else provider_id}"
+
+        # If provider is stopped and allow_auto_start is True, start it
+        is_running = provider_id in self.processes
+        if not is_running:
+            def _check_db(sess):
+                from database.models import Service
+                svc = sess.get(Service, provider_id)
+                return svc and svc.status == "running"
+
+            if db:
+                if _check_db(db):
+                    is_running = True
+            else:
+                with self.db_session_factory() as session:
+                    if _check_db(session):
+                        is_running = True
+
+        if not is_running:
+            if not allow_auto_start:
+                raise RuntimeError(f"Service {provider_id} is stopped and allow_auto_start is False.")
+            is_on_demand = not self.dependency_manager.is_pinned(provider_id)
+            await self.start_process(provider_id, is_restart=False, is_on_demand=is_on_demand)
+
+        with self.dependency_manager.state_lock:
+            if provider_id not in self.dependency_manager.active_leases:
+                self.dependency_manager.active_leases[provider_id] = set()
+            self.dependency_manager.active_leases[provider_id].add(consumer_token)
+
+        self.logger.info(f"Lease acquired on provider {provider_id} by {consumer_token}")
+        return True
+
+    async def release_lease(
+        self,
+        provider_id: int,
+        consumer_type: str = "service",
+        consumer_id: Optional[int] = None,
+        allow_auto_stop: bool = True,
+        lease_holder: Optional[str] = None,
+        db: Optional[Any] = None
+    ) -> bool:
+        """Releases a lease on a provider service and triggers auto-stop when 0 if allowed."""
+        consumer_token = str(lease_holder) if lease_holder else f"{consumer_type}:{consumer_id if consumer_id is not None else provider_id}"
+
+        remaining = 0
+        with self.dependency_manager.state_lock:
+            if provider_id in self.dependency_manager.active_leases:
+                self.dependency_manager.active_leases[provider_id].discard(consumer_token)
+                remaining = len(self.dependency_manager.active_leases[provider_id])
+
+        self.logger.info(f"Lease released on provider {provider_id} by {consumer_token}. Remaining: {remaining}")
+
+        if remaining == 0:
+            if not self.dependency_manager.is_pinned(provider_id):
+                if allow_auto_stop:
+                    self.logger.info(f"Provider {provider_id} reached 0 leases and was On-Demand. Auto-stopping.")
+                    await self.stop_process(provider_id)
+
+        return True
 
     async def start_dependencies(self, process_id: int, allow_auto_start: bool = True):
         from core.dependency_manager import dependency_manager
@@ -167,6 +252,37 @@ class ProcessManager:
             # Start auto-managed dependencies first
             await self.start_dependencies(process_id, allow_auto_start=allow_start_deps)
 
+            # Acquire on-demand PipeWire Hub lease before acquiring spawn_lock to prevent deadlock
+            with self.db_session_factory() as session:
+                from database.models import Service
+                cur_svc = session.get(Service, process_id)
+                if cur_svc:
+                    cur_svc_type = getattr(cur_svc, "service_type", None)
+                    if cur_svc_type == "desktop":
+                        d_cfg_chk = (cur_svc.config or {}).get("desktop_config", cur_svc.config or {})
+                        if d_cfg_chk.get("audio_backend") == "pipewire_hub" and d_cfg_chk.get("pipewire_service_id"):
+                            pw_svc_id = d_cfg_chk.get("pipewire_service_id")
+                            try:
+                                await self.acquire_lease(int(pw_svc_id), lease_holder=f"desktop:{process_id}")
+                            except Exception as pw_err:
+                                self.logger.warning(f"Failed to acquire PipeWire lease for desktop {process_id}: {pw_err}")
+                    elif cur_svc_type == "kiosk_browser":
+                        k_cfg_chk = (cur_svc.config or {}).get("kiosk_config", {})
+                        desk_id_chk = k_cfg_chk.get("target_desktop_service_id") or k_cfg_chk.get("desktop_service_id")
+                        if desk_id_chk:
+                            try:
+                                desk_svc = session.get(Service, int(desk_id_chk)) if hasattr(session, "get") else session.query(Service).get(int(desk_id_chk))
+                                if desk_svc:
+                                    d_cfg_chk = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if d_cfg_chk.get("audio_backend") == "pipewire_hub" and d_cfg_chk.get("pipewire_service_id"):
+                                        pw_svc_id = d_cfg_chk.get("pipewire_service_id")
+                                        try:
+                                            await self.acquire_lease(int(pw_svc_id), lease_holder=f"kiosk:{process_id}")
+                                        except Exception as pw_err:
+                                            self.logger.warning(f"Failed to acquire PipeWire lease for kiosk {process_id}: {pw_err}")
+                            except (ValueError, TypeError):
+                                pass
+
             # Check and acquire exclusive resource lock for publisher outputs
             from core.resource_lock_manager import resource_lock_manager
             with self.db_session_factory() as session:
@@ -217,6 +333,9 @@ class ProcessManager:
                             self.logger.warning(f"Failed to acquire remote lease on peer node {peer_node_id}: {e}")
             
             debug_mode = False
+            pw_runtime_dir = None
+            pw_config_path = None
+            pw_root = None
             
             # 1. Fetch config and prepare snap in a quick database transaction
             with self.db_session_factory() as session:
@@ -329,15 +448,77 @@ class ProcessManager:
                     k_mode = str((media_proc.config or {}).get("kiosk_config", {}).get("profile_mode", "ephemeral")).lower()
                     if k_mode != "persistent" and kiosk_profile_dir:
                         self.ephemeral_configs[process_id] = kiosk_profile_dir
+                elif svc_type == "pipewire_hub":
+                    pipewire_bin = None
+                    build_id = media_proc.ffmpeg_build_id or cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                    if build_id:
+                        pw_build = session.get(FfmpegBuild, build_id)
+                        if pw_build:
+                            cand_bin = pw_build.binary_path
+                            cand_root = getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None)
+                            if cand_root:
+                                pw_root = str(cand_root)
+                            if not cand_bin and cand_root:
+                                test_bin = os.path.join(cand_root, "bin", "pipewire")
+                                if os.path.exists(test_bin):
+                                    cand_bin = test_bin
+                            if cand_bin and os.path.exists(cand_bin):
+                                pipewire_bin = cand_bin
+                                if not cfg.get("software_build_id"):
+                                    cfg["software_build_id"] = pw_build.id
+                                    cfg["ffmpeg_build_id"] = pw_build.id
+                                    media_proc.config = cfg
+
+                    if not pipewire_bin:
+                        from core.software_manager import software_manager
+                        pipewire_bin = software_manager.get_active_binary("pipewire", session)
+                        if pipewire_bin:
+                            pw_build = session.query(FfmpegBuild).filter(
+                                FfmpegBuild.software_type == 'pipewire',
+                                FfmpegBuild.binary_path == pipewire_bin
+                            ).first()
+                            if pw_build:
+                                cand_root = getattr(pw_build, "install_path", None) or getattr(pw_build, "install_dir", None)
+                                if cand_root:
+                                    pw_root = str(cand_root)
+                            else:
+                                # Also check if binary is within any build install directory
+                                for b in session.query(FfmpegBuild).filter(FfmpegBuild.software_type == 'pipewire', FfmpegBuild.status == 'ready').all():
+                                    b_root = getattr(b, "install_path", None) or getattr(b, "install_dir", None)
+                                    if b_root and pipewire_bin.startswith(b_root):
+                                        pw_root = str(b_root)
+                                        break
+
+                    if not pipewire_bin:
+                        pipewire_bin = shutil.which("pipewire")
+
+                    if not pipewire_bin:
+                        raise FileNotFoundError("PipeWire binary not found. Please install PipeWire on the host system or compile it in Settings → Software Engine.")
+
+                    if not pw_root and pipewire_bin and os.path.isabs(pipewire_bin) and "/bin/" in pipewire_bin:
+                        cand_prefix = pipewire_bin.split("/bin/")[0]
+                        if os.path.isdir(os.path.join(cand_prefix, "lib")) or os.path.isdir(os.path.join(cand_prefix, "lib64")):
+                            pw_root = cand_prefix
+
+                    cmd, pw_config_path, pw_runtime_dir = self._build_pipewire_config_and_cmd(media_proc, pipewire_bin, session)
+                    self.ephemeral_configs[process_id] = pw_config_path
                 else:
                     # Determine which FFmpeg binary to use
                     ffmpeg_bin = self.ffmpeg_path  # Default fallback
                     ffmpeg_build_id = cfg.get("ffmpeg_build_id") or cfg.get("build_id")
                     if ffmpeg_build_id:
                         build = session.query(FfmpegBuild).get(ffmpeg_build_id)
-                        if build and build.ffmpeg_binary and os.path.exists(build.ffmpeg_binary):
-                            ffmpeg_bin = build.ffmpeg_binary
-                            self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
+                        if build:
+                            cand_bin = getattr(build, "ffmpeg_binary", None)
+                            if cand_bin and os.path.exists(cand_bin):
+                                ffmpeg_bin = cand_bin
+                                self.logger.info(f"Using profile-specific binary: {ffmpeg_bin}")
+                            else:
+                                self.logger.warning(
+                                    f"Build ID {ffmpeg_build_id} is not a valid FFmpeg build "
+                                    f"(software_type='{getattr(build, 'software_type', 'unknown')}', path='{getattr(build, 'binary_path', None)}'). "
+                                    f"Falling back to default FFmpeg binary: {ffmpeg_bin}"
+                                )
 
                     # Resolve and validate paths before starting
                     import copy
@@ -350,6 +531,36 @@ class ProcessManager:
                     cmd = self._build_ffmpeg_cmd(media_proc, ffmpeg_bin)
 
                 proc_name = media_proc.name
+                
+                # Check if this FFmpeg process consumes or produces to a PipeWire Hub
+                pw_provider_id = None
+                if svc_type not in ("mediamtx_hub", "icecast_server", "pipewire_hub", "desktop", "kiosk_browser"):
+                    inp_c = cfg.get("input_config", {})
+                    out_c = cfg.get("output_config", {})
+                    check_targets = [inp_c, out_c]
+                    if isinstance(inp_c, dict):
+                        if "input1" in inp_c:
+                            check_targets.append(inp_c.get("input1"))
+                        if "input2" in inp_c:
+                            check_targets.append(inp_c.get("input2"))
+                    for c in check_targets:
+                        if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                            cand_id = c.get("provider_service_id") or c.get("pipewire_service_id")
+                            if cand_id:
+                                try:
+                                    pw_provider_id = int(cand_id)
+                                    break
+                                except (ValueError, TypeError):
+                                    pass
+
+                    if not pw_provider_id:
+                        for c in check_targets:
+                            if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                                pw_hubs = session.query(Service).filter(Service.service_type == "pipewire_hub").all()
+                                if len(pw_hubs) == 1:
+                                    pw_provider_id = pw_hubs[0].id
+                                    break
+
                 session.commit()  # Save changes and release write lock immediately!
                 
             # Ensure log directory exists and prepare file permissions for progress/preview files
@@ -360,6 +571,10 @@ class ProcessManager:
             # 2. Spawn subprocess (outside of any database session locks)
             self.logger.info(f"Starting service '{proc_name}' ({svc_type}): {shlex.join(cmd)}")
             sub_env = {**os.environ, "FFMPEG_GUI_PROCESS_ID": str(process_id)}
+            if pw_provider_id:
+                sub_env["PULSE_SERVER"] = f"unix:/tmp/ffmpeg-gui/pipewire-{pw_provider_id}/pulse.sock"
+                sub_env["PIPEWIRE_RUNTIME_DIR"] = f"/tmp/ffmpeg-gui/pipewire-{pw_provider_id}"
+                sub_env["PULSE_RUNTIME_PATH"] = f"/tmp/ffmpeg-gui/pipewire-{pw_provider_id}"
             
             try:
                 raw_cmd_str = shlex.join(cmd)
@@ -404,7 +619,37 @@ class ProcessManager:
                 
             spawn_lock = self._get_spawn_lock()
             async with spawn_lock:
-                if svc_type in ("mediamtx_hub", "icecast_server"):
+                if svc_type in ("mediamtx_hub", "icecast_server", "pipewire_hub"):
+                    if svc_type == "pipewire_hub":
+                        if pw_runtime_dir:
+                            sub_env["PIPEWIRE_RUNTIME_DIR"] = pw_runtime_dir
+                            sub_env["XDG_RUNTIME_DIR"] = pw_runtime_dir
+                            sub_env["PULSE_RUNTIME_PATH"] = pw_runtime_dir
+                        if pw_config_path:
+                            sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
+                        pw_debug_enabled = bool(debug_mode)
+                        sub_env["PIPEWIRE_DEBUG"] = "2" if pw_debug_enabled else "1"
+                        if pw_root and os.path.isdir(pw_root):
+                            lib_dirs = [
+                                os.path.join(pw_root, "lib"),
+                                os.path.join(pw_root, "lib64"),
+                                os.path.join(pw_root, "lib/x86_64-linux-gnu"),
+                                os.path.join(pw_root, "lib/aarch64-linux-gnu")
+                            ]
+                            valid_libs = [p for p in lib_dirs if os.path.isdir(p)]
+                            if valid_libs:
+                                cur_ld = sub_env.get("LD_LIBRARY_PATH", "")
+                                sub_env["LD_LIBRARY_PATH"] = ":".join(valid_libs + ([cur_ld] if cur_ld else []))
+
+                            # Export SPA plugin directory and PipeWire module directory if present in build
+                            for spa_cand in [os.path.join(pw_root, "lib/spa-0.2"), os.path.join(pw_root, "lib/x86_64-linux-gnu/spa-0.2")]:
+                                if os.path.isdir(spa_cand):
+                                    sub_env["SPA_PLUGIN_DIR"] = spa_cand
+                                    break
+                            for mod_cand in [os.path.join(pw_root, "lib/pipewire-0.3"), os.path.join(pw_root, "lib/x86_64-linux-gnu/pipewire-0.3")]:
+                                if os.path.isdir(mod_cand):
+                                    sub_env["PIPEWIRE_MODULE_DIR"] = mod_cand
+                                    break
                     # Decouple stdout to file descriptor so the daemon survives parent reloads without SIGPIPE
                     log_file_handle = open(log_path, "ab", buffering=0)
                     proc = await asyncio.create_subprocess_exec(
@@ -420,7 +665,57 @@ class ProcessManager:
                         pass
                     self.processes[process_id] = proc
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
+                    if svc_type == "pipewire_hub":
+                        from core.pipewire_matrix_supervisor import PipeWireMatrixSupervisor
+                        supervisor = PipeWireMatrixSupervisor(process_id, self)
+                        self.pipewire_supervisors[process_id] = supervisor
+                        await supervisor.start()
+                        asyncio.create_task(self._restart_dependent_pipewire_consumers(process_id))
+
+                        # Managed AoIP Network Discovery supervisor
+                        pw_full_cfg = cfg.get("pipewire_config") or cfg
+                        aes_net = pw_full_cfg.get("aes67_network", {})
+                        if aes_net.get("enabled"):
+                            from core.aoip_discovery_supervisor import AoIpDiscoverySupervisor
+                            aoip_sup = AoIpDiscoverySupervisor(process_id, self)
+                            self.aoip_discovery_supervisors[process_id] = aoip_sup
+                            await aoip_sup.start()
+
+                        # Managed PTP Master Clock sidecar (ptp4l)
+                        if aes_net.get("enabled") and aes_net.get("interface"):
+                            ptp_cfg = aes_net.get("ptp", {})
+                            if ptp_cfg.get("enabled"):
+                                await self._start_ptp4l_sidecar(process_id, aes_net["interface"], ptp_cfg, logs_dir)
                 elif svc_type == "desktop":
+                    # Clean up stale X11 lock file and socket if previous Xvfb crashed
+                    x_lock_path = f"/tmp/.X{display_num}-lock"
+                    x_sock_path = f"/tmp/.X11-unix/X{display_num}"
+                    if os.path.exists(x_lock_path):
+                        stale = False
+                        try:
+                            with open(x_lock_path, "r") as lf:
+                                lpid_str = lf.read().strip()
+                                if lpid_str:
+                                    lpid = int(lpid_str)
+                                    if not psutil.pid_exists(lpid):
+                                        stale = True
+                                else:
+                                    stale = True
+                        except Exception:
+                            stale = True
+
+                        if stale:
+                            self.logger.warning(f"Cleaning stale X11 lock {x_lock_path} for display :{display_num}")
+                            try:
+                                os.remove(x_lock_path)
+                            except Exception:
+                                pass
+                            if os.path.exists(x_sock_path):
+                                try:
+                                    os.remove(x_sock_path)
+                                except Exception:
+                                    pass
+
                     log_file_handle = open(log_path, "ab", buffering=0)
                     desktop_sub_env = {**sub_env, "DISPLAY": f":{display_num}"}
                     # 1. Spawn Xvfb
@@ -492,22 +787,28 @@ class ProcessManager:
                 elif svc_type == "kiosk_browser":
                     log_file_handle = open(log_path, "ab", buffering=0)
                     target_desk_subdevice = None
+                    desktop_audio_backend = "alsa_loopback"
+                    desktop_pw_service_id = None
+                    desktop_pw_sink_id = None
                     with self.db_session_factory() as session:
                         from database.models import Service
                         s_obj = session.get(Service, int(process_id)) if hasattr(session, "get") else session.query(Service).get(int(process_id))
                         k_cfg = (s_obj.config or {}).get("kiosk_config", {}) if s_obj else {}
                         p_mode = str(k_cfg.get("profile_mode", "ephemeral")).lower()
-                        desk_id = k_cfg.get("target_desktop_service_id")
+                        desk_id = k_cfg.get("target_desktop_service_id") or k_cfg.get("desktop_service_id")
                         if desk_id:
                             desk_obj = session.get(Service, int(desk_id)) if hasattr(session, "get") else session.query(Service).get(int(desk_id))
                             if desk_obj:
                                 d_cfg = (desk_obj.config or {}).get("desktop_config", desk_obj.config or {})
+                                desktop_audio_backend = d_cfg.get("audio_backend", "alsa_loopback")
+                                desktop_pw_service_id = d_cfg.get("pipewire_service_id")
+                                desktop_pw_sink_id = d_cfg.get("pipewire_sink_id")
                                 if d_cfg.get("alsa_subdevice") is not None:
                                     try:
                                         target_desk_subdevice = int(d_cfg.get("alsa_subdevice"))
                                     except (ValueError, TypeError):
                                         pass
-                    
+
                     if p_mode == "persistent":
                         kiosk_profile = os.path.abspath(f"data/kiosk_profiles/{process_id}")
                     else:
@@ -543,41 +844,55 @@ class ProcessManager:
                             except Exception:
                                 pass
 
-                    if is_chromium:
-                        # Chromium natively supports "disabled:" to suppress D-Bus autolaunch without error
-                        kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
-                    else:
-                        # For Firefox/Gecko, ensure any DBus session or AT-SPI addresses are purged so dbus-launch (dbus-x11) can autolaunch cleanly
-                        kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
-                        kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
+                    if desktop_audio_backend == "pipewire_hub" and desktop_pw_service_id:
+                        kiosk_sub_env["PULSE_SERVER"] = f"unix:/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}/pulse.sock"
+                        kiosk_sub_env["PIPEWIRE_RUNTIME_DIR"] = f"/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}"
+                        kiosk_sub_env["PULSE_RUNTIME_PATH"] = f"/tmp/ffmpeg-gui/pipewire-{desktop_pw_service_id}"
+                        if desktop_pw_sink_id:
+                            kiosk_sub_env["PULSE_SINK"] = str(desktop_pw_sink_id)
+                        kiosk_sub_env["PULSE_PROP"] = f"node.name=kiosk_{process_id} application.name=kiosk_{process_id} media.role=browser"
 
-                        # Configure apulse audio routing to isolated ALSA Loopback subdevice
-                        if target_desk_subdevice is not None:
-                            alsa_subdevice = target_desk_subdevice
-                        elif os.path.exists(asound_cfg_file):
-                            try:
-                                with open(asound_cfg_file, "r", encoding="utf-8") as acf:
-                                    sub_match = re.search(r"hw:Loopback,0,(\d+)", acf.read())
-                                    alsa_subdevice = int(sub_match.group(1)) if sub_match else (int(display_num) % 8)
-                            except Exception:
-                                alsa_subdevice = int(display_num) % 8
+                        if is_chromium:
+                            kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
                         else:
-                            alsa_subdevice = int(display_num) % 8
+                            kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
+                            kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
+                    else:
+                        if is_chromium:
+                            # Chromium natively supports "disabled:" to suppress D-Bus autolaunch without error
+                            kiosk_sub_env["DBUS_SESSION_BUS_ADDRESS"] = "disabled:"
+                        else:
+                            # For Firefox/Gecko, ensure any DBus session or AT-SPI addresses are purged so dbus-launch (dbus-x11) can autolaunch cleanly
+                            kiosk_sub_env.pop("DBUS_SESSION_BUS_ADDRESS", None)
+                            kiosk_sub_env.pop("AT_SPI_BUS_ADDRESS", None)
 
-                        kiosk_sub_env["APULSE_PLAYBACK_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
-                        kiosk_sub_env["APULSE_CAPTURE_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+                            # Configure apulse audio routing to isolated ALSA Loopback subdevice
+                            if target_desk_subdevice is not None:
+                                alsa_subdevice = target_desk_subdevice
+                            elif os.path.exists(asound_cfg_file):
+                                try:
+                                    with open(asound_cfg_file, "r", encoding="utf-8") as acf:
+                                        sub_match = re.search(r"hw:Loopback,0,(\d+)", acf.read())
+                                        alsa_subdevice = int(sub_match.group(1)) if sub_match else (int(display_num) % 8)
+                                except Exception:
+                                    alsa_subdevice = int(display_num) % 8
+                            else:
+                                alsa_subdevice = int(display_num) % 8
 
-                        # Ensure LD_LIBRARY_PATH includes apulse multiarch libraries if present
-                        apulse_lib_dirs = [
-                            "/usr/lib/x86_64-linux-gnu/apulse",
-                            "/usr/lib/aarch64-linux-gnu/apulse",
-                            "/usr/lib/apulse",
-                            "/usr/local/lib/apulse",
-                        ]
-                        found_apulse_lib = next((p for p in apulse_lib_dirs if os.path.isdir(p)), None)
-                        if found_apulse_lib:
-                            existing_ld = kiosk_sub_env.get("LD_LIBRARY_PATH", "")
-                            kiosk_sub_env["LD_LIBRARY_PATH"] = f"{found_apulse_lib}:{existing_ld}".rstrip(":")
+                            kiosk_sub_env["APULSE_PLAYBACK_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+                            kiosk_sub_env["APULSE_CAPTURE_DEVICE"] = f"plughw:Loopback,0,{alsa_subdevice}"
+
+                            # Ensure LD_LIBRARY_PATH includes apulse multiarch libraries if present
+                            apulse_lib_dirs = [
+                                "/usr/lib/x86_64-linux-gnu/apulse",
+                                "/usr/lib/aarch64-linux-gnu/apulse",
+                                "/usr/lib/apulse",
+                                "/usr/local/lib/apulse",
+                            ]
+                            found_apulse_lib = next((p for p in apulse_lib_dirs if os.path.isdir(p)), None)
+                            if found_apulse_lib:
+                                existing_ld = kiosk_sub_env.get("LD_LIBRARY_PATH", "")
+                                kiosk_sub_env["LD_LIBRARY_PATH"] = f"{found_apulse_lib}:{existing_ld}".rstrip(":")
                     proc = await asyncio.create_subprocess_exec(
                         *cmd,
                         stdout=log_file_handle,
@@ -625,6 +940,7 @@ class ProcessManager:
             
             # Start watchdog task
             self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, proc))
+            self.notify_pipewire_matrix_change()
             
         except Exception as e:
             self.logger.exception(f"Failed to start process {process_id} ({svc_name})")
@@ -632,6 +948,28 @@ class ProcessManager:
             from core.resource_lock_manager import resource_lock_manager
             resource_lock_manager.release_lock("service", process_id)
             await self.stop_unused_dependencies(process_id, allow_auto_stop=True)
+            ephem = self.ephemeral_configs.pop(process_id, None)
+            if ephem and os.path.exists(ephem):
+                try:
+                    if os.path.isdir(ephem):
+                        shutil.rmtree(ephem, ignore_errors=True)
+                    else:
+                        os.remove(ephem)
+                except Exception:
+                    pass
+            pw_rdir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
+            if os.path.exists(pw_rdir):
+                try:
+                    shutil.rmtree(pw_rdir, ignore_errors=True)
+                except Exception:
+                    pass
+            ptp_conf = f"/dev/shm/ptp4l_{process_id}.conf"
+            if os.path.exists(ptp_conf):
+                try:
+                    os.remove(ptp_conf)
+                except Exception:
+                    pass
+            self.ephemeral_configs.pop(f"ptp_{process_id}", None)
             raise
 
     def notify_service_crash(self, process_id: int, process_name: str, exit_code: int = 1, is_initial_crash: bool = True):
@@ -877,6 +1215,36 @@ class ProcessManager:
                 except Exception:
                     pass
 
+            # Clean up PipeWire runtime directory and sockets if present
+            pw_runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
+            if os.path.exists(pw_runtime_dir):
+                try:
+                    shutil.rmtree(pw_runtime_dir, ignore_errors=True)
+                except Exception:
+                    pass
+
+            # Clean up ptp4l configuration if present
+            ptp_conf = f"/dev/shm/ptp4l_{process_id}.conf"
+            if os.path.exists(ptp_conf):
+                try:
+                    os.remove(ptp_conf)
+                except Exception:
+                    pass
+            ptp_ephem = self.ephemeral_configs.pop(f"ptp_{process_id}", None)
+            if ptp_ephem and os.path.exists(ptp_ephem):
+                try:
+                    os.remove(ptp_ephem)
+                except Exception:
+                    pass
+            # Clean up ephemeral UDS sockets created for ptp4l in /dev/shm or /tmp
+            shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
+            for uds_f in [os.path.join(shm_dir, f"ptp4l_{process_id}.uds"), os.path.join(shm_dir, f"ptp4lro_{process_id}.uds")]:
+                if os.path.exists(uds_f):
+                    try:
+                        os.remove(uds_f)
+                    except Exception:
+                        pass
+
             cleanup_rogue_processes(process_id=process_id)
 
             # Unmark pinned state if stopped intentionally
@@ -885,6 +1253,8 @@ class ProcessManager:
                 dependency_manager.unmark_pinned(process_id)
 
             allow_stop_deps = True
+            pw_release_svc_id = None
+            kiosk_pw_release_svc_id = None
             with self.db_session_factory() as session:
                 from database.models import Service
                 media_proc = session.query(Service).get(process_id)
@@ -901,8 +1271,62 @@ class ProcessManager:
                     media_proc.restart_count = 0
                     session.commit()
 
+                    if media_proc.service_type == "pipewire_hub":
+                        pw_cfg = (media_proc.config or {}).get("pipewire_config") or media_proc.config or {}
+                        nic = pw_cfg.get("aes67_network", {}).get("interface")
+                        if nic:
+                            from core.resource_lock_manager import resource_manager
+                            resource_manager.release_resource("network_interface", nic, owner_type="service", owner_id=process_id)
+
+                    if getattr(media_proc, "service_type", None) == "desktop":
+                        d_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
+                        if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                            pw_release_svc_id = d_cfg.get("pipewire_service_id")
+
+                    if getattr(media_proc, "service_type", None) == "kiosk_browser":
+                        k_cfg = (media_proc.config or {}).get("kiosk_config", {})
+                        target_desk_id = k_cfg.get("target_desktop_service_id") or k_cfg.get("desktop_service_id")
+                        if target_desk_id:
+                            try:
+                                desk_svc_id_int = int(target_desk_id)
+                                desk_svc = session.get(Service, desk_svc_id_int) if hasattr(session, "get") else session.query(Service).get(desk_svc_id_int)
+                                if desk_svc:
+                                    d_cfg = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                                        kiosk_pw_release_svc_id = d_cfg.get("pipewire_service_id")
+                            except (ValueError, TypeError):
+                                pass
+
+            if pw_release_svc_id is not None:
+                try:
+                    await self.release_lease(int(pw_release_svc_id), lease_holder=f"desktop:{process_id}", allow_auto_stop=(not is_restart))
+                except Exception as pw_err:
+                    self.logger.warning(f"Failed to release PipeWire lease for desktop {process_id}: {pw_err}")
+
+            if kiosk_pw_release_svc_id is not None:
+                try:
+                    await self.release_lease(int(kiosk_pw_release_svc_id), lease_holder=f"kiosk:{process_id}", allow_auto_stop=(not is_restart))
+                except Exception as pw_err:
+                    self.logger.warning(f"Failed to release PipeWire lease for kiosk {process_id}: {pw_err}")
+
+            # Stop associated PipeWireMatrixSupervisor and AoIpDiscoverySupervisor if stopping a pipewire_hub
+            pw_sup = self.pipewire_supervisors.pop(process_id, None)
+            if pw_sup:
+                try:
+                    await pw_sup.stop()
+                except Exception as sup_err:
+                    self.logger.warning(f"Error stopping PipeWire supervisor for hub {process_id}: {sup_err}")
+
+            aoip_sup = self.aoip_discovery_supervisors.pop(process_id, None)
+            if aoip_sup:
+                try:
+                    await aoip_sup.stop()
+                except Exception as sup_err:
+                    self.logger.warning(f"Error stopping AoIP discovery supervisor for hub {process_id}: {sup_err}")
+
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
+            self.notify_pipewire_matrix_change()
 
             # Release remote peer lease if configured
             if not is_restart:
@@ -943,8 +1367,55 @@ class ProcessManager:
             self.logger.error(f"Error querying active services for stop_all_processes: {e}")
 
         if active_ids:
-            tasks = [self.stop_process(pid, graceful=graceful, is_restart=False) for pid in active_ids]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # Shield ALSA hardware mailbox from telemetry during mass shutdown
+            async with alsa_manager.hardware_busy_guard():
+                # Group processes by ALSA card index
+                alsa_card_groups: Dict[int, List[int]] = {}
+                non_alsa_ids: List[int] = []
+
+                # Query configs if available
+                service_configs = {}
+                try:
+                    with self.db_session_factory() as session:
+                        from database.models import Service
+                        svcs = session.query(Service).filter(Service.id.in_(active_ids)).all()
+                        for s in svcs:
+                            service_configs[s.id] = s.config or {}
+                except Exception as e:
+                    self.logger.debug(f"Could not load service configs for ALSA grouping: {e}")
+
+                for pid in active_ids:
+                    cfg = service_configs.get(pid)
+                    proc_entry = self.processes.get(pid)
+                    real_pid = getattr(proc_entry, "pid", None) or self.reattached_pids.get(pid)
+                    card_idx = alsa_manager.detect_alsa_card_index(config=cfg, pid=real_pid)
+                    if card_idx is not None:
+                        alsa_card_groups.setdefault(card_idx, []).append(pid)
+                    else:
+                        non_alsa_ids.append(pid)
+
+                stop_tasks = []
+
+                # Non-ALSA processes can be stopped concurrently without hardware contention
+                if non_alsa_ids:
+                    stop_tasks.append(
+                        asyncio.gather(*[self.stop_process(pid, graceful=graceful, is_restart=False) for pid in non_alsa_ids], return_exceptions=True)
+                    )
+
+                # For each physical ALSA card, stagger process teardown sequentially (250-330ms delay) to avoid DSP PCI collision
+                for card_idx, card_pids in alsa_card_groups.items():
+                    async def _staggered_card_stop(pids: List[int], c_idx: int):
+                        for i, pid in enumerate(pids):
+                            try:
+                                await self.stop_process(pid, graceful=graceful, is_restart=False)
+                            except Exception as stop_err:
+                                self.logger.warning(f"Error stopping process {pid} on ALSA card {c_idx}: {stop_err}")
+                            if i < len(pids) - 1:
+                                await asyncio.sleep(0.30)  # ~3 processes/sec stagger delay
+
+                    stop_tasks.append(_staggered_card_stop(card_pids, card_idx))
+
+                await asyncio.gather(*stop_tasks, return_exceptions=True)
 
         # Final sweep to guarantee no rogue child processes remain in OS
         try:
@@ -953,6 +1424,112 @@ class ProcessManager:
             self.logger.debug(f"Final rogue process cleanup sweep encountered: {e}")
 
         self.logger.info("ProcessManager: All child processes have been stopped cleanly.")
+
+    async def restart_process(self, process_id: int):
+        """Restarts a process cleanly preserving its pinned state and logs."""
+        async with alsa_manager.hardware_busy_guard():
+            await self.stop_process(process_id, is_restart=True)
+            await asyncio.sleep(0.5)
+            await self.start_process(process_id, is_restart=True)
+
+    async def _restart_dependent_pipewire_consumers(self, hub_id: int):
+        """
+        Restarts running FFmpeg processes and Kiosk browsers that consume or publish audio to this PipeWire Hub,
+        allowing them to reconnect to the newly spawned PulseAudio socket.
+        """
+        pulse_sock = f"/tmp/ffmpeg-gui/pipewire-{hub_id}/pulse.sock"
+        for _ in range(30):
+            if os.path.exists(pulse_sock):
+                break
+            await asyncio.sleep(0.1)
+
+        dependent_pids: List[int] = []
+
+        def is_alive(proc_id: int) -> bool:
+            proc = self.processes.get(proc_id)
+            target_pid = self.reattached_pids.get(proc_id)
+            return (proc is not None and getattr(proc, "returncode", None) is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+
+        try:
+            with self.db_session_factory() as session:
+                from database.models import Service, ServiceDependency
+
+                all_hubs = session.query(Service).filter(Service.service_type == "pipewire_hub").all()
+                is_single_hub = (len(all_hubs) == 1 and all_hubs[0].id == hub_id)
+
+                # 1. Dependency table query
+                deps = session.query(ServiceDependency).filter(
+                    ServiceDependency.provider_service_id == hub_id,
+                    ServiceDependency.consumer_type == "service"
+                ).all()
+                for dep in deps:
+                    if dep.consumer_id != hub_id and is_alive(dep.consumer_id):
+                        c_svc = session.get(Service, dep.consumer_id) if hasattr(session, "get") else session.query(Service).get(dep.consumer_id)
+                        if c_svc and getattr(c_svc, "service_type", None) not in (
+                            "mediamtx_hub", "icecast_server", "pipewire_hub", "desktop"
+                        ):
+                            if dep.consumer_id not in dependent_pids:
+                                dependent_pids.append(dep.consumer_id)
+
+                # 2. Config query across all active processes
+                active_ids = {pid for pid in list(self.processes.keys()) + list(self.reattached_pids.keys()) if is_alive(pid) and pid != hub_id}
+                candidate_ids = [pid for pid in active_ids if pid not in dependent_pids]
+                if candidate_ids:
+                    running_svcs = session.query(Service).filter(
+                        Service.id.in_(candidate_ids),
+                        ~Service.service_type.in_(["mediamtx_hub", "icecast_server", "pipewire_hub", "desktop"])
+                    ).all()
+                    for svc in running_svcs:
+                        s_type = getattr(svc, "service_type", "ffmpeg_stream")
+                        if s_type == "kiosk_browser":
+                            k_cfg = (svc.config or {}).get("kiosk_config", svc.config or {})
+                            desk_id = k_cfg.get("target_desktop_service_id") or k_cfg.get("desktop_service_id")
+                            if desk_id:
+                                desk_svc = session.get(Service, int(desk_id)) if hasattr(session, "get") else session.query(Service).get(int(desk_id))
+                                if desk_svc:
+                                    d_cfg = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if d_cfg.get("audio_backend") == "pipewire_hub":
+                                        pw_id = d_cfg.get("pipewire_service_id")
+                                        if (pw_id and int(pw_id) == hub_id) or (not pw_id and is_single_hub):
+                                            if svc.id not in dependent_pids:
+                                                dependent_pids.append(svc.id)
+                        else:
+                            cfg = svc.config or {}
+                            inp_c = cfg.get("input_config", {})
+                            out_c = cfg.get("output_config", {})
+                            check_targets = [inp_c, out_c]
+                            if isinstance(inp_c, dict):
+                                if "input1" in inp_c:
+                                    check_targets.append(inp_c.get("input1"))
+                                if "input2" in inp_c:
+                                    check_targets.append(inp_c.get("input2"))
+                            for c in check_targets:
+                                if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                                    cand_id = c.get("provider_service_id") or c.get("pipewire_service_id")
+                                    if (cand_id and int(cand_id) == hub_id) or (not cand_id and is_single_hub):
+                                        if svc.id not in dependent_pids:
+                                            dependent_pids.append(svc.id)
+                                        break
+        except Exception as q_err:
+            self.logger.warning(f"Error querying dependent PipeWire consumers for hub {hub_id}: {q_err}")
+
+        if not dependent_pids:
+            return
+
+        self.logger.info(
+            f"[ProcessManager] Reconnecting {len(dependent_pids)} running consumer(s) "
+            f"to restarted PipeWire Hub #{hub_id}: {dependent_pids}"
+        )
+
+        for c_id in dependent_pids:
+            try:
+                self.logger.info(f"[ProcessManager] Cascading restart for consumer service #{c_id} (PipeWire Hub #{hub_id})")
+                await self.restart_process(c_id)
+            except Exception as c_err:
+                self.logger.warning(f"[ProcessManager] Failed restarting dependent consumer service #{c_id}: {c_err}")
+
+    # Backward compatibility alias
+    _restart_dependent_ffmpeg_consumers = _restart_dependent_pipewire_consumers
 
     def _resolve_storage_path(self, storage_id: Optional[int], relative_path: Optional[str]) -> Optional[str]:
         if not storage_id:
@@ -1621,6 +2198,506 @@ class ProcessManager:
 
         return [icecast_bin, "-c", ephem_file], ephem_file
 
+    def _build_pipewire_config_and_cmd(self, media_proc, pipewire_bin: str, session) -> Tuple[List[str], str, str]:
+        """
+        Builds PipeWire isolated runtime environment, generates config in ephemeral RAM (/dev/shm),
+        claims AES67 network interface if needed, and returns (cmd, config_path, runtime_dir).
+        """
+        from core.pipewire_config import PipeWireConfigGenerator
+        from core.resource_lock_manager import resource_manager
+
+        process_id = media_proc.id
+        runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
+        os.makedirs(runtime_dir, mode=0o700, exist_ok=True)
+        try:
+            os.chmod(runtime_dir, 0o700)
+        except Exception:
+            pass
+
+        shm_dir = "/dev/shm"
+        if os.path.isdir(shm_dir) and os.access(shm_dir, os.W_OK):
+            config_path = f"/dev/shm/pipewire_{process_id}.conf"
+        else:
+            config_path = os.path.join(runtime_dir, "pipewire.conf")
+
+        pw_cfg = (media_proc.config or {}).get("pipewire_config") or media_proc.config or {}
+        PipeWireConfigGenerator.write_config_file(process_id, pw_cfg, config_path, runtime_dir)
+
+        aes67_net = pw_cfg.get("aes67_network", {})
+        if aes67_net.get("enabled") and aes67_net.get("interface"):
+            iface = aes67_net["interface"]
+            ok_nic, err_nic, _ = resource_manager.claim_resource(
+                resource_type="network_interface",
+                identifier=iface,
+                owner_type="service",
+                owner_id=process_id,
+                owner_name=media_proc.name
+            )
+            if not ok_nic:
+                raise RuntimeError(err_nic or f"Network interface '{iface}' is already in use.")
+
+        cmd = [pipewire_bin, "-c", config_path]
+        return cmd, config_path, runtime_dir
+
+    async def _start_ptp4l_sidecar(self, process_id: int, iface: str, ptp_cfg: Dict[str, Any], logs_dir: str):
+        """
+        Launches managed ptp4l master clock daemon as an auxiliary process tied to PipeWire Hub service.
+        Generates /dev/shm/ptp4l_{process_id}.conf in ephemeral RAM and applies proper timestamping flags.
+        """
+        from core.network_inspector import find_system_binary, audit_pipewire_network_capabilities
+        from core.pipewire_config import PipeWireConfigGenerator
+
+        ptp4l_bin = find_system_binary("ptp4l")
+        if not ptp4l_bin:
+            self.logger.warning(
+                f"[PipeWire Hub #{process_id}] ptp4l binary not found on host. "
+                f"PTP Master Clock could not be started for interface '{iface}'."
+            )
+            return
+
+        # Audit NIC capability for this specific interface
+        try:
+            audit_info = audit_pipewire_network_capabilities(probe_network_ptp=False)
+            matched = next((i for i in audit_info.get("interfaces", []) if i.get("name") == iface), None)
+            ptp_support = matched.get("ptp_support", "software") if matched else "software"
+        except Exception as e:
+            self.logger.warning(f"[PipeWire Hub #{process_id}] Failed to audit NIC for PTP: {e}. Defaulting to software.")
+            ptp_support = "software"
+
+        if ptp_support == "none":
+            self.logger.warning(
+                f"[PipeWire Hub #{process_id}] Network interface '{iface}' has no PTP timestamping support. "
+                f"Skipping ptp4l master clock start."
+            )
+            return
+
+        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
+        ptp_conf_path = os.path.join(shm_dir, f"ptp4l_{process_id}.conf")
+
+        PipeWireConfigGenerator.write_ptp4l_config_file(
+            service_id=process_id,
+            ptp_cfg=ptp_cfg,
+            iface=iface,
+            target_path=ptp_conf_path,
+            ptp_support=ptp_support
+        )
+        self.ephemeral_configs[f"ptp_{process_id}"] = ptp_conf_path
+
+        ptp_cmd = [ptp4l_bin, "-f", ptp_conf_path, "-i", iface, "-m"]
+        if ptp_support == "software":
+            ptp_cmd.append("-S")
+
+        self.logger.info(
+            f"[PipeWire Hub #{process_id}] Spawning managed PTP master clock ({ptp_support}): {' '.join(ptp_cmd)}"
+        )
+        try:
+            ptp_log_path = os.path.join(logs_dir, f"ptp4l_{process_id}.log")
+            ptp_log_file = open(ptp_log_path, "ab", buffering=0)
+            ptp_proc = await asyncio.create_subprocess_exec(
+                *ptp_cmd,
+                stdout=ptp_log_file,
+                stderr=asyncio.subprocess.STDOUT,
+                stdin=asyncio.subprocess.DEVNULL
+            )
+            try:
+                ptp_log_file.close()
+            except Exception:
+                pass
+
+            self.auxiliary_processes.setdefault(process_id, []).append(ptp_proc)
+        except Exception as e:
+            self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch ptp4l sidecar: {e}")
+
+    def _get_pipewire_tool_binary(self, hub_service_id: int, tool_name: str = "pw-link") -> Tuple[Optional[str], Optional[str]]:
+        """Resolves binary path and install_dir for PipeWire CLI tools (pw-link, pw-dump, pw-cli)."""
+        tool_bin = None
+        install_dir = None
+        if self.db_session_factory:
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service, SoftwareBuild
+                    svc = session.get(Service, hub_service_id) if hasattr(session, "get") else session.query(Service).get(hub_service_id)
+                    if svc and svc.config:
+                        cfg = svc.config
+                        build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+                        if build_id:
+                            build = session.get(SoftwareBuild, build_id) if hasattr(session, "get") else session.query(SoftwareBuild).get(build_id)
+                            if build:
+                                cand_dir = getattr(build, "install_dir", None) or getattr(build, "install_path", None)
+                                if cand_dir:
+                                    cand_bin = os.path.join(cand_dir, "bin", tool_name)
+                                    if os.path.exists(cand_bin):
+                                        tool_bin = cand_bin
+                                        install_dir = cand_dir
+            except Exception as e:
+                self.logger.debug(f"[PipeWireLinker] Error resolving {tool_name} from DB for hub {hub_service_id}: {e}")
+
+        if not tool_bin:
+            tool_bin = shutil.which(tool_name)
+
+        return tool_bin, install_dir
+
+    async def get_pipewire_telemetry(self, process_id: int) -> dict:
+        """
+        Gathers real-time telemetry from an active PipeWire Hub instance via pw-dump.
+        Returns active audio nodes, ports, links, and summary metrics.
+        """
+        empty_summary = {"nodes_count": 0, "ports_count": 0, "links_count": 0}
+        if process_id not in self.active_processes:
+            return {
+                "active": False,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": "Service is not running"
+            }
+
+        pw_dump_bin, install_dir = self._get_pipewire_tool_binary(process_id, "pw-dump")
+        if not pw_dump_bin:
+            return {
+                "active": True,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": "pw-dump binary not found"
+            }
+
+        runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
+        sub_env = {
+            **os.environ,
+            "PIPEWIRE_RUNTIME_DIR": runtime_dir,
+            "PIPEWIRE_REMOTE": "pipewire-0",
+            "XDG_RUNTIME_DIR": runtime_dir,
+            "PULSE_RUNTIME_PATH": runtime_dir,
+            "PIPEWIRE_NO_DBUS": "1",
+            "PIPEWIRE_NO_RT": "1",
+            "DBUS_SESSION_BUS_ADDRESS": "none",
+        }
+
+        if install_dir and os.path.isdir(install_dir):
+            lib_dirs = [
+                os.path.join(install_dir, "lib"),
+                os.path.join(install_dir, "lib64"),
+                os.path.join(install_dir, "lib/x86_64-linux-gnu"),
+                os.path.join(install_dir, "lib/aarch64-linux-gnu")
+            ]
+            valid_libs = [p for p in lib_dirs if os.path.isdir(p)]
+            if valid_libs:
+                cur_ld = sub_env.get("LD_LIBRARY_PATH", "")
+                sub_env["LD_LIBRARY_PATH"] = ":".join(valid_libs + ([cur_ld] if cur_ld else []))
+
+        proc = None
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                pw_dump_bin,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=sub_env
+            )
+            stdout_data, stderr_data = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if proc.returncode != 0:
+                err_msg = stderr_data.decode("utf-8", errors="replace").strip() if stderr_data else f"Exit code {proc.returncode}"
+                return {
+                    "active": True,
+                    "nodes": [],
+                    "ports": [],
+                    "links": [],
+                    "streams": [],
+                    "raw_summary": empty_summary,
+                    "error": err_msg
+                }
+
+            items = json.loads(stdout_data.decode("utf-8", errors="replace"))
+            if not isinstance(items, list):
+                items = []
+
+            sup = self.get_or_create_pipewire_supervisor(process_id)
+            matrix_data = sup.get_matrix_status() if sup else None
+
+            # Query services, tasks, and hub sinks for human entity resolution
+            entity_lookup: Dict[str, Dict[str, Any]] = {}
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service, ScheduledTask
+                    hub_svc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                    if hub_svc:
+                        h_cfg = hub_svc.config or {}
+                        pw_cfg = h_cfg.get("pipewire_config", h_cfg)
+                        for vs in pw_cfg.get("virtual_sinks", []):
+                            if vs.get("id"):
+                                s_label = vs.get("name") or vs.get("id")
+                                entity_lookup[vs.get("id").lower()] = {"label": s_label, "type": "sink", "id": None}
+                                entity_lookup[f"{vs.get('id').lower()}.monitor"] = {"label": f"{s_label} (Monitor)", "type": "sink", "id": None}
+
+                        for rs in pw_cfg.get("remote_sinks", []):
+                            if rs.get("id"):
+                                rs_label = rs.get("name") or rs.get("id")
+                                entity_lookup[rs.get("id").lower()] = {"label": f"{rs_label} [AoIP Rx]", "type": "remote_sink", "id": None}
+                                entity_lookup[f"{rs.get('id').lower()}.monitor"] = {"label": f"{rs_label} (Monitor) [AoIP Rx]", "type": "remote_sink", "id": None}
+
+                    for s in session.query(Service).all():
+                        s_label = s.alias or s.name or f"Service #{s.id}"
+                        info_dict = {"label": s_label, "type": s.service_type, "id": s.id}
+                        entity_lookup[f"ffmpeg_service_{s.id}"] = info_dict
+                        entity_lookup[f"ffmpeg_proc_{s.id}"] = info_dict
+                        entity_lookup[f"ffmpeg_{s.id}"] = info_dict
+                        entity_lookup[f"kiosk_{s.id}"] = info_dict
+                        entity_lookup[f"desktop_{s.id}"] = info_dict
+                        if s.name:
+                            entity_lookup[s.name.lower()] = info_dict
+                        if s.alias:
+                            entity_lookup[s.alias.lower()] = info_dict
+
+                    for t in session.query(ScheduledTask).all():
+                        t_label = t.alias or t.name or f"Task #{t.id}"
+                        t_dict = {"label": t_label, "type": "task", "id": t.id}
+                        entity_lookup[f"ffmpeg_task_{t.id}"] = t_dict
+                        entity_lookup[f"ffmpeg_{t.id}"] = t_dict
+                        if t.name:
+                            entity_lookup[t.name.lower()] = t_dict
+                        if t.alias:
+                            entity_lookup[t.alias.lower()] = t_dict
+            except Exception as e:
+                self.logger.debug(f"Failed to build entity lookup for telemetry: {e}")
+
+            nodes = []
+            ports = []
+            links = []
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                itype = str(item.get("type", ""))
+                info = item.get("info")
+                info = info if isinstance(info, dict) else {}
+                props = info.get("props")
+                props = props if isinstance(props, dict) else {}
+                iid = item.get("id")
+
+                if itype.endswith(":Node") or itype == "PipeWire:Interface:Node":
+                    node_name = props.get("node.name") if props.get("node.name") is not None else props.get("node.nick")
+                    if node_name is None:
+                        node_name = f"node-{iid}"
+
+                    matched_info = entity_lookup.get(node_name.lower())
+                    if not matched_info:
+                        app_name = props.get("application.name") or props.get("media.name") or props.get("node.description")
+                        if app_name and app_name.lower() in entity_lookup:
+                            matched_info = entity_lookup[app_name.lower()]
+
+                    if not matched_info and node_name.lower() in ("chromium", "firefox", "chrome", "cubeb"):
+                        if matrix_data and isinstance(matrix_data.get("routes"), list):
+                            for r in matrix_data["routes"]:
+                                if r.get("source_entity_type") == "kiosk" and r.get("status") in ("linked", "linking"):
+                                    matched_info = {"label": r.get("source_label"), "type": "kiosk", "id": r.get("source_entity_id")}
+                                    break
+
+                    nodes.append({
+                        "id": iid,
+                        "name": node_name,
+                        "human_label": matched_info.get("label") if matched_info else (props.get("node.description") if props.get("node.description") and props.get("node.description") != node_name else None),
+                        "entity_type": matched_info.get("type") if matched_info else None,
+                        "entity_id": matched_info.get("id") if matched_info else None,
+                        "media_class": props.get("media.class", ""),
+                        "state": info.get("state", "unknown"),
+                        "description": props.get("node.description") if props.get("node.description") is not None else (props.get("node.name") or "")
+                    })
+                elif itype.endswith(":Port") or itype == "PipeWire:Interface:Port":
+                    port_name = props.get("port.name") if props.get("port.name") is not None else f"port-{iid}"
+                    node_id = props.get("node.id") if props.get("node.id") is not None else info.get("node-id")
+                    ports.append({
+                        "id": iid,
+                        "name": port_name,
+                        "direction": props.get("port.direction", ""),
+                        "node_id": node_id,
+                        "audio_channel": props.get("audio.channel", "")
+                    })
+                elif itype.endswith(":Link") or itype == "PipeWire:Interface:Link":
+                    output_node_id = info.get("output-node-id") if info.get("output-node-id") is not None else props.get("link.output.node")
+                    output_port_id = info.get("output-port-id") if info.get("output-port-id") is not None else props.get("link.output.port")
+                    input_node_id = info.get("input-node-id") if info.get("input-node-id") is not None else props.get("link.input.node")
+                    input_port_id = info.get("input-port-id") if info.get("input-port-id") is not None else props.get("link.input.port")
+                    links.append({
+                        "id": iid,
+                        "output_node_id": output_node_id,
+                        "output_port_id": output_port_id,
+                        "input_node_id": input_node_id,
+                        "input_port_id": input_port_id,
+                        "state": info.get("state", "")
+                    })
+
+            node_map = {n["id"]: n for n in nodes if "id" in n}
+            port_map = {p["id"]: p for p in ports if "id" in p}
+            for link in links:
+                out_node = node_map.get(link.get("output_node_id"))
+                out_port = port_map.get(link.get("output_port_id"))
+                in_node = node_map.get(link.get("input_node_id"))
+                in_port = port_map.get(link.get("input_port_id"))
+
+                link["output_node_name"] = out_node["name"] if out_node else f"Node #{link.get('output_node_id')}"
+                link["output_node_label"] = (out_node.get("human_label") or out_node["name"]) if out_node else f"Node #{link.get('output_node_id')}"
+                link["output_port_name"] = out_port["name"] if out_port else f"Port #{link.get('output_port_id')}"
+                link["input_node_name"] = in_node["name"] if in_node else f"Node #{link.get('input_node_id')}"
+                link["input_node_label"] = (in_node.get("human_label") or in_node["name"]) if in_node else f"Node #{link.get('input_node_id')}"
+                link["input_port_name"] = in_port["name"] if in_port else f"Port #{link.get('input_port_id')}"
+
+            sup = self.get_or_create_pipewire_supervisor(process_id)
+            matrix_data = sup.get_matrix_status() if sup else None
+
+            aoip_sup = self.get_or_create_aoip_discovery_supervisor(process_id)
+            aoip_data = aoip_sup.get_discovery_status() if aoip_sup else None
+
+            return {
+                "active": True,
+                "nodes": nodes,
+                "ports": ports,
+                "links": links,
+                "streams": nodes,
+                "matrix": matrix_data,
+                "aoip_discovery": aoip_data,
+                "raw_summary": {
+                    "nodes_count": len(nodes),
+                    "ports_count": len(ports),
+                    "links_count": len(links)
+                },
+                "error": None
+            }
+        except asyncio.TimeoutError:
+            self.logger.warning(f"PipeWire telemetry timed out for process {process_id}")
+            if proc:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+            return {
+                "active": True,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": "pw-dump query timed out (5.0s)"
+            }
+        except json.JSONDecodeError as jde:
+            self.logger.warning(f"PipeWire telemetry failed to parse json for process {process_id}: {jde}")
+            return {
+                "active": True,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": f"Invalid JSON from pw-dump: {jde}"
+            }
+        except Exception as err:
+            self.logger.warning(f"PipeWire telemetry error for process {process_id}: {err}")
+            return {
+                "active": True,
+                "nodes": [],
+                "ports": [],
+                "links": [],
+                "streams": [],
+                "raw_summary": empty_summary,
+                "error": str(err)
+            }
+        finally:
+            if proc and proc.returncode is None:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+
+    def get_or_create_pipewire_supervisor(self, hub_id: int):
+        """
+        Retrieves the active PipeWireMatrixSupervisor for hub_id, or instantiates and
+        starts it on-demand if the parent PipeWire process is alive in OS (self-healing).
+        """
+        hub_key = int(hub_id)
+        sup = self.pipewire_supervisors.get(hub_key)
+        if sup:
+            return sup
+
+        # Verify hub liveness in OS (either normal subprocess or reattached PID)
+        target_pid = self.reattached_pids.get(hub_key)
+        proc = self.processes.get(hub_key)
+        is_alive = (proc is not None and getattr(proc, "returncode", None) is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+        if is_alive:
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service
+                    s_obj = session.get(Service, hub_key) if hasattr(session, "get") else session.query(Service).get(hub_key)
+                    if s_obj and getattr(s_obj, "service_type", None) == "pipewire_hub":
+                        from core.pipewire_matrix_supervisor import PipeWireMatrixSupervisor
+                        sup = PipeWireMatrixSupervisor(hub_key, self)
+                        self.pipewire_supervisors[hub_key] = sup
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(sup.start())
+                        except RuntimeError:
+                            asyncio.create_task(sup.start())
+                        self.logger.info(f"Self-healed missing PipeWireMatrixSupervisor for running hub #{hub_key}")
+                        return sup
+            except Exception as e:
+                self.logger.error(f"Failed to auto-heal supervisor for hub #{hub_key}: {e}")
+        return None
+
+    def get_or_create_aoip_discovery_supervisor(self, hub_id: int):
+        """
+        Retrieves the active AoIpDiscoverySupervisor for hub_id, or instantiates and
+        starts it on-demand if the parent PipeWire process is alive in OS (self-healing).
+        """
+        hub_key = int(hub_id)
+        sup = self.aoip_discovery_supervisors.get(hub_key)
+        if sup:
+            return sup
+
+        target_pid = self.reattached_pids.get(hub_key)
+        proc = self.processes.get(hub_key)
+        is_alive = (proc is not None and getattr(proc, "returncode", None) is None) or (bool(target_pid) and psutil.pid_exists(target_pid))
+        if is_alive:
+            try:
+                with self.db_session_factory() as session:
+                    from database.models import Service
+                    s_obj = session.get(Service, hub_key) if hasattr(session, "get") else session.query(Service).get(hub_key)
+                    if s_obj and getattr(s_obj, "service_type", None) == "pipewire_hub":
+                        h_cfg = s_obj.config or {}
+                        pw_cfg = h_cfg.get("pipewire_config", h_cfg)
+                        aes_net = pw_cfg.get("aes67_network", {})
+                        if aes_net.get("enabled"):
+                            from core.aoip_discovery_supervisor import AoIpDiscoverySupervisor
+                            sup = AoIpDiscoverySupervisor(hub_key, self)
+                            self.aoip_discovery_supervisors[hub_key] = sup
+                            try:
+                                loop = asyncio.get_running_loop()
+                                loop.create_task(sup.start())
+                            except RuntimeError:
+                                asyncio.create_task(sup.start())
+                            self.logger.info(f"Self-healed missing AoIpDiscoverySupervisor for running hub #{hub_key}")
+                            return sup
+            except Exception as e:
+                self.logger.error(f"Failed to auto-heal AoIP discovery supervisor for hub #{hub_key}: {e}")
+        return None
+
+    def notify_pipewire_matrix_change(self, hub_id: Optional[int] = None):
+        """Notifies active PipeWireMatrixSupervisor(s) to immediately re-evaluate and reconcile connections."""
+        if hub_id is not None:
+            sup = self.get_or_create_pipewire_supervisor(int(hub_id))
+            if sup:
+                sup.trigger_reconcile()
+        else:
+            # Check all running processes to ensure any surviving hubs have supervisors
+            all_active_keys = set(list(self.processes.keys()) + list(self.reattached_pids.keys()))
+            for p_id in all_active_keys:
+                self.get_or_create_pipewire_supervisor(p_id)
+            for sup in list(self.pipewire_supervisors.values()):
+                sup.trigger_reconcile()
+
     def _build_desktop_cmds(self, media_proc) -> Tuple[List[str], List[str], List[str], int, int]:
         """
         Builds command arguments for Xvfb, xset, and x11vnc for a virtual desktop service.
@@ -1701,7 +2778,7 @@ class ProcessManager:
         k_cfg = cfg.get("kiosk_config", cfg)
 
         # 1. Resolve target Virtual Desktop and DISPLAY
-        desktop_id = k_cfg.get("desktop_service_id")
+        desktop_id = k_cfg.get("desktop_service_id") or k_cfg.get("target_desktop_service_id")
         if not desktop_id:
             raise ValueError(f"Kiosk service '{media_proc.name}' requires a linked Virtual Desktop (desktop_service_id).")
 
@@ -1753,8 +2830,10 @@ class ProcessManager:
                 f"Please install {engine_id} on the host system or provision an official release in Settings → Software."
             )
 
+        desktop_audio_backend = d_cfg.get("audio_backend", "alsa_loopback")
+
         apulse_bin = None
-        if engine_id == "firefox":
+        if engine_id == "firefox" and desktop_audio_backend != "pipewire_hub":
             apulse_bin = shutil.which("apulse")
             if not apulse_bin:
                 if not self._is_sound_server_available():
@@ -1800,23 +2879,24 @@ class ProcessManager:
             alsa_subdevice = int(display_num) % 8
 
         # Generate sandboxed asound.conf and .asoundrc pointing to hw:Loopback,0,<subdevice>
-        asound_content = (
-            f"pcm.!default {{\n"
-            f"    type plug\n"
-            f"    slave.pcm \"hw:Loopback,0,{alsa_subdevice}\"\n"
-            f"}}\n"
-            f"ctl.!default {{\n"
-            f"    type hw\n"
-            f"    card \"Loopback\"\n"
-            f"}}\n"
-        )
-        for fname in ("asound.conf", ".asoundrc"):
-            fpath = os.path.join(profile_dir, fname)
-            try:
-                with open(fpath, "w", encoding="utf-8") as af:
-                    af.write(asound_content)
-            except Exception as a_err:
-                self.logger.warning(f"Failed to write ALSA sandbox config {fname} in {profile_dir}: {a_err}")
+        if desktop_audio_backend != "pipewire_hub":
+            asound_content = (
+                f"pcm.!default {{\n"
+                f"    type plug\n"
+                f"    slave.pcm \"hw:Loopback,0,{alsa_subdevice}\"\n"
+                f"}}\n"
+                f"ctl.!default {{\n"
+                f"    type hw\n"
+                f"    card \"Loopback\"\n"
+                f"}}\n"
+            )
+            for fname in ("asound.conf", ".asoundrc"):
+                fpath = os.path.join(profile_dir, fname)
+                try:
+                    with open(fpath, "w", encoding="utf-8") as af:
+                        af.write(asound_content)
+                except Exception as a_err:
+                    self.logger.warning(f"Failed to write ALSA sandbox config {fname} in {profile_dir}: {a_err}")
 
         # Resolve Cache Mode: 'ram', 'disabled', or 'custom'
         # Backwards compatibility: disk_cache_disabled maps to cache_mode='disabled'
@@ -1835,12 +2915,17 @@ class ProcessManager:
             cmd = [
                 browser_bin,
                 f"--user-data-dir={profile_dir}",
-                f"--alsa-output-device=plughw:Loopback,0,{alsa_subdevice}",
+            ]
+            if desktop_audio_backend != "pipewire_hub":
+                cmd.append(f"--alsa-output-device=plughw:Loopback,0,{alsa_subdevice}")
+                cmd.append("--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees")
+            else:
+                cmd.append("--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees,AudioServiceSandbox")
+            cmd.extend([
                 "--no-first-run",
                 "--noerrdialogs",
                 "--disable-session-crashed-bubble",
                 "--disable-translate",
-                "--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees",
                 "--autoplay-policy=no-user-gesture-required",
                 "--disable-dev-shm-usage",
                 "--disable-crash-reporter",
@@ -1865,7 +2950,7 @@ class ProcessManager:
                 "--start-fullscreen",
                 "--start-maximized",
                 "--kiosk",
-            ]
+            ])
 
             # In Chromium profile: write Preferences to disable translate popup
             default_pref_dir = os.path.join(profile_dir, "Default")
@@ -1929,7 +3014,6 @@ class ProcessManager:
                 'user_pref("media.autoplay.blocking_policy", 0);',
                 'user_pref("media.cubeb.backend", "pulse");',
                 'user_pref("media.cubeb.sandbox", false);',
-                'user_pref("security.sandbox.content.level", 0);',
                 'user_pref("security.sandbox.content.write_path_whitelist", "/dev/snd/");',
                 'user_pref("security.sandbox.content.read_path_whitelist", "/dev/snd/,/sys/devices/");',
                 'user_pref("toolkit.telemetry.enabled", false);',
@@ -1960,13 +3044,26 @@ class ProcessManager:
             if gpu_accel == "enabled":
                 user_js_lines.append('user_pref("layers.acceleration.force-enabled", true);')
 
+            # Unattended Kiosk Display Shield: suppress browser notification bars, infobars and banners
+            user_js_lines.append('user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);')
+            chrome_dir = os.path.join(profile_dir, "chrome")
+            os.makedirs(chrome_dir, exist_ok=True)
+            css_path = os.path.join(chrome_dir, "userChrome.css")
+            css_rules = [
+                "/* Unattended Kiosk Display: suppress browser notification bars, infobars and banners */",
+                "notificationbox,",
+                "notification-message-bar,",
+                ".notificationbox-stack,",
+                "#global-notificationbox,",
+                "#tab-notification-deck {",
+                "    display: none !important;",
+                "}"
+            ]
             if hide_scrollbars:
-                user_js_lines.append('user_pref("toolkit.legacyUserProfileCustomizations.stylesheets", true);')
-                chrome_dir = os.path.join(profile_dir, "chrome")
-                os.makedirs(chrome_dir, exist_ok=True)
-                css_path = os.path.join(chrome_dir, "userChrome.css")
-                with open(css_path, "w", encoding="utf-8") as f:
-                    f.write("/* Hide scrollbars for unattended kiosk display */\n* { scrollbar-width: none !important; }\n")
+                css_rules.append("/* Hide scrollbars */")
+                css_rules.append("* { scrollbar-width: none !important; }")
+            with open(css_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(css_rules) + "\n")
 
             user_js_path = os.path.join(profile_dir, "user.js")
             with open(user_js_path, "w", encoding="utf-8") as f:
@@ -2356,9 +3453,34 @@ class ProcessManager:
         
         self.logger.debug(f"[{process_id}] {msg}")
 
-    async def _file_log_tailer(self, process_id: int, log_path: str, proc: Optional[asyncio.subprocess.Process] = None, pid: Optional[int] = None):
-        """Tails the physical log file on disk for daemon services to feed the in-memory log buffer."""
+    def _get_max_log_file_bytes(self) -> int:
+        """Read max log file size in bytes from ffmpeg-gui.conf (default 10 MB = 10485760)."""
+        config_path = os.environ.get("CONFIG_FILE_PATH", "/etc/ffmpeg-gui/ffmpeg-gui.conf")
+        if not os.path.exists(config_path):
+            config_path = "ffmpeg-gui.conf"
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                cfg = configparser.ConfigParser()
+                cfg.read(config_path)
+                val = cfg.getint("logging", "rotation_max_bytes", fallback=10485760)
+                return max(1048576, val)  # Minimum 1 MB safety floor
+            except Exception:
+                pass
+        return 10485760
+
+    async def _file_log_tailer(
+        self,
+        process_id: int,
+        log_path: str,
+        proc: Optional[asyncio.subprocess.Process] = None,
+        pid: Optional[int] = None,
+        max_log_bytes: Optional[int] = None
+    ):
+        """Tails the physical log file on disk for daemon services and enforces a real-time size circuit breaker."""
         effective_pid = pid or (proc.pid if proc else None)
+        limit_bytes = max_log_bytes if (max_log_bytes and max_log_bytes > 0) else self._get_max_log_file_bytes()
+        check_counter = 0
         try:
             await asyncio.sleep(0.2)
             if not os.path.exists(log_path):
@@ -2377,6 +3499,22 @@ class ProcessManager:
 
                     if process_id not in self.processes and process_id not in self.reattached_pids:
                         break
+
+                    check_counter += 1
+                    if check_counter >= 20:
+                        check_counter = 0
+                        try:
+                            if os.path.exists(log_path) and os.path.getsize(log_path) > limit_bytes:
+                                os.truncate(log_path, 0)
+                                f.seek(0, os.SEEK_SET)
+                                warn_msg = (
+                                    f"[SYSTEM] Log file exceeded maximum size limit ({limit_bytes} bytes) "
+                                    "and was truncated in-place to protect RAM/storage."
+                                )
+                                self._handle_log_msg(process_id, warn_msg, status_re=None)
+                                continue
+                        except Exception as trunc_err:
+                            self.logger.debug(f"Could not truncate flooded log {log_path}: {trunc_err}")
 
                     line = f.readline()
                     if line:
@@ -2505,6 +3643,51 @@ class ProcessManager:
         finally:
             if self.pending_restarts.get(process_id) == asyncio.current_task():
                 self.pending_restarts.pop(process_id, None)
+
+    async def _safe_terminate_process(self, proc: Optional[asyncio.subprocess.Process] = None, pid: Optional[int] = None, timeout: float = 1.5):
+        """
+        Gracefully terminates a process using SIGTERM so audio drivers (e.g. snd-asihpi/ALSA)
+        can execute snd_pcm_close() and release DSP hardware cleanly, falling back to SIGKILL
+        only if the process does not terminate within timeout.
+        """
+        import signal
+        if proc is not None:
+            try:
+                proc.terminate()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=timeout)
+                    return
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"Process {pid} did not exit after {timeout}s on SIGTERM; escalating to SIGKILL")
+                    proc.kill()
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                self.logger.error(f"Error terminating process via proc: {e}")
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        elif pid is not None:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                # Wait briefly for process to exit
+                for _ in range(int(timeout * 10)):
+                    await asyncio.sleep(0.1)
+                    try:
+                        os.kill(pid, 0)
+                    except OSError:
+                        return
+                self.logger.warning(f"PID {pid} did not exit after {timeout}s on SIGTERM; escalating to SIGKILL")
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except Exception as e:
+                self.logger.error(f"Error terminating PID {pid}: {e}")
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
 
     async def _watchdog(self, process_id: int, proc: Optional[asyncio.subprocess.Process] = None, pid: Optional[int] = None):
         pid = pid or (proc.pid if proc else None)
@@ -2752,17 +3935,7 @@ class ProcessManager:
                                                     session.add(log)
                                                     session.commit()
 
-                                                    if proc is not None:
-                                                        try:
-                                                            proc.kill()
-                                                        except Exception as kerr:
-                                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                                    else:
-                                                        import signal
-                                                        try:
-                                                            os.kill(pid, signal.SIGKILL)
-                                                        except Exception as kerr:
-                                                            self.logger.error(f"Failed to kill PID {pid} via os.kill: {kerr}")
+                                                    await self._safe_terminate_process(proc=proc, pid=pid)
                                         else:
                                             self.watchdog_low_speed_since[process_id] = None
 
@@ -2789,17 +3962,7 @@ class ProcessManager:
                                         session.add(log)
                                         session.commit()
 
-                                        if proc is not None:
-                                            try:
-                                                proc.kill()
-                                            except Exception as kerr:
-                                                self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                        else:
-                                            import signal
-                                            try:
-                                                os.kill(pid, signal.SIGKILL)
-                                            except Exception as kerr:
-                                                self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
+                                        await self._safe_terminate_process(proc=proc, pid=pid)
 
                                 # Compare with previous iteration when activity is present
                                 if has_had_activity:
@@ -2825,18 +3988,8 @@ class ProcessManager:
                                                     session.add(log)
                                                     session.commit()
 
-                                                    # Kill the process
-                                                    if proc is not None:
-                                                        try:
-                                                            proc.kill()
-                                                        except Exception as kerr:
-                                                            self.logger.error(f"Failed to kill process via proc.kill(): {kerr}")
-                                                    else:
-                                                        import signal
-                                                        try:
-                                                            os.kill(pid, signal.SIGKILL)
-                                                        except Exception as kerr:
-                                                            self.logger.error(f"Failed to kill process PID {pid} via os.kill: {kerr}")
+                                                    # Gracefully terminate the process allowing audio driver cleanup
+                                                    await self._safe_terminate_process(proc=proc, pid=pid)
 
                                                     self.watchdog_stalled_since[process_id] = None
                                         else:
@@ -3111,9 +4264,71 @@ class ProcessManager:
         else:
             self.auxiliary_pids[process_id] = []
 
-        if svc_type in ("mediamtx_hub", "icecast_server", "desktop"):
+        if svc_type in ("mediamtx_hub", "icecast_server", "desktop", "pipewire_hub"):
             self.log_buffers[process_id] = collections.deque(maxlen=100)
             asyncio.create_task(self._file_log_tailer(process_id, log_path, pid=pid))
+
+        if svc_type == "pipewire_hub":
+            self.get_or_create_pipewire_supervisor(process_id)
+
+        # Re-register with dependency manager as pinned and restore active leases
+        try:
+            from core.dependency_manager import dependency_manager
+            dependency_manager.mark_pinned(process_id)
+            with self.db_session_factory() as session:
+                from database.models import Service, ServiceDependency
+                proc_model = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                if proc_model:
+                    cfg_model = proc_model.config or {}
+                    if svc_type == "desktop":
+                        d_cfg = cfg_model.get("desktop_config", cfg_model)
+                        if d_cfg.get("audio_backend") == "pipewire_hub" and d_cfg.get("pipewire_service_id"):
+                            try:
+                                pw_id = int(d_cfg.get("pipewire_service_id"))
+                                with dependency_manager.state_lock:
+                                    if pw_id not in dependency_manager.active_leases:
+                                        dependency_manager.active_leases[pw_id] = set()
+                                    dependency_manager.active_leases[pw_id].add(f"desktop:{process_id}")
+                            except (ValueError, TypeError):
+                                pass
+                    elif svc_type == "kiosk_browser":
+                        k_cfg = cfg_model.get("kiosk_config", cfg_model)
+                        desk_id_raw = (
+                            k_cfg.get("target_desktop_service_id") or
+                            k_cfg.get("desktop_service_id") or
+                            cfg_model.get("target_desktop_service_id") or
+                            cfg_model.get("desktop_service_id")
+                        )
+                        if desk_id_raw:
+                            try:
+                                d_id = int(desk_id_raw)
+                                with dependency_manager.state_lock:
+                                    if d_id not in dependency_manager.active_leases:
+                                        dependency_manager.active_leases[d_id] = set()
+                                    dependency_manager.active_leases[d_id].add(f"service:{process_id}")
+                                desk_svc = session.get(Service, d_id) if hasattr(session, "get") else session.query(Service).get(d_id)
+                                if desk_svc:
+                                    td_cfg = (desk_svc.config or {}).get("desktop_config", desk_svc.config or {})
+                                    if td_cfg.get("audio_backend") == "pipewire_hub" and td_cfg.get("pipewire_service_id"):
+                                        pw_id = int(td_cfg.get("pipewire_service_id"))
+                                        with dependency_manager.state_lock:
+                                            if pw_id not in dependency_manager.active_leases:
+                                                dependency_manager.active_leases[pw_id] = set()
+                                            dependency_manager.active_leases[pw_id].add(f"kiosk:{process_id}")
+                            except (ValueError, TypeError):
+                                pass
+                    elif svc_type in ("ffmpeg_stream", "stream"):
+                        deps = session.query(ServiceDependency).filter(
+                            ServiceDependency.consumer_type == 'service',
+                            ServiceDependency.consumer_id == process_id
+                        ).all()
+                        with dependency_manager.state_lock:
+                            for dep in deps:
+                                if dep.provider_service_id not in dependency_manager.active_leases:
+                                    dependency_manager.active_leases[dep.provider_service_id] = set()
+                                dependency_manager.active_leases[dep.provider_service_id].add(f"service:{process_id}")
+        except Exception as pin_err:
+            self.logger.warning(f"Failed to pin/re-register leases for reattached service {process_id}: {pin_err}")
 
         # Re-acquire local publisher resource lock for the re-attached alive process
         try:

@@ -11,7 +11,8 @@ import {
   LightningIcon, 
   ShieldIcon,
   CalendarIcon,
-  ExportIcon
+  ExportIcon,
+  PowerIcon
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
 
@@ -19,7 +20,7 @@ export interface ServiceItem {
   id: number;
   name: string;
   alias?: string | null;
-  service_type?: string; // 'ffmpeg_stream', 'icecast_server', 'kiosk_browser', 'mediamtx_hub'
+  service_type?: string; // 'ffmpeg_stream', 'icecast_server', 'kiosk_browser', 'mediamtx_hub', 'pipewire_hub', 'desktop'
   type?: string;
   status: string;
   pid?: number | null;
@@ -196,12 +197,16 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' 
               : serviceType === 'desktop'
               ? 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30'
+              : serviceType === 'pipewire_hub'
+              ? 'bg-brand-lime/10 text-brand-lime border-brand-lime/30'
               : 'bg-purple-500/10 text-purple-400 border-purple-500/30'
           }`}>
             <EngineLogo
               softwareType={
                 serviceType === 'kiosk_browser'
                   ? (service.config?.kiosk_config?.engine_id || 'chromium')
+                  : serviceType === 'pipewire_hub'
+                  ? 'pipewire'
                   : serviceType
               }
               size={12}
@@ -217,6 +222,8 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               ? ((service.config?.kiosk_config?.engine_id || 'chromium') === 'firefox' ? 'Firefox Kiosk' : 'Chrome Kiosk')
               : serviceType === 'desktop'
               ? 'Desktop'
+              : serviceType === 'pipewire_hub'
+              ? 'PipeWire'
               : 'Service'}
           </span>
 
@@ -384,7 +391,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           </button>
         )}
 
-        {/* Restart Button */}
+        {/* Restart Button (only when running) */}
         {isRunning && (
           <button
             disabled={isPending}
@@ -402,8 +409,37 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           </button>
         )}
 
-        {/* Start / Stop Button */}
-        {isRunning || isRetrying ? (
+        {/* Action Controls: Retrying (Dual: Retry Now / Deactivate) vs Running (Stop) vs Inactive (Start) */}
+        {isRetrying ? (
+          <>
+            {/* Retry Now / Force Start */}
+            <button
+              disabled={actionPending === 'starting' || actionPending === 'stopping'}
+              onClick={() => onStartService(service.id)}
+              className="w-9 h-9 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 flex items-center justify-center border border-brand-lime/20 text-brand-lime transition-all hover:scale-105 disabled:opacity-50"
+              title={t('common.retryNow', 'Reintentar ahora')}
+            >
+              {actionPending === 'starting' ? (
+                <RefreshIcon size={16} className="animate-spin text-brand-lime" />
+              ) : (
+                <PlayIcon size={16} />
+              )}
+            </button>
+            {/* Deactivate Service / Cancel Retries */}
+            <button
+              disabled={actionPending === 'stopping'}
+              onClick={() => onStopService(service.id, service.name)}
+              className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-50"
+              title={t('common.deactivate', 'Desactivar servicio')}
+            >
+              {actionPending === 'stopping' ? (
+                <RefreshIcon size={16} className="animate-spin text-brand-orange" />
+              ) : (
+                <PowerIcon size={16} />
+              )}
+            </button>
+          </>
+        ) : isRunning ? (
           <button
             disabled={actionPending === 'stopping'}
             onClick={() => onStopService(service.id, service.name)}

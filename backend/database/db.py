@@ -250,6 +250,8 @@ def init_db():
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN thermal_critical_threshold INTEGER DEFAULT 85"))
             if "thermal_active_protection" not in settings_columns:
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN thermal_active_protection BOOLEAN DEFAULT 0"))
+            if "discovery_beacon_enabled" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN discovery_beacon_enabled BOOLEAN DEFAULT 1"))
 
             # Storages table migrations
 
@@ -371,6 +373,15 @@ def init_db():
                     os.makedirs(os.path.abspath(dir_to_ensure), exist_ok=True)
                 except Exception:
                     pass
+
+            # Ensure all configured storage directories exist on disk/RAM
+            # (critical on reboots for volatile RAM mounts like /dev/shm/ffmpeg-gui-cache)
+            for st in db.query(Storage).all():
+                if st.path:
+                    try:
+                        os.makedirs(st.path, exist_ok=True)
+                    except Exception:
+                        pass
 
             # Seed system log rotation task if missing
             from database.models import ScheduledTask

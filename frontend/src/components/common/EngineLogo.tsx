@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FfmpegLogoIcon, ServerIcon, MonitorIcon, ChromiumLogoIcon, FirefoxLogoIcon } from '../Icons';
+import { FfmpegLogoIcon, ServerIcon, MonitorIcon, ChromiumLogoIcon, FirefoxLogoIcon, PipewireLogoIcon } from '../Icons';
 
 interface EngineLogoProps {
   softwareType?: string;
@@ -46,6 +46,8 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
     normalizedType = 'chromium';
   } else if (normalizedType.includes('decklink') || normalizedType === 'decklink_tools') {
     normalizedType = 'decklink_tools';
+  } else if (normalizedType.includes('pipewire')) {
+    normalizedType = 'pipewire';
   } else if (normalizedType === 'desktop') {
     normalizedType = 'desktop';
   }
@@ -67,6 +69,10 @@ export const EngineLogo: React.FC<EngineLogoProps> = ({
 
   if (normalizedType === 'ffmpeg') {
     return <FfmpegLogoIcon size={size} className={className} />;
+  }
+
+  if (normalizedType === 'pipewire') {
+    return <PipewireLogoIcon size={size} className={className} />;
   }
 
   if (normalizedType === 'chromium') {

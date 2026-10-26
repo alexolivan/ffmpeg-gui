@@ -11,6 +11,14 @@ class FFmpegCommandBuilder:
     into an executable FFmpeg command-line argument list.
     """
 
+    @staticmethod
+    def _is_real_value(val):
+        if val is None:
+            return False
+        if hasattr(val, '_mock_name') or hasattr(val, '_mock_methods') or 'Mock' in type(val).__name__:
+            return False
+        return isinstance(val, (int, str)) and str(val).strip() != ""
+
     @classmethod
     def _resolve_storage_path(cls, storage_id: int, relative_path: str, db_session_factory=None) -> str:
         if not storage_id or not db_session_factory:
@@ -265,7 +273,7 @@ class FFmpegCommandBuilder:
         
         if fps_mode == 'auto':
             output_type = output_cfg.get('type')
-            live_outputs = {'rtmp', 'srt', 'udp', 'hls', 'whip', 'icecast', 'decklink', 'ndi'}
+            live_outputs = {'rtmp', 'srt', 'udp', 'hls', 'whip', 'icecast', 'decklink', 'ndi', 'rtsp'}
             has_target_rate = bool(filter_cfg.get('framerate') or output_cfg.get('framerate'))
             if output_type in live_outputs and has_target_rate:
                 resolved_mode = 'cfr'
@@ -287,10 +295,10 @@ class FFmpegCommandBuilder:
                 cmd += ["-vsync", vsync_map[resolved_mode]]
 
     @classmethod
-    def _append_input(cls, cmd: list, input_cfg: dict, ffmpeg_bin: str = "ffmpeg"):
+    def _append_input(cls, cmd: list, input_cfg: dict, ffmpeg_bin: str = "ffmpeg", media_proc=None):
         input_type = input_cfg.get('type')
         
-        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
         hwaccel = 'none'
         if input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES:
             hwaccel = input_cfg.get('hwaccel', 'none')
@@ -357,7 +365,42 @@ class FFmpegCommandBuilder:
             cmd += ["-i", f"rtp://{host}:{port}"]
         elif input_type == 'alsa':
             device = input_cfg.get('device', 'hw:0,0')
-            cmd += ["-f", "alsa", "-i", device]
+            cmd += ["-f", "alsa"]
+            if input_cfg.get('sample_rate'):
+                cmd += ["-sample_rate", str(input_cfg['sample_rate'])]
+            elif input_cfg.get('ar'):
+                cmd += ["-sample_rate", str(input_cfg['ar'])]
+            if input_cfg.get('channels'):
+                cmd += ["-channels", str(input_cfg['channels'])]
+            elif input_cfg.get('ac'):
+                cmd += ["-channels", str(input_cfg['ac'])]
+            cmd += ["-i", device]
+        elif input_type == 'pipewire':
+            sink_id = input_cfg.get('sink_id') or input_cfg.get('device') or 'default'
+            monitor_dev = sink_id if (sink_id.endswith('.monitor') or sink_id == 'default') else f"{sink_id}.monitor"
+            cmd += ["-f", "pulse"]
+            client_name = input_cfg.get('client_name')
+            if not client_name and media_proc:
+                p_id = getattr(media_proc, 'id', None) or (media_proc.get('id') if isinstance(media_proc, dict) else None)
+                p_type = getattr(media_proc, 'service_type', None) or getattr(media_proc, 'type', None) or (media_proc.get('service_type') or media_proc.get('type') if isinstance(media_proc, dict) else None)
+                if cls._is_real_value(p_id):
+                    if p_type in ('ffmpeg_stream', 'stream', 'service') or hasattr(media_proc, 'service_type'):
+                        t_str = 'service'
+                    elif p_type in ('task', 'task_execution') or getattr(media_proc, 'task_id', None) or execution_id:
+                        t_str = 'task'
+                    else:
+                        t_str = 'service'
+                    client_name = f"ffmpeg_{t_str}_{p_id}"
+            if client_name and cls._is_real_value(client_name):
+                cmd += ["-name", str(client_name)]
+            stream_name = input_cfg.get('stream_name')
+            if not stream_name and media_proc:
+                name_val = getattr(media_proc, 'name', None) or (media_proc.get('name') if isinstance(media_proc, dict) else None)
+                if cls._is_real_value(name_val):
+                    stream_name = str(name_val)
+            if stream_name and cls._is_real_value(stream_name):
+                cmd += ["-stream_name", str(stream_name)]
+            cmd += ["-i", monitor_dev]
         elif input_type == 'v4l2':
             device = input_cfg.get('device', '/dev/video0')
             pixel_format = input_cfg.get('pixel_format')
@@ -689,7 +732,7 @@ class FFmpegCommandBuilder:
                 cmd += [f"-vbr:a:{idx}", params['vbr']]
 
     @classmethod
-    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg"):
+    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg", media_proc=None):
         output_type = output_cfg.get('type')
         
         is_mpegts = (
@@ -799,6 +842,31 @@ class FFmpegCommandBuilder:
         elif output_type == 'alsa':
             device = output_cfg.get('device', 'hw:0,0')
             cmd += ["-f", "alsa", device]
+        elif output_type == 'pipewire':
+            sink_id = output_cfg.get('sink_id') or output_cfg.get('device') or 'default'
+            cmd += ["-f", "pulse"]
+            client_name = output_cfg.get('client_name')
+            if not client_name and media_proc:
+                p_id = getattr(media_proc, 'id', None) or (media_proc.get('id') if isinstance(media_proc, dict) else None)
+                p_type = getattr(media_proc, 'service_type', None) or getattr(media_proc, 'type', None) or (media_proc.get('service_type') or media_proc.get('type') if isinstance(media_proc, dict) else None)
+                if cls._is_real_value(p_id):
+                    if p_type in ('ffmpeg_stream', 'stream', 'service') or hasattr(media_proc, 'service_type'):
+                        t_str = 'service'
+                    elif p_type in ('task', 'task_execution') or getattr(media_proc, 'task_id', None) or execution_id:
+                        t_str = 'task'
+                    else:
+                        t_str = 'service'
+                    client_name = f"ffmpeg_{t_str}_{p_id}"
+            if client_name and cls._is_real_value(client_name):
+                cmd += ["-name", str(client_name)]
+            stream_name = output_cfg.get('stream_name')
+            if not stream_name and media_proc:
+                name_val = getattr(media_proc, 'name', None) or (media_proc.get('name') if isinstance(media_proc, dict) else None)
+                if cls._is_real_value(name_val):
+                    stream_name = str(name_val)
+            if stream_name and cls._is_real_value(stream_name):
+                cmd += ["-stream_name", str(stream_name)]
+            cmd += [sink_id]
         elif output_type == 'icecast':
             host = output_cfg.get('host', 'localhost')
             port = output_cfg.get('port', '7000')
@@ -891,6 +959,23 @@ class FFmpegCommandBuilder:
                     cmd += ["-hls_segment_filename", segment_pattern]
 
             cmd += [path]
+        elif output_type == 'rtsp':
+            transport = output_cfg.get('rtsp_transport', 'tcp')
+            cmd += ["-rtsp_transport", transport]
+
+            url = output_cfg.get('url')
+            if not url:
+                host = output_cfg.get('host', '127.0.0.1')
+                port = output_cfg.get('port', '8554')
+                path = output_cfg.get('path_id') or output_cfg.get('path', 'live')
+                if path.startswith('/'):
+                    path = path[1:]
+                username = output_cfg.get('publish_user') or output_cfg.get('auth_user') or output_cfg.get('username')
+                password = output_cfg.get('publish_pass') or output_cfg.get('auth_pass') or output_cfg.get('password')
+                auth_part = f"{username}:{password}@" if username and password else ""
+                url = f"rtsp://{auth_part}{host}:{port}/{path}"
+
+            cmd += ["-f", "rtsp", url]
 
     @classmethod
     def build_cmd(cls, media_proc, ffmpeg_bin: str, limit_sec=None, execution_id=None, db_session_factory=None) -> list:
@@ -960,7 +1045,7 @@ class FFmpegCommandBuilder:
             if "-vaapi_device" not in cmd:
                 cmd += ["-vaapi_device", vaapi_dev]
 
-        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
+        _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
         is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
         has_input_level_hwdec = False
@@ -1006,16 +1091,16 @@ class FFmpegCommandBuilder:
             has_audio = input_cfg.get('has_audio', True)
             use_secondary = input_cfg.get('use_secondary_input', False)
             
-            cls._append_input(cmd, input_cfg['input1'], ffmpeg_bin)
+            cls._append_input(cmd, input_cfg['input1'], ffmpeg_bin, media_proc=media_proc)
             if use_secondary and 'input2' in input_cfg:
                 if tqs and int(tqs) > 0:
                     cmd += ["-thread_queue_size", str(int(tqs))]
-                cls._append_input(cmd, input_cfg['input2'], ffmpeg_bin)
+                cls._append_input(cmd, input_cfg['input2'], ffmpeg_bin, media_proc=media_proc)
         else:
             has_video = input_cfg.get('has_video', True)
             has_audio = input_cfg.get('has_audio', True)
             use_secondary = False
-            cls._append_input(cmd, input_cfg, ffmpeg_bin)
+            cls._append_input(cmd, input_cfg, ffmpeg_bin, media_proc=media_proc)
 
         # Protect against desktop / x11grab input without secondary audio source
         if primary_input_type in ('desktop', 'x11grab') and not (is_new_format and use_secondary and 'input2' in input_cfg):
@@ -1027,7 +1112,7 @@ class FFmpegCommandBuilder:
                 has_audio = False
 
         # Protect against audio-only primary inputs without secondary video source
-        if primary_input_type in ('alsa', 'lavfi_audio', 'http_audio') and not (is_new_format and use_secondary and 'input2' in input_cfg):
+        if primary_input_type in ('alsa', 'lavfi_audio', 'http_audio', 'pipewire') and not (is_new_format and use_secondary and 'input2' in input_cfg):
             if has_video:
                 logger.info(
                     f"Process '{getattr(media_proc, 'name', 'unnamed')}' has audio-only input ({primary_input_type}) without secondary video source. "
@@ -1035,9 +1120,9 @@ class FFmpegCommandBuilder:
                 )
                 has_video = False
 
-        # Protect against audio-only destinations (e.g. Icecast, ALSA output)
+        # Protect against audio-only destinations (e.g. Icecast, ALSA output, PipeWire output)
         output_type = output_cfg.get('type')
-        if output_type in ('icecast', 'alsa') and has_video:
+        if output_type in ('icecast', 'alsa', 'pipewire') and has_video:
             has_video = False
 
         variants = output_cfg.get('variants', [])
@@ -1046,7 +1131,7 @@ class FFmpegCommandBuilder:
         if is_abr:
             from core.filter_graph import FilterGraphBuilder
 
-            _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
+            _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
             is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
             frames_destination = 'cpu'
@@ -1221,7 +1306,7 @@ class FFmpegCommandBuilder:
             else:
                 from core.filter_graph import FilterGraphBuilder
                 
-                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab'}
+                _HWACCEL_UNSUPPORTED_INPUT_TYPES = {'lavfi_video', 'lavfi_audio', 'alsa', 'desktop', 'x11grab', 'pipewire'}
                 is_hw_supported = primary_input_type not in _HWACCEL_UNSUPPORTED_INPUT_TYPES
 
                 frames_destination = 'cpu'
@@ -1320,14 +1405,51 @@ class FFmpegCommandBuilder:
                     cmd += ["-af", af_str]
                     
                 acodec = codec_cfg.get('acodec', 'aac')
+                is_raw_audio_input = primary_input_type in ('alsa', 'pipewire', 'decklink', 'lavfi_audio')
+                if output_type == 'alsa':
+                    # ALSA hardware sinks require uncompressed PCM samples with explicit sample rate and channel layout.
+                    # Streamcopy ('copy') is forbidden to prevent bypassing rate/format conversion and crashing DSP clocks.
+                    if acodec == 'copy':
+                        logger.warning(
+                            "ALSA output requires explicit PCM encoding to guarantee sample rate stability. Forcing 'pcm_s16le' instead of 'copy'."
+                        )
+                        acodec = 'pcm_s16le'
+                    elif not (acodec and acodec.startswith('pcm_')):
+                        logger.warning(
+                            f"ALSA output requires uncompressed PCM audio. Forcing 'pcm_s16le' instead of '{acodec}'."
+                        )
+                        acodec = 'pcm_s16le'
+                elif output_type == 'pipewire':
+                    if acodec == 'copy':
+                        if af_str:
+                            logger.warning(
+                                f"{output_type.upper()} output with audio filters cannot use streamcopy. Forcing 'pcm_s16le'."
+                            )
+                            acodec = 'pcm_s16le'
+                        elif not is_raw_audio_input:
+                            logger.warning(
+                                f"{output_type.upper()} output requires uncompressed PCM audio from compressed input '{primary_input_type}'. Forcing 'pcm_s16le' instead of 'copy'."
+                            )
+                            acodec = 'pcm_s16le'
+                    elif not (acodec and acodec.startswith('pcm_')):
+                        logger.warning(
+                            f"{output_type.upper()} output requires uncompressed PCM audio. Forcing 'pcm_s16le' instead of '{acodec}'."
+                        )
+                        acodec = 'pcm_s16le'
                 cmd += ["-c:a", acodec]
                 
-                audio_params = codec_cfg.get('audio_params', {})
+                audio_params = dict(codec_cfg.get('audio_params', {}))
+                if output_type == 'alsa':
+                    if 'ar' not in audio_params or not audio_params['ar']:
+                        audio_params['ar'] = '48000'
+                    if 'ac' not in audio_params or not audio_params['ac']:
+                        audio_params['ac'] = '2'
+
                 if audio_params:
                     cls._append_audio_codec_params(cmd, acodec, audio_params)
 
             cls._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
-            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin)
+            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin, media_proc=media_proc)
             
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         

@@ -319,5 +319,93 @@ numid=59,iface=PCM,name='PCM Slave Active',device=1
         # Loopback read_meters must return empty dictionary (no hardware meters, 0 polling overhead)
         self.assertEqual(self.mgr.read_meters(card_idx=3), {})
 
+    def test_realtime_telemetry_and_asihpi_detection(self):
+        # Test is_card_asihpi
+        with patch.object(self.mgr, "get_cards") as mock_cards:
+            mock_cards.return_value = [
+                {"card_index": 0, "card_id": "ASI5640", "name": "AudioScience ASI5640", "driver": "asihpi"},
+                {"card_index": 1, "card_id": "PCH", "name": "Intel HDA", "driver": "snd_hda_intel"},
+            ]
+            self.assertTrue(self.mgr.is_card_asihpi(0))
+            self.assertFalse(self.mgr.is_card_asihpi(1))
+
+        # Test active_mixer_ws_count and is_mixer_active
+        self.mgr.active_mixer_ws_count = 0
+        self.assertFalse(self.mgr.is_mixer_active())
+        self.mgr.active_mixer_ws_count = 1
+        self.assertTrue(self.mgr.is_mixer_active())
+        self.mgr.active_mixer_ws_count = 0
+
+        # Test read_realtime_telemetry parses both meters and jacks in single pass
+        with patch.object(self.mgr, "get_cards", return_value=[]), \
+             patch.object(self.mgr, "get_card_topology") as mock_topo:
+            mock_topo.return_value = {
+                "virtual_playout": [{"meters": [{"numid": 32, "values": [100, 200]}]}],
+                "hardware_outputs": [],
+                "virtual_capture": [],
+                "hardware_inputs": [],
+                "jack_sensors": [{"controls": [{"numid": 45, "values": [True]}]}]
+            }
+            res = self.mgr.read_realtime_telemetry(0)
+            self.assertEqual(res["meters"], {32: [100, 200]})
+            self.assertEqual(res["jacks"], {45: True})
+            mock_topo.assert_called_once_with(0)
+
+    def test_hardware_busy_guard_and_cached_telemetry(self):
+        # 1. Populate cache
+        self.mgr._last_cached_meters[0] = {32: [500, 600]}
+        self.mgr._last_cached_jacks[0] = {45: False}
+
+        with patch.object(self.mgr, "get_card_topology") as mock_topo:
+            # 2. Under hardware_busy_guard(card_idx=0), read_realtime_telemetry must return cached data without invoking amixer
+            with self.mgr.hardware_busy_guard(card_idx=0):
+                self.assertTrue(self.mgr.is_card_busy(0))
+                self.assertFalse(self.mgr.is_card_busy(1))
+                res = self.mgr.read_realtime_telemetry(0)
+                self.assertEqual(res["meters"], {32: [500, 600]})
+                self.assertEqual(res["jacks"], {45: False})
+                mock_topo.assert_not_called()
+
+            # Guard exited: card 0 is no longer busy
+            self.assertFalse(self.mgr.is_card_busy(0))
+
+            # 3. Global busy guard suppresses all cards
+            with self.mgr.hardware_busy_guard():
+                self.assertTrue(self.mgr.is_hardware_busy)
+                self.assertTrue(self.mgr.is_card_busy(0))
+                self.assertTrue(self.mgr.is_card_busy(1))
+                res = self.mgr.read_realtime_telemetry(0)
+                self.assertEqual(res["meters"], {32: [500, 600]})
+                mock_topo.assert_not_called()
+
+            self.assertFalse(self.mgr.is_hardware_busy)
+
+    def test_detect_alsa_card_index(self):
+        with patch.object(self.mgr, "get_cards") as mock_cards:
+            mock_cards.return_value = [
+                {"card_index": 0, "card_id": "ASI5640", "name": "AudioScience ASI5640", "driver": "asihpi"},
+                {"card_index": 1, "card_id": "PCH", "name": "Intel HDA", "driver": "snd_hda_intel"},
+                {"card_index": 2, "card_id": "Loopback", "name": "Loopback", "driver": "snd_aloop"},
+            ]
+
+            # CLI argument detection
+            cmd1 = "/usr/bin/ffmpeg -i stream.mp3 -f alsa hw:0,0,1"
+            self.assertEqual(self.mgr.detect_alsa_card_index(cmd_str=cmd1), 0)
+
+            cmd2 = "/usr/bin/ffmpeg -f alsa -i plughw:1,0 out.mp3"
+            self.assertEqual(self.mgr.detect_alsa_card_index(cmd_str=cmd2), 1)
+
+            # Config detection
+            cfg1 = {"output": {"type": "alsa", "device": "hw:0,0,2"}}
+            self.assertEqual(self.mgr.detect_alsa_card_index(config=cfg1), 0)
+
+            cfg_loop = {"desktop_config": {"audio_backend": "alsa_loopback"}}
+            self.assertEqual(self.mgr.detect_alsa_card_index(config=cfg_loop), 2)
+
+            # Non-ALSA process
+            cfg_net = {"input": {"type": "srt", "url": "srt://127.0.0.1:9000"}, "output": {"type": "rtmp"}}
+            cmd_net = "/usr/bin/ffmpeg -i srt://127.0.0.1:9000 -c copy -f flv rtmp://live.com/app/stream"
+            self.assertIsNone(self.mgr.detect_alsa_card_index(config=cfg_net, cmd_str=cmd_net))
+
 if __name__ == "__main__":
     unittest.main()

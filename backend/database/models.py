@@ -69,7 +69,12 @@ class SoftwareBuild(Base):
 
     @property
     def ffmpeg_binary(self):
-        return self.binary_path
+        if self.software_type in (None, "ffmpeg") and self.binary_path:
+            import os
+            base = os.path.basename(self.binary_path)
+            if base.startswith("ffmpeg"):
+                return self.binary_path
+        return None
 
     @ffmpeg_binary.setter
     def ffmpeg_binary(self, val):
@@ -77,7 +82,7 @@ class SoftwareBuild(Base):
 
     @property
     def ffprobe_binary(self):
-        if self.binary_path:
+        if self.software_type in (None, "ffmpeg") and self.binary_path:
             import os
             parent = os.path.dirname(self.binary_path)
             candidate = os.path.join(parent, "ffprobe")
@@ -332,6 +337,30 @@ class Service(Base):
         self._set_config_key('icecast_config', val)
 
     @property
+    def pipewire_config(self):
+        return self.config.get('pipewire_config', {}) if self.config else {}
+
+    @pipewire_config.setter
+    def pipewire_config(self, val):
+        self._set_config_key('pipewire_config', val)
+
+    @property
+    def desktop_config(self):
+        return self.config.get('desktop_config', {}) if self.config else {}
+
+    @desktop_config.setter
+    def desktop_config(self, val):
+        self._set_config_key('desktop_config', val)
+
+    @property
+    def kiosk_config(self):
+        return self.config.get('kiosk_config', {}) if self.config else {}
+
+    @kiosk_config.setter
+    def kiosk_config(self, val):
+        self._set_config_key('kiosk_config', val)
+
+    @property
     def software_type(self):
         return self.config.get('software_type') if self.config else None
 
@@ -468,6 +497,9 @@ class SystemSettings(Base):
     thermal_warning_threshold = Column(Integer, default=75)
     thermal_critical_threshold = Column(Integer, default=85)
     thermal_active_protection = Column(Boolean, default=False)
+
+    # LAN Discovery Beacon Settings
+    discovery_beacon_enabled = Column(Boolean, default=True)
 
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

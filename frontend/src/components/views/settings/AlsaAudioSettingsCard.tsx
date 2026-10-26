@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface AlsaControl {
   numid: number;
@@ -64,6 +65,31 @@ interface AlsaCard {
   driver: string;
 }
 
+interface AlsaDiagnostics {
+  iommu_hazard?: {
+    has_audioscience: boolean;
+    iommu_active: boolean;
+    iommu_mode: string;
+    hazard_detected: boolean;
+    cmdline: string;
+    recommended_cmdline: string;
+  };
+  slots_advisor?: {
+    cards_detected: any[];
+    has_multiple_cards: boolean;
+    is_pinned: boolean;
+    conflict_detected: boolean;
+    configured_slots: string[];
+    recommended_snippet: string;
+  };
+  summary?: {
+    has_audioscience: boolean;
+    iommu_hazard: boolean;
+    slots_unpinned: boolean;
+    slots_conflict: boolean;
+  };
+}
+
 const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadge[]) => {
   if (!activeProcesses || activeProcesses.length === 0) return [];
 
@@ -76,7 +102,7 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
 
   const grpName = group.name.toLowerCase();
   const numMatch = group.name.match(/\d+/);
-  const grpIndex = numMatch ? parseInt(numMatch[0], 10) : null;
+  const grpIndex = numMatch ? parseInt(numMatch[0], 10) : (group.subdevice_index ?? null);
 
   const isPlayoutQuadrant = group.category === 'virtual_playout';
   const isCaptureQuadrant = group.category === 'virtual_capture';
@@ -86,44 +112,66 @@ const getGroupProcesses = (group: AlsaGroup, activeProcesses?: ActiveProcessBadg
     if (isPlayoutQuadrant && proc.direction === 'capture') return false;
     if (isCaptureQuadrant && proc.direction === 'playout') return false;
 
-    // 2. Direct Explicit Name Match (e.g., alias/cmd contains "PCM 0", "PCM 1", etc.)
     const target = (proc.device_target || '').toLowerCase();
     const cmd = (proc.cmd || '').toLowerCase();
     const alias = (proc.alias || '').toLowerCase();
 
-    if (target.includes(grpName) || cmd.includes(grpName) || alias.includes(grpName)) {
-      return true;
+    // 2. Direct exact pcm_device match (e.g., group.pcm_device === "hw:0,0,1" and target === "hw:0,0,1")
+    if (group.pcm_device && target) {
+      if (group.pcm_device.toLowerCase() === target) {
+        return true;
+      }
     }
 
-    // 3. Channel Index Matching (Handling AudioScience and Loopback stream hierarchy)
-    if (grpIndex !== null) {
-      let effectiveChanIdx: number | null = null;
+    // 3. Subdevice Index Matching (AudioScience & Loopback virtual stream channels)
+    const effectiveGrpSub = group.subdevice_index !== undefined && group.subdevice_index !== null
+      ? group.subdevice_index
+      : grpIndex;
+
+    if (effectiveGrpSub !== null && effectiveGrpSub !== undefined) {
+      // If the process has an explicit subdevice index, require EXACT match!
       if (proc.subdevice_index !== null && proc.subdevice_index !== undefined) {
-        effectiveChanIdx = proc.subdevice_index;
-      } else if (proc.pcm_index !== null && proc.pcm_index !== undefined) {
-        effectiveChanIdx = proc.pcm_index;
+        return proc.subdevice_index === effectiveGrpSub;
       }
 
-      if (effectiveChanIdx !== null) {
-        return effectiveChanIdx === grpIndex;
-      }
-
-      // Regex fallback matching hw:card,device,grpIndex or hw:card,grpIndex
-      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):[a-zA-Z0-9_\\-]+,(?:\\d+,)?${grpIndex}\\b`, 'i');
+      // Regex fallback matching hw:card,device,effectiveGrpSub or hw:card,effectiveGrpSub
+      const subdevRegex = new RegExp(`(?:hw|plughw|dsnoop|dmix):[a-zA-Z0-9_\\-]+,(?:\\d+,)?${effectiveGrpSub}\\b`, 'i');
       if (subdevRegex.test(target) || subdevRegex.test(cmd)) {
         return true;
       }
-    } else {
-      // 4. Non-digitized group names (HDA Intel / Standard cards with "PCM", "Master", "Analog", "Front")
-      // If proc.pcm_index is 0 or unassigned, it maps to standard primary playout groups ("pcm", "master", "analog", "playback", "front")
-      const isStandardPrimaryGroup = /pcm|master|analog|playback|front/i.test(group.name);
-      if (isStandardPrimaryGroup && (proc.pcm_index === 0 || proc.pcm_index === null || proc.pcm_index === undefined)) {
+    }
+
+    // 4. Multi-PCM card matching (e.g. Intel HDMI PCM 3, PCM 7, PCM 8 where subdevices are not used)
+    if (grpIndex !== null && (proc.subdevice_index === null || proc.subdevice_index === undefined)) {
+      if (proc.pcm_index !== null && proc.pcm_index !== undefined) {
+        if (proc.pcm_index === grpIndex) {
+          return true;
+        }
+      }
+    }
+
+    // 5. Named group matching (avoid false positives from generic words like "pcm" in "pcm_s16le")
+    const isGenericKeyword = /^(pcm|master|front|line|capture|playback|aux)$/i.test(grpName);
+    if (!isGenericKeyword) {
+      if (target.includes(grpName) || alias.includes(grpName)) {
+        return true;
+      }
+      const grpRegex = new RegExp(`\\b${grpName}\\b`, 'i');
+      if (grpRegex.test(alias)) {
         return true;
       }
     }
 
-    // 5. Default fallback for single process without explicit subdevice on PCM 0
-    if (grpIndex === 0 && activeProcesses.length === 1) {
+    // 6. Non-digitized primary groups (HDA Intel / Single-PCM cards with "PCM" or "Master" on PCM 0)
+    if (grpIndex === null && (effectiveGrpSub === null || effectiveGrpSub === undefined)) {
+      const isStandardPrimaryGroup = /^(pcm|master|analog|playback|front)$/i.test(group.name);
+      if (isStandardPrimaryGroup && (proc.pcm_index === 0 || proc.pcm_index === null || proc.pcm_index === undefined) && (proc.subdevice_index === null || proc.subdevice_index === undefined)) {
+        return true;
+      }
+    }
+
+    // 7. Default fallback for single process without explicit target on primary group (grpIndex 0)
+    if (grpIndex === 0 && activeProcesses.length === 1 && (proc.subdevice_index === null || proc.subdevice_index === undefined)) {
       if (cmd.includes("default") || target.includes("default") || (cmd.includes("-f alsa") && (proc.pcm_index === null || proc.pcm_index === undefined))) {
         return true;
       }
@@ -730,6 +778,11 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [linkedChannels, setLinkedChannels] = useState<Record<number, boolean>>({});
   const [selectedMatrixGroupId, setSelectedMatrixGroupId] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<AlsaDiagnostics | null>(null);
+  const [copiedIommu, setCopiedIommu] = useState<boolean>(false);
+  const [copiedSlots, setCopiedSlots] = useState<boolean>(false);
+  const [copiedConflictCmd, setCopiedConflictCmd] = useState<boolean>(false);
+  const [isRechecking, setIsRechecking] = useState<boolean>(false);
 
   const selectedDriver = useMemo(() => {
     return cards.find(c => c.card_index === selectedCardIdx)?.driver;
@@ -781,10 +834,33 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null);
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
 
-  // Fetch available ALSA cards
+  // Fetch available ALSA cards and system diagnostics
   useEffect(() => {
     fetchCards();
+    fetchDiagnostics();
   }, []);
+
+  const fetchDiagnostics = async () => {
+    try {
+      const res = await fetch('/api/settings/alsa/diagnostics');
+      if (res.ok) {
+        const data = await res.json();
+        setDiagnostics(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch ALSA diagnostics:', err);
+    }
+  };
+
+  const hasIommuHazard = useMemo(() => {
+    return Boolean(diagnostics?.summary?.has_audioscience && diagnostics?.summary?.iommu_hazard);
+  }, [diagnostics]);
+
+  const hasSlotsIssue = useMemo(() => {
+    return Boolean(diagnostics?.summary?.slots_unpinned || diagnostics?.summary?.slots_conflict);
+  }, [diagnostics]);
+
+  const showAdvisor = hasIommuHazard || hasSlotsIssue;
 
   const fetchCards = async () => {
     try {
@@ -1069,6 +1145,169 @@ export const AlsaAudioSettingsCard: React.FC = () => {
           </select>
         </div>
       </div>
+
+      {/* ALSA Kernel & Hardware Diagnostics Advisor Banner */}
+      {showAdvisor && (
+        <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-3 space-y-2.5 shadow-sm text-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-[11px] uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+              <span>🛡️</span>
+              <span>{t('settings.alsa.advisorTitle', 'Kernel & Hardware Diagnostics')}</span>
+            </span>
+            <button
+              type="button"
+              disabled={isRechecking}
+              onClick={async () => {
+                setIsRechecking(true);
+                try {
+                  await Promise.all([fetchDiagnostics(), fetchCards()]);
+                } finally {
+                  setTimeout(() => setIsRechecking(false), 500);
+                }
+              }}
+              className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-[var(--track-bg)] hover:bg-[var(--glass-border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--glass-border)] transition-colors flex items-center gap-1 cursor-pointer"
+              title={t('settings.alsa.recheckAdvisor', 'Re-check kernel and modprobe configuration')}
+            >
+              <span className={isRechecking ? 'animate-spin' : ''}>🔄</span>
+              <span>{isRechecking ? t('settings.alsa.rechecking', 'Checking...') : t('settings.alsa.recheck', 'Re-check')}</span>
+            </button>
+          </div>
+
+          {/* IOMMU / VT-d Conflict Hazard (AudioScience Only) */}
+          {hasIommuHazard && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-2.5 space-y-2 text-text-primary">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
+                  <span>⚠️</span>
+                  <span>{t('settings.alsa.iommuHazardTitle', 'Intel VT-d (IOMMU) DMA Conflict Hazard')}</span>
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 uppercase">
+                  mode: {diagnostics?.iommu_hazard?.iommu_mode || 'strict'}
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                {t('settings.alsa.iommuHazardDesc', 'Intel VT-d is operating in strict page-translation mode with an AudioScience DSP adapter. The IOMMU can block 32-bit DMA reads (\'PTE Read access is not set\'), causing DSP timeouts (HPI error 207 / 105).')}
+              </p>
+              
+              {/* Recommended Fix with parameter placed right after label */}
+              <div className="pt-0.5 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="text-[var(--text-secondary)]">
+                  {t('settings.alsa.iommuFixAction', 'Recommended Fix: Add to /etc/default/grub (GRUB_CMDLINE_LINUX_DEFAULT):')}
+                </span>
+                <code className="bg-black/30 dark:bg-black/50 px-2 py-0.5 rounded text-[11px] font-mono text-amber-300 border border-amber-500/20 select-all">
+                  intel_iommu=pt iommu=pt
+                </code>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ok = await copyToClipboard('intel_iommu=pt iommu=pt');
+                    if (ok) {
+                      setCopiedIommu(true);
+                      setTimeout(() => setCopiedIommu(false), 2000);
+                    }
+                  }}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors shrink-0 flex items-center gap-1"
+                >
+                  <span>{copiedIommu ? '✓' : '📋'}</span>
+                  <span>{copiedIommu ? t('settings.alsa.copied', 'Copied!') : t('common.copy', 'Copy')}</span>
+                </button>
+              </div>
+
+              {/* Alternative: Disable VT-d in BIOS */}
+              <p className="text-[11px] text-[var(--text-secondary)] italic leading-relaxed pt-1 border-t border-amber-500/20">
+                💡 {t('settings.alsa.iommuBiosAlternative', 'Alternative: If this system does not run virtual machines and the BIOS permits, another option is to disable Intel VT-d directly in the BIOS.')}
+              </p>
+            </div>
+          )}
+
+          {/* Sound Card Slots Persistence Advisor */}
+          {hasSlotsIssue && (
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-2.5 space-y-2 text-text-primary">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-blue-400 flex items-center gap-1.5 text-xs">
+                  <span>ℹ️</span>
+                  <span>{t('settings.alsa.slotsAdvisorTitle', 'Sound Card Slot Order Persistence')}</span>
+                </span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 uppercase">
+                  {diagnostics?.summary?.slots_conflict ? 'conflict' : 'unpinned'}
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                {t('settings.alsa.slotsAdvisorDesc', 'Multiple audio cards detected without explicit slot pinning. Card indices (hw:0, hw:1) may shuffle asynchronously across reboots.')}
+              </p>
+
+              {/* Conflicting negative index notice (e.g. legacy snd-aloop.conf) */}
+              {diagnostics?.summary?.slots_conflict && (
+                <div className="p-2.5 rounded bg-amber-500/10 border border-amber-500/30 text-text-primary text-[11px] space-y-1.5">
+                  <span className="font-bold text-amber-400 flex items-center gap-1">
+                    <span>⚠️</span>
+                    <span>{t('settings.alsa.slotsConflictTitle', 'Conflicting Modprobe Directive Detected')}</span>
+                  </span>
+                  <p className="text-[var(--text-secondary)] leading-relaxed">
+                    {t('settings.alsa.slotsConflictDesc', 'A legacy fallback file (/etc/modprobe.d/snd-aloop.conf) specifies index=-2 alongside explicit slots. Remove it to resolve the conflict:')}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <code className="bg-black/30 dark:bg-black/50 px-2 py-0.5 rounded font-mono text-[11px] text-amber-200 border border-amber-500/20 select-all">
+                      sudo rm -f /etc/modprobe.d/snd-aloop.conf
+                    </code>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await copyToClipboard('sudo rm -f /etc/modprobe.d/snd-aloop.conf');
+                        if (ok) {
+                          setCopiedConflictCmd(true);
+                          setTimeout(() => setCopiedConflictCmd(false), 2000);
+                        }
+                      }}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors flex items-center gap-1"
+                    >
+                      <span>{copiedConflictCmd ? '✓' : '📋'}</span>
+                      <span>{copiedConflictCmd ? t('settings.alsa.copied', 'Copied!') : t('common.copy', 'Copy')}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {diagnostics?.slots_advisor?.recommended_snippet && (
+                <div className="pt-1 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono font-bold text-[var(--text-secondary)] flex items-center gap-1.5">
+                      <span>📁</span>
+                      <span>/etc/modprobe.d/alsa-base.conf</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const snippet = diagnostics?.slots_advisor?.recommended_snippet;
+                        if (snippet) {
+                          const ok = await copyToClipboard(snippet);
+                          if (ok) {
+                            setCopiedSlots(true);
+                            setTimeout(() => setCopiedSlots(false), 2000);
+                          }
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/40 transition-colors shrink-0 flex items-center gap-1"
+                    >
+                      <span>{copiedSlots ? '✓' : '📋'}</span>
+                      <span>{copiedSlots ? t('settings.alsa.copied', 'Copied!') : t('common.copy', 'Copy')}</span>
+                    </button>
+                  </div>
+                  <pre className="p-2.5 bg-black/30 dark:bg-black/50 border border-blue-500/20 rounded-md text-[11px] font-mono text-blue-200 overflow-x-auto whitespace-pre leading-relaxed select-all">
+                    {diagnostics.slots_advisor.recommended_snippet}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Reboot notice footer */}
+          <div className="text-[10px] text-[var(--text-secondary)] flex items-center gap-1 pt-1 border-t border-[var(--glass-border)]">
+            <span>ℹ️</span>
+            <span>{t('settings.alsa.rebootNotice', 'Note: Kernel boot parameters (GRUB) and modprobe slot assignments take effect after rebooting the machine.')}</span>
+          </div>
+        </div>
+      )}
 
       {/* Active Process Badges Banner */}
       {topology?.active_processes && topology.active_processes.length > 0 && (

@@ -4,6 +4,7 @@ import { hasVideo as hasVideoHelper } from '../cards/UnifiedServiceCard';
 import { EngineLogo } from '../common/EngineLogo';
 import { HlsPlayer } from '../common/HlsPlayer';
 import { copyToClipboard } from '../../utils/clipboard';
+import { PlayIcon, PowerIcon } from '../Icons';
 
 interface FfmpegPreviewModalProps {
   selectedProcess: any;
@@ -237,15 +238,26 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                   </div>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => onStopService(currentProcess.id, currentProcess.name)}
-                disabled={actionPending[currentProcess.id] === 'stopping'}
-                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1.5 shadow-lg shadow-red-950/50"
-              >
-                <span>⏹</span>
-                <span>{t('modals.crashLoop.stopAndCancel', 'Detener servicio y cancelar reintentos')}</span>
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onStartService(currentProcess.id)}
+                  disabled={actionPending[currentProcess.id] === 'starting' || actionPending[currentProcess.id] === 'stopping'}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 disabled:opacity-50"
+                >
+                  <PlayIcon size={14} />
+                  <span>{t('modals.crashLoop.retryNow', 'Reintentar ahora')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onStopService(currentProcess.id, currentProcess.name)}
+                  disabled={actionPending[currentProcess.id] === 'stopping'}
+                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-lg shadow-red-950/50 disabled:opacity-50"
+                >
+                  <PowerIcon size={14} />
+                  <span>{t('modals.crashLoop.deactivateAndCancel', 'Desactivar servicio y cancelar reintentos')}</span>
+                </button>
+              </div>
             </div>
           )}
 

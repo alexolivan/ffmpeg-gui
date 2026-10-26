@@ -4,7 +4,7 @@ import InputSourcePanel from './source/InputSourcePanel';
 import type { InputSourceConfig } from './source/InputSourcePanel';
 import VideoCodecPanel from './codec/VideoCodecPanel';
 import AudioCodecPanel from './codec/AudioCodecPanel';
-import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS, getAvailableVideoCodecs, getAvailableAudioCodecs } from './codec/codecRegistry';
+import { getDefaultParams, VIDEO_CODECS, AUDIO_CODECS, getAvailableVideoCodecs, getAvailableAudioCodecs, isRawHardwareAudioSource, isRawHardwareVideoSource, isPcmPassthroughViable } from './codec/codecRegistry';
 import type { SystemCapabilities } from './codec/codecRegistry';
 import DestinationPanel from './destination/DestinationPanel';
 import type { OutputConfig } from './destination/DestinationPanel';
@@ -16,9 +16,10 @@ import LifecycleFormSection from './form/LifecycleFormSection';
 import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
 import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
+import { AliasField } from './common/AliasField';
 
 const VIDEO_ALLOWED_TYPES = ['file', 'desktop', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
-const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls'];
+const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls', 'pipewire'];
 
 interface ProcessConfig {
   name: string;
@@ -246,6 +247,15 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       errors.name = 'General name is required';
     }
 
+    // 1b. LCD Alias is required (max 12 chars)
+    if (!config.alias || !config.alias.trim()) {
+      errors.alias = t('forge.aliasRequired', 'El alias para LCD es obligatorio (máx. 12 caracteres)');
+    } else if (config.alias.trim().length > 12) {
+      errors.alias = t('common.aliasTooLong', 'Alias cannot exceed 12 characters');
+    } else if (!/^[a-zA-Z0-9\s-_]+$/.test(config.alias.trim())) {
+      errors.alias = t('common.aliasInvalidChars', 'Only letters, numbers, spaces, hyphens (-), and underscores (_) allowed');
+    }
+
     // 2. Output validations based on type
     const out = config.output;
     if (out.type === 'udp' || out.type === 'rtp' || out.type === 'srt') {
@@ -341,6 +351,21 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     } else if (out.type === 'alsa') {
       if (!(out.device || '').trim()) {
         errors.device = 'ALSA device is required';
+      }
+    } else if (out.type === 'pipewire') {
+      if (!out.provider_service_id && !out.pipewire_service_id) {
+        errors.provider_service_id = 'PipeWire Hub Service is required';
+      }
+    }
+
+    if (config.input1.type === 'pipewire') {
+      if (!config.input1.provider_service_id && !config.input1.pipewire_service_id) {
+        errors.input1 = 'PipeWire Hub Service is required';
+      }
+    }
+    if (config.use_secondary_input && config.input2.type === 'pipewire') {
+      if (!config.input2.provider_service_id && !config.input2.pipewire_service_id) {
+        errors.input2 = 'PipeWire Hub Service is required';
       }
     }
 
@@ -583,7 +608,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
     fetch('/builds')
       .then(r => r.json())
       .then(builds => {
-        const ready = builds.filter((b: any) => b.status === 'ready' && (b.software_type === 'ffmpeg' || !b.software_type));
+        const ready = builds.filter((b: any) => {
+          if (b.status !== 'ready') return false;
+          const swType = b.software_type || 'ffmpeg';
+          if (swType !== 'ffmpeg') return false;
+          const bin = (b.ffmpeg_binary || b.binary_path || '').split('/').pop() || '';
+          if (bin && !bin.startsWith('ffmpeg')) return false;
+          return true;
+        });
         setAvailableBuilds(ready);
         
         const currentBuildId = initialConfig?.ffmpeg_build_id ?? null;
@@ -788,12 +820,14 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   };
 
   const handleInput1Change = useCallback((input1: InputSourceConfig) => {
-    const isPureAudio = input1.type === 'alsa' || input1.type === 'lavfi_audio' || input1.type === 'http_audio';
+    const isPureAudio = input1.type === 'alsa' || input1.type === 'lavfi_audio' || input1.type === 'http_audio' || input1.type === 'pipewire';
     if (isPureAudio && config.has_video) {
       const label = input1.type === 'http_audio' 
         ? 'Icecast/HTTP Audio' 
         : input1.type === 'lavfi_audio' 
         ? 'Generador de audio' 
+        : input1.type === 'pipewire'
+        ? 'PipeWire Audio Hub'
         : 'ALSA';
       const proceed = window.confirm(
         `La entrada seleccionada (${label}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
@@ -808,17 +842,62 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         finalHasVideo = false;
         finalHasAudio = true;
       }
+      let finalVideoCodecId = prev.video_codec_id;
+      let finalVideoCodecParams = prev.video_codec_params;
+      let finalAudioCodecId = prev.audio_codec_id;
+      let finalAudioCodecParams = prev.audio_codec_params;
+
+      // Auto-heal video codec if switched to uncompressed raw video source
+      if (isRawHardwareVideoSource(input1.type) && finalVideoCodecId === 'copy') {
+        const fallback = VIDEO_CODECS[0];
+        finalVideoCodecId = fallback.id;
+        finalVideoCodecParams = getDefaultParams(fallback);
+      }
+
+      // Auto-heal audio codec if switched to uncompressed raw audio source with incompatible compressed destination
+      const isCompressedDest = ['icecast', 'rtmp', 'whip', 'hls'].includes(prev.output.type);
+      if (!prev.use_secondary_input && isRawHardwareAudioSource(input1.type) && isCompressedDest && finalAudioCodecId === 'copy') {
+        const fallback = AUDIO_CODECS[0];
+        finalAudioCodecId = fallback.id;
+        finalAudioCodecParams = getDefaultParams(fallback);
+      } else if (!prev.use_secondary_input && isPcmPassthroughViable(input1.type, prev.output.type)) {
+        finalAudioCodecId = 'copy';
+        finalAudioCodecParams = {};
+      }
+
       return {
         ...prev,
         input1,
         has_video: finalHasVideo,
         has_audio: finalHasAudio,
+        video_codec_id: finalVideoCodecId,
+        video_codec_params: finalVideoCodecParams,
+        audio_codec_id: finalAudioCodecId,
+        audio_codec_params: finalAudioCodecParams,
       };
     });
   }, [config.has_video]);
 
   const handleInput2Change = useCallback((input2: InputSourceConfig) => {
-    setConfig(prev => ({ ...prev, input2 }));
+    setConfig(prev => {
+      let finalAudioCodecId = prev.audio_codec_id;
+      let finalAudioCodecParams = prev.audio_codec_params;
+      const isCompressedDest = ['icecast', 'rtmp', 'whip', 'hls'].includes(prev.output.type);
+      if (prev.use_secondary_input && isRawHardwareAudioSource(input2.type) && isCompressedDest && finalAudioCodecId === 'copy') {
+        const fallback = AUDIO_CODECS[0];
+        finalAudioCodecId = fallback.id;
+        finalAudioCodecParams = getDefaultParams(fallback);
+      } else if (prev.use_secondary_input && isPcmPassthroughViable(input2.type, prev.output.type)) {
+        finalAudioCodecId = 'copy';
+        finalAudioCodecParams = {};
+      }
+      return {
+        ...prev,
+        input2,
+        audio_codec_id: finalAudioCodecId,
+        audio_codec_params: finalAudioCodecParams,
+      };
+    });
   }, []);
 
   const handleSyncAlsaAudio = useCallback((alsaDevice: string) => {
@@ -890,9 +969,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
     const oldType = config.output.type;
     const newType = output.type;
 
-    if (oldType !== newType && (newType === 'icecast' || newType === 'alsa') && config.has_video) {
+    if (oldType !== newType && (newType === 'icecast' || newType === 'alsa' || newType === 'pipewire') && config.has_video) {
+      const label = newType === 'icecast' ? 'Icecast' : newType === 'alsa' ? 'ALSA' : 'PipeWire Audio Hub';
       const proceed = window.confirm(
-        `La salida seleccionada (${newType === 'icecast' ? 'Icecast' : 'ALSA'}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
+        `La salida seleccionada (${label}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
       );
       if (!proceed) return;
     }
@@ -933,6 +1013,9 @@ const hasNDICodecIncompatibility = isNDIOutput && (
       finalOutput.device = '';
       finalHasVideo = false;
       finalHasAudio = true;
+    } else if (newType === 'pipewire') {
+      finalHasVideo = false;
+      finalHasAudio = true;
     } else if (newType === 'rtmp') {
       finalOutput.url = '';
     } else if (newType === 'whip') {
@@ -941,7 +1024,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
 
     // Check codec compatibility
     const availableVideo = getAvailableVideoCodecs(selectedBuildOptions, systemCapabilities, newType);
-    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType, systemCapabilities || undefined);
+    const effectiveInputType = config.use_secondary_input ? config.input2.type : config.input1.type;
+    const availableAudio = getAvailableAudioCodecs(selectedBuildOptions, newType, systemCapabilities || undefined, effectiveInputType);
 
     const videoIncompatible = finalHasVideo && !availableVideo.some(c => c.id === config.video_codec_id);
     const audioIncompatible = finalHasAudio && !availableAudio.some(c => c.id === config.audio_codec_id);
@@ -972,18 +1056,25 @@ const hasNDICodecIncompatibility = isNDIOutput && (
           patch.video_codec_id = availableVideo[0].id;
           patch.video_codec_params = getDefaultParams(availableVideo[0]);
         }
-        if (audioIncompatible && availableAudio.length > 0) {
+        const isPcmViable = isPcmPassthroughViable(effectiveInputType, newType);
+        if (isPcmViable) {
+          patch.audio_codec_id = 'copy';
+          patch.audio_codec_params = {};
+        } else if (audioIncompatible && availableAudio.length > 0) {
           patch.audio_codec_id = availableAudio[0].id;
           patch.audio_codec_params = getDefaultParams(availableAudio[0]);
         }
         return patch as ProcessConfig;
       });
     } else {
+      const isPcmViable = isPcmPassthroughViable(effectiveInputType, newType);
       setConfig(prev => ({ 
         ...prev, 
         output: finalOutput,
         has_video: finalHasVideo,
-        has_audio: finalHasAudio
+        has_audio: finalHasAudio,
+        audio_codec_id: isPcmViable ? 'copy' : prev.audio_codec_id,
+        audio_codec_params: isPcmViable ? {} : prev.audio_codec_params,
       }));
     }
   }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort]);
@@ -1009,8 +1100,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   }, []);
 
   const handleHasVideoChange = useCallback((val: boolean) => {
-    const isPureAudioInput = config.input1.type === 'alsa' || config.input1.type === 'lavfi_audio' || config.input1.type === 'http_audio';
-    const isPureAudioOutput = config.output.type === 'icecast' || config.output.type === 'alsa';
+    const isPureAudioInput = config.input1.type === 'alsa' || config.input1.type === 'lavfi_audio' || config.input1.type === 'http_audio' || config.input1.type === 'pipewire';
+    const isPureAudioOutput = config.output.type === 'icecast' || config.output.type === 'alsa' || config.output.type === 'pipewire';
 
     if (val && (isPureAudioInput || isPureAudioOutput)) {
       const proceed = window.confirm(
@@ -1034,6 +1125,9 @@ const hasNDICodecIncompatibility = isNDIOutput && (
           nextInput2.device = (prev.input1 as any).device || '';
           nextInput2.path = prev.input1.path || '';
           (nextInput2 as any).url = (prev.input1 as any).url || '';
+          (nextInput2 as any).sink_id = (prev.input1 as any).sink_id || '';
+          (nextInput2 as any).provider_service_id = (prev.input1 as any).provider_service_id || null;
+          (nextInput2 as any).pipewire_service_id = (prev.input1 as any).pipewire_service_id || null;
 
           // Reset input1 to file
           nextInput1.type = 'file';
@@ -1113,11 +1207,21 @@ const hasNDICodecIncompatibility = isNDIOutput && (
           nextInput2 = { ...nextInput2, type: 'file' };
         }
       }
+      const effectiveAudioType = val ? nextInput2.type : nextInput1.type;
+      let finalAudioCodecId = prev.audio_codec_id;
+      let finalAudioCodecParams = prev.audio_codec_params;
+      if (isRawHardwareAudioSource(effectiveAudioType) && finalAudioCodecId === 'copy') {
+        const fallback = AUDIO_CODECS[0];
+        finalAudioCodecId = fallback.id;
+        finalAudioCodecParams = getDefaultParams(fallback);
+      }
       return {
         ...prev,
         use_secondary_input: val,
         input1: nextInput1,
-        input2: nextInput2
+        input2: nextInput2,
+        audio_codec_id: finalAudioCodecId,
+        audio_codec_params: finalAudioCodecParams,
       };
     });
   }, []);
@@ -1168,23 +1272,28 @@ const hasNDICodecIncompatibility = isNDIOutput && (
               }`}
               placeholder={isTask ? "Task name (e.g. Daily Transcode of Stream)" : "Service name (e.g. Primary Encoder Node-01)"}
               value={config.name}
-              onChange={e => setConfig({ ...config, name: e.target.value })}
+              onChange={e => {
+                const newName = e.target.value;
+                const prevExpectedAlias = config.name.slice(0, 12).replace(/[^a-zA-Z0-9\s-_]/g, '');
+                const autoAlias = newName.slice(0, 12).replace(/[^a-zA-Z0-9\s-_]/g, '');
+                if (!config.alias || config.alias === prevExpectedAlias) {
+                  setConfig({ ...config, name: newName, alias: autoAlias });
+                } else {
+                  setConfig({ ...config, name: newName });
+                }
+              }}
             />
           </div>
-          <div className="w-[140px] flex-shrink-0">
-            <input
-              type="text"
+          <div className="w-[160px] flex-shrink-0">
+            <AliasField
+              compact
+              required
               id="process-alias"
               name="alias"
-              maxLength={12}
-              className="w-full bg-white/5 border border-white/10 rounded-lg p-2 focus:border-brand-lime outline-none transition-all text-xs font-medium text-brand-lime placeholder-white/20"
-              placeholder="LCD Alias"
-              title="Alias for LCD display (max 12 alphanumeric characters, spaces, hyphens, underscores)"
+              placeholder="LCD Alias *"
               value={config.alias}
-              onChange={e => {
-                const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
-                setConfig({ ...config, alias: val });
-              }}
+              onChange={val => setConfig({ ...config, alias: val })}
+              error={validationErrors.alias}
             />
           </div>
         </div>
@@ -1357,6 +1466,41 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         </div>
       )}
 
+      {/* PCM Passthrough Recommendation Banner */}
+      {(() => {
+        const effectiveAudioInput = config.use_secondary_input ? config.input2?.type : config.input1?.type;
+        const isPcmViable = isPcmPassthroughViable(effectiveAudioInput, config.output?.type);
+        if (isPcmViable && config.has_audio && config.audio_codec_id !== 'copy') {
+          return (
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-brand-lime/10 border border-brand-lime/20 rounded-2xl text-xs text-brand-lime mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-start gap-2.5">
+                <span className="text-sm mt-0.5 text-brand-lime font-bold">
+                  ⚡
+                </span>
+                <div>
+                  <strong>{t('forge.pcmCopyRecommendationTitle', 'PCM Passthrough Available:')}</strong>{' '}
+                  {t('forge.pcmCopyRecommendationText', 'Both input and output are uncompressed PCM sources. Using Stream Copy (-c:a copy) eliminates CPU transcoding overhead and minimizes latency.')}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfig(prev => ({
+                    ...prev,
+                    audio_codec_id: 'copy',
+                    audio_codec_params: {},
+                  }));
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 bg-brand-lime hover:bg-brand-lime/80 text-black font-black px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
+              >
+                {t('forge.useStreamCopy', '⚡ Use Stream Copy')}
+              </button>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       {/* ── Scrollable content ── */}
       <div className="flex-1 overflow-y-auto pr-3 space-y-4 min-h-0 custom-scrollbar">
 
@@ -1491,6 +1635,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   buildOptions={selectedBuildOptions}
                   systemCapabilities={systemCapabilities}
                   outputType={config.output.type}
+                  inputType={config.input1?.type}
                   onChange={handleVideoCodecChange}
                 />
               </div>
@@ -1502,6 +1647,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   params={config.audio_codec_params}
                   buildOptions={selectedBuildOptions}
                   outputType={config.output.type}
+                  inputType={config.use_secondary_input ? config.input2?.type : config.input1?.type}
                   systemCapabilities={systemCapabilities || undefined}
                   onChange={handleAudioCodecChange}
                 />

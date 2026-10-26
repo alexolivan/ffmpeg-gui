@@ -13,6 +13,7 @@ export interface OutputConfig {
   mode?: string;
   latency?: number;
   container?: string;
+  rtsp_transport?: 'tcp' | 'udp';
   icecast_mount?: string;
   icecast_password?: string;
   device?: string;
@@ -62,6 +63,8 @@ export interface OutputConfig {
   ice_public?: boolean;
   legacy_icecast?: boolean;
   tls?: boolean;
+  sink_id?: string;
+  pipewire_service_id?: number | null;
 }
 
 export const isLegacyIcecastStr = (versionStr?: string | null): boolean => {
@@ -94,6 +97,7 @@ interface DestinationPanelProps {
 const OUTPUT_TYPES = [
   { value: 'udp', labelKey: 'destinations.types.udp', label: 'UDP Multicast (MPEG-TS)', requiresVideo: false },
   { value: 'srt', labelKey: 'destinations.types.srt', label: 'SRT Stream', requiresVideo: false },
+  { value: 'rtsp', labelKey: 'destinations.types.rtsp', label: 'RTSP Stream (MediaMTX / TCP)', requiresVideo: false },
   { value: 'rtmp', labelKey: 'destinations.types.rtmp', label: 'RTMP / RTMPS Push', requiresVideo: true },
   { value: 'whip', labelKey: 'destinations.types.whip', label: 'WHIP Push (WebRTC)', requiresVideo: false },
   { value: 'ndi', labelKey: 'destinations.types.ndi', label: 'NDI Output', requiresVideo: true },
@@ -101,6 +105,7 @@ const OUTPUT_TYPES = [
   { value: 'file', labelKey: 'destinations.types.file', label: 'Local Recording', requiresVideo: false },
   { value: 'icecast', labelKey: 'destinations.types.icecast', label: 'Icecast2 (Audio Stream)', requiresVideo: false },
   { value: 'alsa', labelKey: 'destinations.types.alsa', label: 'ALSA Audio Device', requiresVideo: false },
+  { value: 'pipewire', labelKey: 'destinations.types.pipewire', label: 'PipeWire Audio Hub', requiresVideo: false },
   { value: 'rtp', labelKey: 'destinations.types.rtp', label: 'RTP Stream', requiresVideo: false },
   { value: 'hls', labelKey: 'destinations.types.hls', label: 'HLS Live Streaming', requiresVideo: false },
 ];
@@ -116,10 +121,12 @@ const destinationCache: {
   decklinkDevices: string[] | null;
   decklinkFormats: Record<string, any[]>;
   alsaPlaybackDevices?: any[] | null;
+  alsaHierarchicalCards?: any[] | null;
 } = {
   decklinkDevices: null,
   decklinkFormats: {},
   alsaPlaybackDevices: null,
+  alsaHierarchicalCards: null,
 };
 
 const DestinationPanel: React.FC<DestinationPanelProps> = ({
@@ -148,6 +155,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     if (t.requiresVideo && !hasVideo) return false;
     if (t.value === 'icecast' && !hasAudio) return false;
     if (t.value === 'alsa' && !hasAudio) return false;
+    if (t.value === 'pipewire' && !hasAudio) return false;
     return true;
   });
 
@@ -160,6 +168,8 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   const [manualDeviceMode, setManualDeviceMode] = React.useState(false);
 
   const [alsaDevices, setAlsaDevices] = React.useState<any[]>([]);
+  const [alsaCards, setAlsaCards] = React.useState<any[]>([]);
+  const [selectedCardId, setSelectedCardId] = React.useState<string | number>('');
   const [loadingAlsaDevices, setLoadingAlsaDevices] = React.useState(false);
   const [manualAlsaMode, setManualAlsaMode] = React.useState(false);
 
@@ -243,47 +253,115 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     return () => { active = false; };
   }, [config.type, config.device, manualDeviceMode]);
 
-  React.useEffect(() => {
-    if (config.type !== 'alsa') return;
-    let active = true;
-
-    if (destinationCache.alsaPlaybackDevices !== undefined && destinationCache.alsaPlaybackDevices !== null) {
-      setAlsaDevices(destinationCache.alsaPlaybackDevices);
-      if (destinationCache.alsaPlaybackDevices.length > 0) {
-        const found = destinationCache.alsaPlaybackDevices.some((d: any) => d.device === config.device);
-        if (!found && config.device && config.device !== 'default') {
-          setManualAlsaMode(true);
-        }
-      }
+  const fetchAlsaPlayback = React.useCallback(async (force = false) => {
+    if (!force && destinationCache.alsaHierarchicalCards !== null && destinationCache.alsaHierarchicalCards !== undefined) {
+      setAlsaCards(destinationCache.alsaHierarchicalCards);
+      const allDevs: any[] = [];
+      destinationCache.alsaHierarchicalCards.forEach((c: any) => {
+        if (Array.isArray(c.devices)) allDevs.push(...c.devices);
+      });
+      setAlsaDevices(allDevs);
       return;
     }
 
-    const fetchAlsaPlayback = async () => {
-      setLoadingAlsaDevices(true);
+    setLoadingAlsaDevices(true);
+    try {
+      const res = await fetch('/alsa/playback-devices-hierarchical');
+      if (!res.ok) throw new Error("Failed to fetch hierarchical ALSA playback devices");
+      const cardsList = await res.json();
+      const hierarchical = Array.isArray(cardsList) ? cardsList : [];
+      destinationCache.alsaHierarchicalCards = hierarchical;
+      setAlsaCards(hierarchical);
+      const allDevs: any[] = [];
+      hierarchical.forEach((c: any) => {
+        if (Array.isArray(c.devices)) allDevs.push(...c.devices);
+      });
+      destinationCache.alsaPlaybackDevices = allDevs;
+      setAlsaDevices(allDevs);
+    } catch (err) {
+      console.error("Error fetching ALSA playback devices:", err);
+      // Fallback to flat /alsa/playback-devices
       try {
-        const res = await fetch('/alsa/playback-devices');
-        if (!res.ok) throw new Error("Failed to fetch ALSA playback devices");
-        const data = await res.json();
-        const devicesList = data || [];
-        destinationCache.alsaPlaybackDevices = devicesList;
-        if (active) {
-          setAlsaDevices(devicesList);
-          if (devicesList.length > 0) {
-            const found = devicesList.some((d: any) => d.device === config.device);
-            if (!found && config.device && config.device !== 'default') {
-              setManualAlsaMode(true);
+        const fallbackRes = await fetch('/alsa/playback-devices');
+        if (fallbackRes.ok) {
+          const flatList = await fallbackRes.json();
+          setAlsaDevices(flatList || []);
+          // Synthesize cards from flat list if hierarchical failed
+          const cardsDict: Record<number, any> = {};
+          (flatList || []).forEach((d: any) => {
+            const m = String(d.device || '').match(/hw:(\d+)/);
+            const cardId = m ? parseInt(m[1], 10) : 0;
+            if (!cardsDict[cardId]) {
+              const cardName = (d.name || `Card ${cardId}`).split(' - ')[0];
+              cardsDict[cardId] = {
+                card_id: cardId,
+                card_name: cardName,
+                card_label: `${cardName} [Card ${cardId}]`,
+                devices: []
+              };
             }
-          }
+            cardsDict[cardId].devices.push(d);
+          });
+          const synthesizedCards = Object.values(cardsDict);
+          destinationCache.alsaHierarchicalCards = synthesizedCards;
+          setAlsaCards(synthesizedCards);
         }
-      } catch (err) {
-        console.error("Error fetching ALSA playback devices:", err);
-      } finally {
-        if (active) setLoadingAlsaDevices(false);
+      } catch (fbErr) {
+        console.error("Fallback ALSA playback query also failed:", fbErr);
       }
-    };
-    fetchAlsaPlayback();
-    return () => { active = false; };
-  }, [config.type]);
+    } finally {
+      setLoadingAlsaDevices(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (config.type !== 'alsa') return;
+    fetchAlsaPlayback(false);
+  }, [config.type, fetchAlsaPlayback]);
+
+  // Initial detection of manual vs assisted mode when loading or switching to ALSA
+  const alsaInitializedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (config.type !== 'alsa') {
+      alsaInitializedRef.current = false;
+      return;
+    }
+    if (alsaInitializedRef.current) return;
+    if (alsaCards.length === 0 && alsaDevices.length === 0) return;
+
+    alsaInitializedRef.current = true;
+    const curDev = (config.device || '').trim();
+    if (!curDev || curDev === 'default') {
+      setSelectedCardId('__default__');
+      setManualAlsaMode(false);
+      return;
+    }
+
+    const matchedCard = alsaCards.find(c => (c.devices || []).some((d: any) => d.device === curDev));
+    if (matchedCard) {
+      setSelectedCardId(matchedCard.card_id);
+      setManualAlsaMode(false);
+    } else {
+      setManualAlsaMode(true);
+    }
+  }, [config.type, alsaCards, alsaDevices]);
+
+  // Synchronize selectedCardId with current config.device without overriding manual mode
+  React.useEffect(() => {
+    if (config.type !== 'alsa') return;
+    const curDev = (config.device || '').trim();
+    if (!curDev || curDev === 'default') {
+      setSelectedCardId('__default__');
+      return;
+    }
+    for (const card of alsaCards) {
+      const match = (card.devices || []).some((d: any) => d.device === curDev);
+      if (match) {
+        setSelectedCardId(card.card_id);
+        return;
+      }
+    }
+  }, [config.type, config.device, alsaCards]);
 
   const [providers, setProviders] = React.useState<any[]>([]);
   const [remotePeers, setRemotePeers] = React.useState<any[]>([]);
@@ -470,6 +548,23 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           }
         }
       }
+    } else if (config.type === 'rtsp' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
+      if (!config.peer_node_id && config.mediamtx_target_type !== 'remote' && config.mediamtx_target_type !== 'external' && mediamtxProviders.length > 0) {
+        const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+        if (prov) {
+          const pCfg = prov.config || {};
+          const isTls = Boolean(config.tls && pCfg.ssl_enabled && pCfg.rtsps_enabled);
+          const expectedPort = String(isTls ? (pCfg.rtsps_port || 8322) : (pCfg.rtsp_port || 8554));
+          if (config.port !== expectedPort || config.provider_service_id !== prov.id) {
+            update({
+              provider_service_id: prov.id,
+              port: expectedPort,
+              host: config.host || '127.0.0.1',
+              rtsp_transport: config.rtsp_transport || 'tcp',
+            });
+          }
+        }
+      }
     } else if (config.type === 'whip' && (config.mediamtx_mode || config.service_target === 'mediamtx')) {
       if (!config.peer_node_id && config.mediamtx_target_type !== 'remote' && config.mediamtx_target_type !== 'external' && mediamtxProviders.length > 0) {
         const prov = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
@@ -485,7 +580,26 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           }
         }
       }
-    } else if (config.type && !['srt', 'rtmp', 'whip', 'icecast'].includes(config.type) && (config.provider_service_id || config.mediamtx_mode || config.service_target)) {
+    } else if (config.type === 'pipewire') {
+      const pipewireProviders = providers.filter(p => p.service_type === 'pipewire_hub');
+      if (pipewireProviders.length > 0) {
+        const prov = pipewireProviders.find(p => p.id === config.provider_service_id) || pipewireProviders[0];
+        if (prov) {
+          const sinks = prov.config?.virtual_sinks || prov.config?.pipewire_config?.virtual_sinks || [];
+          const defaultSink = sinks[0]?.id || 'mix_bus';
+          const currentSink = config.sink_id || (config.device || '');
+          const validSink = sinks.some((s: any) => s.id === currentSink) ? currentSink : defaultSink;
+          if (config.provider_service_id !== prov.id || config.sink_id !== validSink || config.device !== validSink) {
+            update({
+              provider_service_id: prov.id,
+              pipewire_service_id: prov.id,
+              sink_id: validSink,
+              device: validSink,
+            });
+          }
+        }
+      }
+    } else if (config.type && !['srt', 'rtmp', 'rtsp', 'whip', 'icecast', 'pipewire'].includes(config.type) && (config.provider_service_id || config.mediamtx_mode || config.service_target)) {
       update({
         provider_service_id: undefined,
         mediamtx_mode: false,
@@ -495,7 +609,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         stream_action: undefined,
       });
     }
-  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls]);
+  }, [providers, config.type, config.provider_service_id, config.mediamtx_mode, config.service_target, config.icecast_mode, config.tls, config.rtsp_transport, config.sink_id, config.device]);
 
   const parseFormatDescription = (desc: string) => {
     const resMatch = desc.match(/(\d+)x(\d+)/);
@@ -542,22 +656,42 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
         name="type"
         className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none focus:border-purple-400 transition-all"
         value={config.type}
-        onChange={e => update({
-          type: e.target.value,
-          host: '', port: '', path: '', url: '',
-          mode: 'caller', latency: 200,
-          container: 'mp4', icecast_mount: '', icecast_password: '',
-          hls_method: (storages || []).some((s: any) => s.type === 'hls') ? 'local' : 'PUT',
-          storage_id: (storages || []).find((s: any) => s.type === 'hls')?.id || null,
-          hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
-          hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
-          provider_service_id: undefined,
-          mediamtx_mode: false,
-          service_target: undefined,
-          mediamtx_target_type: undefined,
-          path_id: undefined,
-          stream_action: undefined,
-        })}
+        onChange={e => {
+          const newType = e.target.value;
+          update({
+            type: newType,
+            host: '', port: newType === 'rtsp' ? '8554' : '', path: '', url: '',
+            mode: 'caller', latency: 200,
+            rtsp_transport: newType === 'rtsp' ? 'tcp' : undefined,
+            container: newType === 'pipewire' || newType === 'alsa' ? undefined : 'mp4',
+            icecast_mount: '', icecast_password: '',
+            hls_method: (storages || []).some((s: any) => s.type === 'hls') ? 'local' : 'PUT',
+            storage_id: (storages || []).find((s: any) => s.type === 'hls')?.id || null,
+            hls_time: 2, hls_list_size: 5, hls_delete_segments: true, headers: '',
+            hls_abr_enabled: false, hls_stream_name: 'stream', variants: [],
+            ...(newType === 'pipewire' ? (() => {
+              const pwProviders = providers.filter(p => p.service_type === 'pipewire_hub');
+              const firstHub = pwProviders[0];
+              const sinks = firstHub?.config?.virtual_sinks || firstHub?.config?.pipewire_config?.virtual_sinks || [];
+              const firstSink = sinks[0]?.id || 'mix_bus';
+              return {
+                provider_service_id: firstHub?.id || null,
+                pipewire_service_id: firstHub?.id || null,
+                sink_id: firstSink,
+                device: firstSink,
+              };
+            })() : {
+              provider_service_id: undefined,
+              pipewire_service_id: undefined,
+              sink_id: undefined,
+            }),
+            mediamtx_mode: false,
+            service_target: undefined,
+            mediamtx_target_type: undefined,
+            path_id: undefined,
+            stream_action: undefined,
+          });
+        }}
       >
         {availableTypes.map(tItem => (
           <option key={tItem.value} value={tItem.value}>{t(tItem.labelKey, tItem.label)}</option>
@@ -1412,6 +1546,576 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       <strong>Rendezvous Mode:</strong> {t('destinations.rendezvousDesc')}
                     </span>
                   )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {config.type === 'rtsp' && (() => {
+        const mediamtxProviders = providers.filter(p => p.service_type === 'mediamtx_hub');
+        const remoteMtxServices = remotePeers.flatMap(peer =>
+          (peer.cached_services || peer.cached_services_json || [])
+            .filter((s: any) => s.service_type === 'mediamtx_hub')
+            .map((s: any) => ({ peer, svc: s }))
+        );
+        const hasManagedProviders = mediamtxProviders.length > 0 || remoteMtxServices.length > 0;
+        const isMediaMtxMode = (config.mediamtx_mode === false || config.service_target === 'manual')
+          ? false
+          : Boolean(config.mediamtx_mode || config.service_target === 'mediamtx' || config.provider_service_id || config.peer_node_id);
+        const isExternal = (config.mediamtx_target_type === 'external' || (config.mediamtx_target_type === 'remote' && !config.peer_node_id)) || (!config.provider_service_id && !config.peer_node_id && !hasManagedProviders);
+        const selectedProvider = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+
+        // Active configuration resolution (Local Provider vs Federated Peer)
+        let activePathsDict: Record<string, any> = {};
+        let activeSecurity: any = {};
+        let activeMtxCfg: any = {};
+        let currentHost = '127.0.0.1';
+
+        if (config.peer_node_id) {
+          const peer = remotePeers.find(p => p.id === config.peer_node_id);
+          const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
+          const svc = services.find((s: any) => s.id === config.peer_service_id);
+          const protos = svc?.protocols || {};
+          activeSecurity = protos.security || {};
+          activeMtxCfg = {
+            ssl_enabled: protos.rtsps_enabled,
+            rtsps_enabled: protos.rtsps_enabled,
+            rtsps_port: protos.rtsps_port || 8322,
+            rtsp_port: protos.rtsp_port || 8554,
+          };
+          try {
+            currentHost = peer ? new URL(peer.base_url).hostname : '127.0.0.1';
+          } catch {
+            currentHost = peer ? peer.base_url.replace(/https?:\/\//, '').split(':')[0] : '127.0.0.1';
+          }
+          const paths = protos.paths || {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            activePathsDict = paths;
+          }
+        } else {
+          activeMtxCfg = selectedProvider?.config || {};
+          activeSecurity = activeMtxCfg.security || {};
+          const rawPaths = activeMtxCfg.paths || {};
+          if (Array.isArray(rawPaths)) {
+            for (const p of rawPaths) {
+              if (typeof p === 'string') activePathsDict[p] = { mode: 'inherit' };
+              else if (p && p.path_id) activePathsDict[p.path_id] = p;
+            }
+          } else if (typeof rawPaths === 'object' && rawPaths !== null) {
+            activePathsDict = rawPaths;
+          }
+        }
+        const configuredPaths = Object.keys(activePathsDict);
+
+        const handleSelectProvider = (provId: number, isTls?: boolean) => {
+          const prov = mediamtxProviders.find(p => p.id === provId);
+          if (!prov) return;
+          const pCfg = prov.config || {};
+          const paths = pCfg.paths || {};
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = pathsDict[firstPath] || {};
+
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || pCfg.security?.publish_user || pCfg.publish_user || '';
+            pubPass = pathConf.publish_pass || pCfg.security?.publish_pass || pCfg.publish_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(pCfg.ssl_enabled && pCfg.rtsps_enabled && config.tls);
+          const port = useTls ? (pCfg.rtsps_port || 8322) : (pCfg.rtsp_port || 8554);
+          const scheme = useTls ? 'rtsps' : 'rtsp';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}127.0.0.1:${port}/${firstPath}`;
+
+          update({
+            provider_service_id: prov.id,
+            peer_node_id: undefined,
+            peer_service_id: undefined,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'managed',
+            host: '127.0.0.1',
+            port: String(port),
+            path_id: firstPath,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            rtsp_transport: config.rtsp_transport || 'tcp',
+            url: genUrl,
+          });
+        };
+
+        const handleSelectRemotePeer = (peerId: number, svcId: number, isTls?: boolean) => {
+          const peer = remotePeers.find(p => p.id === peerId);
+          if (!peer) return;
+          const services = peer.cached_services || peer.cached_services_json || [];
+          const svc = services.find((s: any) => s.id === svcId);
+          if (!svc) return;
+
+          let host = '127.0.0.1';
+          try {
+            host = new URL(peer.base_url).hostname;
+          } catch {
+            host = peer.base_url.replace(/https?:\/\//, '').split(':')[0];
+          }
+
+          const protos = svc.protocols || {};
+          const paths = protos.paths || {};
+          let pKeys: string[] = [];
+          let pathsDict: Record<string, any> = {};
+          if (Array.isArray(paths)) {
+            for (const p of paths) {
+              if (typeof p === 'string') { pKeys.push(p); pathsDict[p] = { mode: 'inherit' }; }
+              else if (p && p.path_id) { pKeys.push(p.path_id); pathsDict[p.path_id] = p; }
+            }
+          } else if (typeof paths === 'object' && paths !== null) {
+            pKeys = Object.keys(paths);
+            pathsDict = paths;
+          }
+          const firstPath = pKeys.length > 0 ? pKeys[0] : (config.path_id || 'stream1');
+          const pathConf = pathsDict[firstPath] || {};
+
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || protos.security?.publish_user || '';
+            pubPass = pathConf.publish_pass || protos.security?.publish_pass || '';
+          }
+
+          const useTls = isTls !== undefined ? isTls : Boolean(protos.rtsps_enabled && config.tls);
+          const port = useTls ? (protos.rtsps_port || 8322) : (protos.rtsp_port || 8554);
+          const scheme = useTls ? 'rtsps' : 'rtsp';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const genUrl = `${scheme}://${authPrefix}${host}:${port}/${firstPath}`;
+
+          update({
+            peer_node_id: peer.id,
+            peer_service_id: svc.id,
+            provider_service_id: undefined,
+            service_target: 'mediamtx',
+            mediamtx_target_type: 'managed',
+            host: host,
+            port: String(port),
+            path_id: firstPath,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            mediamtx_mode: true,
+            tls: useTls,
+            rtsp_transport: config.rtsp_transport || 'tcp',
+            url: genUrl,
+          });
+        };
+
+        const handleSelectPath = (val: string) => {
+          const pathId = val === '__custom__' ? (config.path_id && !configuredPaths.includes(config.path_id) ? config.path_id : '') : val;
+          const pathConf = activePathsDict[pathId] || {};
+          let pubUser = '';
+          let pubPass = '';
+          if (pathConf.mode === 'custom') {
+            pubUser = pathConf.publish_user || '';
+            pubPass = pathConf.publish_pass || '';
+          } else if (pathConf.mode !== 'open') {
+            pubUser = pathConf.publish_user || activeSecurity?.publish_user || '';
+            pubPass = pathConf.publish_pass || activeSecurity?.publish_pass || '';
+          }
+
+          const scheme = config.tls ? 'rtsps' : 'rtsp';
+          const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+          const port = config.port || (config.tls ? '8322' : '8554');
+          const genUrl = `${scheme}://${authPrefix}${currentHost}:${port}/${pathId || 'stream1'}`;
+
+          update({
+            path_id: pathId,
+            publish_user: pubUser,
+            publish_pass: pubPass,
+            auth_user: pubUser,
+            auth_pass: pubPass,
+            url: genUrl,
+          });
+        };
+
+        return (
+          <div className="space-y-3">
+            {/* Connection Mode Switch */}
+            <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)]">
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors ${
+                  !isMediaMtxMode
+                    ? 'bg-amber-500/25 text-[var(--text-primary)] border border-amber-500/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => update({
+                  mediamtx_mode: false,
+                  service_target: 'manual',
+                  path_id: undefined,
+                  provider_service_id: undefined,
+                  peer_node_id: undefined,
+                  peer_service_id: undefined,
+                  mediamtx_target_type: undefined,
+                })}
+              >
+                {t('destinations.rtspManualDirect', 'Manual Direct RTSP')}
+              </button>
+              <button
+                type="button"
+                className={`flex-1 py-1.5 px-3 text-xs font-semibold rounded-md transition-colors flex items-center justify-center gap-1.5 ${
+                  isMediaMtxMode
+                    ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm font-bold'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+                onClick={() => {
+                  if (mediamtxProviders.length > 0) {
+                    const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                    handleSelectProvider(defaultProv.id);
+                  } else if (remoteMtxServices.length > 0) {
+                    handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
+                  } else {
+                    update({
+                      mediamtx_mode: true,
+                      mediamtx_target_type: 'external',
+                      service_target: 'mediamtx',
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8554',
+                      path_id: config.path_id || 'stream1',
+                      rtsp_transport: config.rtsp_transport || 'tcp',
+                      url: `rtsp://${config.host || '127.0.0.1'}:${config.port || '8554'}/${config.path_id || 'stream1'}`,
+                    });
+                  }
+                }}
+              >
+                <span>⚡</span>
+                {t('destinations.rtspMediaMtxHub', 'MediaMTX Hub Integration')}
+              </button>
+            </div>
+
+            {isMediaMtxMode ? (
+              <div className="space-y-2.5 bg-brand-lime/5 border border-brand-lime/20 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-brand-lime tracking-wider flex items-center gap-1">
+                    <span>⚡</span> {t('destinations.rtspMediaMtxHub', 'MediaMTX Hub Integration')}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime font-mono">
+                    {config.tls ? 'rtsps://' : 'rtsp://'}{currentHost}:{config.port || (config.tls ? '8322' : '8554')}
+                  </span>
+                </div>
+
+                {/* Sub-selector: Managed Service vs Manual External Server */}
+                <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-xs">
+                  <button
+                    type="button"
+                    disabled={!hasManagedProviders}
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      !isExternal && hasManagedProviders
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => {
+                      if (mediamtxProviders.length > 0) {
+                        const defaultProv = mediamtxProviders.find(p => p.id === config.provider_service_id) || mediamtxProviders[0];
+                        if (defaultProv) handleSelectProvider(defaultProv.id);
+                      } else if (remoteMtxServices.length > 0) {
+                        handleSelectRemotePeer(remoteMtxServices[0].peer.id, remoteMtxServices[0].svc.id);
+                      }
+                    }}
+                  >
+                    <span>⚡</span> {t('destinations.managedService', 'Managed Service (Local & Peers)')} {!hasManagedProviders ? `(${t('common.none', 'None')})` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 py-1 px-2 font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                      isExternal
+                        ? 'bg-brand-lime/20 text-brand-lime border border-brand-lime/40 shadow-sm'
+                        : 'text-[var(--text-secondary)] opacity-60 hover:text-[var(--text-primary)]'
+                    }`}
+                    onClick={() => update({
+                      mediamtx_target_type: 'external',
+                      provider_service_id: undefined,
+                      peer_node_id: undefined,
+                      peer_service_id: undefined,
+                      service_target: 'mediamtx',
+                      mediamtx_mode: true,
+                      host: config.host && config.host !== '127.0.0.1' ? config.host : '',
+                      port: config.port || '8554',
+                      path_id: config.path_id || 'stream1',
+                      rtsp_transport: config.rtsp_transport || 'tcp',
+                    })}
+                  >
+                    <span>🌐</span> {t('destinations.externalServer', 'Manual External Server (Unfederated Host)')}
+                  </button>
+                </div>
+
+                {!isExternal && (selectedProvider || config.peer_node_id) ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.rtspProviderHub', 'MediaMTX Provider Instance')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (val.startsWith('peer:')) {
+                              const [, pId, sId] = val.split(':');
+                              handleSelectRemotePeer(parseInt(pId), parseInt(sId));
+                            } else {
+                              handleSelectProvider(parseInt(val));
+                            }
+                          }}
+                        >
+                          {mediamtxProviders.length > 0 && (
+                            <optgroup label={t('destinations.localServices', 'Local Hubs (This Node)')}>
+                              {mediamtxProviders.map(p => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} {p.alias ? `(${p.alias})` : ''} — Port {p.config?.rtsp_port || 8554}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {remoteMtxServices.length > 0 && (
+                            <optgroup label={t('destinations.remotePeers', 'Federated Remote Peers')}>
+                              {remoteMtxServices.map(({ peer, svc }) => (
+                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
+                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.rtspPathId', 'Target Stream Path')}
+                        </label>
+                        <select
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
+                          onChange={e => handleSelectPath(e.target.value)}
+                        >
+                          {configuredPaths.map(pName => (
+                            <option key={pName} value={pName}>/{pName} {getOptionLockStatus('mediamtx', pName)}</option>
+                          ))}
+                          <option value="__custom__">✎ {t('destinations.customPathPrompt', 'Custom Path...')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Transport & TLS controls */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.rtsp.transport', 'Transport Protocol')}
+                        </label>
+                        <select
+                          value={config.rtsp_transport || 'tcp'}
+                          onChange={e => update({ rtsp_transport: e.target.value as 'tcp' | 'udp' })}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                        >
+                          <option value="tcp">TCP ({t('destinations.rtsp.transportTcpRecommended', 'Recommended - Low Jitter')})</option>
+                          <option value="udp">UDP ({t('destinations.rtsp.transportUdp', 'UDP')})</option>
+                        </select>
+                      </div>
+
+                      {/* TLS / RTSPS toggle if supported by hub */}
+                      {activeMtxCfg.ssl_enabled && activeMtxCfg.rtsps_enabled && (
+                        <div className="flex items-center justify-between p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg self-end">
+                          <div className="text-xs">
+                            <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                              🔒 {t('destinations.enableRtsps', 'Encrypted RTSPS (TLS)')}
+                            </span>
+                            <span className="text-[10px] text-[var(--text-secondary)] block">
+                              Port :{activeMtxCfg.rtsps_port || 8322}
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(config.tls)}
+                            onChange={e => {
+                              if (config.peer_node_id && config.peer_service_id) {
+                                handleSelectRemotePeer(config.peer_node_id, config.peer_service_id, e.target.checked);
+                              } else if (selectedProvider) {
+                                handleSelectProvider(selectedProvider.id, e.target.checked);
+                              }
+                            }}
+                            className="accent-brand-lime cursor-pointer w-4 h-4"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {(!config.path_id || !configuredPaths.includes(config.path_id)) && (
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.customPathSlug', 'Custom Path Slug')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. live1, channel_master"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.path_id || ''}
+                          onChange={e => {
+                            const newPath = e.target.value.replace(/[^a-zA-Z0-9_\-\/]/g, '');
+                            const scheme = config.tls ? 'rtsps' : 'rtsp';
+                            const pubUser = config.publish_user || config.auth_user || '';
+                            const pubPass = config.publish_pass || config.auth_pass || '';
+                            const authPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+                            update({
+                              path_id: newPath,
+                              url: `${scheme}://${authPrefix}${currentHost}:${config.port || (config.tls ? 8322 : 8554)}/${newPath}`,
+                            });
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Resource collision warning banner */}
+                    {renderCollisionWarning(getResourceLock('mediamtx', config.path_id || ''), config.path_id || '')}
+
+                    {/* Generated URL & Auto-computed field */}
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.generatedRtspUrl', 'Generated Target RTSP URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all cursor-pointer"
+                        value={config.url || ''}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Remote Hub Mode */
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('sources.remoteHostIp', 'Remote Host / IP')}<span className="text-red-500 ml-0.5">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. mediamtx.mycorp.lan"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.host || ''}
+                          onChange={e => {
+                            const h = e.target.value;
+                            const port = config.port || '8554';
+                            const path = config.path_id || 'stream1';
+                            update({ host: h, url: `rtsp://${h}:${port}/${path}` });
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                          {t('destinations.port', 'Port')}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="8554"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                          value={config.port || '8554'}
+                          onChange={e => {
+                            const p = e.target.value;
+                            update({ port: p, url: `rtsp://${config.host || '127.0.0.1'}:${p}/${config.path_id || 'stream1'}` });
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.rtsp.transport', 'Transport Protocol')}
+                      </label>
+                      <select
+                        value={config.rtsp_transport || 'tcp'}
+                        onChange={e => update({ rtsp_transport: e.target.value as 'tcp' | 'udp' })}
+                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                      >
+                        <option value="tcp">TCP ({t('destinations.rtsp.transportTcpRecommended', 'Recommended - Low Jitter')})</option>
+                        <option value="udp">UDP ({t('destinations.rtsp.transportUdp', 'UDP')})</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                        {t('destinations.generatedRtspUrl', 'Generated Target RTSP URL')}
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-[var(--input-bg)] border border-brand-lime/40 rounded-lg p-1.5 text-xs font-mono text-brand-lime select-all"
+                        value={config.url || ''}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Manual Standalone RTSP Mode */
+              <div className="space-y-2">
+                <div className="space-y-1.5">
+                  <label htmlFor="dest-rtsp-url" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                    {t('destinations.streamUrl')}<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="dest-rtsp-url"
+                    name="url"
+                    placeholder="RTSP URL (rtsp://server:8554/live)"
+                    className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
+                      validationErrors?.url
+                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
+                        : 'border-[var(--glass-border)] focus:border-purple-400'
+                    }`}
+                    value={config.url || ''}
+                    onChange={e => update({ url: e.target.value })}
+                  />
+                  {validationErrors?.url && (
+                    <span className="text-[10px] text-red-400 block mt-1">{validationErrors.url}</span>
+                  )}
+                </div>
+                <div>
+                  <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
+                    {t('destinations.rtsp.transport', 'Transport Protocol')}
+                  </label>
+                  <select
+                    value={config.rtsp_transport || 'tcp'}
+                    onChange={e => update({ rtsp_transport: e.target.value as 'tcp' | 'udp' })}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none font-mono focus:border-brand-lime"
+                  >
+                    <option value="tcp">TCP ({t('destinations.rtsp.transportTcpRecommended', 'Recommended - Low Jitter')})</option>
+                    <option value="udp">UDP ({t('destinations.rtsp.transportUdp', 'UDP')})</option>
+                  </select>
                 </div>
               </div>
             )}
@@ -3585,86 +4289,307 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       })()}
 
       {config.type === 'alsa' && (
-        <div className="space-y-1.5 animate-in fade-in duration-200">
-          <label htmlFor="dest-alsa-device" className="text-[9px] text-text-secondary uppercase font-bold block mb-0.5">
-            {t('destinations.alsaPlayoutDevice')}<span className="text-red-500 ml-0.5">*</span>
-          </label>
+        <div className="space-y-2 animate-in fade-in duration-200">
+          {/* Header with Title, Mode Segmented Selector, and Refresh Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-0.5">
+            <label htmlFor="dest-alsa-card" className="text-[9px] text-text-secondary uppercase font-bold block">
+              {t('destinations.alsaPlayoutDevice')}<span className="text-red-500 ml-0.5">*</span>
+            </label>
+            <div className="flex items-center gap-1.5 self-end sm:self-auto">
+              {/* Segmented Mode Selector: Detected Devices vs Manual Input */}
+              <div className="inline-flex items-center bg-white/5 border border-glass-border rounded-lg p-0.5" role="radiogroup">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!manualAlsaMode}
+                  onClick={() => {
+                    setManualAlsaMode(false);
+                    const curDev = (config.device || '').trim();
+                    if (!curDev || curDev === 'default') {
+                      setSelectedCardId('__default__');
+                      update({ device: 'default' });
+                    } else {
+                      const matchCard = alsaCards.find(c => (c.devices || []).some((d: any) => d.device === curDev));
+                      if (matchCard) {
+                        setSelectedCardId(matchCard.card_id);
+                      } else if (alsaCards.length > 0 && alsaCards[0].devices?.length > 0) {
+                        setSelectedCardId(alsaCards[0].card_id);
+                        update({ device: alsaCards[0].devices[0].device });
+                      } else {
+                        setSelectedCardId('__default__');
+                        update({ device: 'default' });
+                      }
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                    !manualAlsaMode
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  🎛️ {t('destinations.modeDetected', 'Detected Devices')}
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={manualAlsaMode}
+                  onClick={() => setManualAlsaMode(true)}
+                  className={`px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                    manualAlsaMode
+                      ? 'bg-purple-600 text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  ✏️ {t('destinations.modeManual', 'Manual Input')}
+                </button>
+              </div>
+
+              {/* Refresh Button: Shown only in detected mode */}
+              {!manualAlsaMode && (
+                <button
+                  type="button"
+                  title={t('destinations.alsaRefresh')}
+                  onClick={() => fetchAlsaPlayback(true)}
+                  disabled={loadingAlsaDevices}
+                  className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-glass-border text-text-secondary hover:text-text-primary text-[10px] transition-all flex items-center gap-1 disabled:opacity-50"
+                >
+                  <span className={loadingAlsaDevices ? 'animate-spin inline-block' : 'inline-block'}>🔄</span>
+                  <span className="hidden sm:inline">{t('common.refresh', 'Refresh')}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
           {loadingAlsaDevices ? (
-            <div className="text-[10px] text-text-secondary animate-pulse">{t('sources.loadingAlsa')}</div>
-          ) : alsaDevices.length === 0 ? (
-            <div className="space-y-1.5">
+            <div className="text-[10px] text-text-secondary animate-pulse py-2 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+              {t('sources.loadingAlsa')}
+            </div>
+          ) : manualAlsaMode ? (
+            /* MANUAL MODE: Explicit Direct String Input */
+            <div className="space-y-1">
+              <input
+                type="text"
+                id="dest-alsa-device"
+                name="device"
+                placeholder="default, hw:0,0, sysdefault"
+                className={`w-full bg-input-bg border rounded-lg p-2 text-xs text-text-primary outline-none font-mono focus:border-purple-400 transition-all ${
+                  validationErrors?.device ? 'border-red-500/50 bg-red-500/5' : 'border-glass-border'
+                }`}
+                value={config.device || ''}
+                onChange={e => update({ device: e.target.value })}
+              />
+              <span className="text-[10px] text-text-secondary block">
+                {t('sources.alsaDeviceManualHelp', 'Specify custom ALSA device string (e.g. hw:0,0, hw:2,0,1, plughw:1,0 or default).')}
+              </span>
+              {validationErrors?.device && (
+                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
+              )}
+            </div>
+          ) : alsaCards.length === 0 && alsaDevices.length === 0 ? (
+            /* EMPTY HARDWARE DETECTED STATE */
+            <div className="space-y-1.5 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
               <div className="text-[10px] text-amber-500 font-medium">{t('destinations.noAlsaPlaybackDetected')}</div>
               <input
                 type="text"
                 id="dest-alsa-device"
                 name="device"
                 placeholder="default, hw:0,0, sysdefault"
-                className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
-                  validationErrors?.device ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
+                className={`w-full bg-input-bg border rounded-lg p-1.5 text-xs text-text-primary outline-none font-mono ${
+                  validationErrors?.device ? 'border-red-500/50 bg-red-500/5' : 'border-glass-border'
                 }`}
                 value={config.device || ''}
                 onChange={e => update({ device: e.target.value })}
               />
             </div>
           ) : (
-            <div className="space-y-1.5">
-              {!manualAlsaMode ? (
+            /* ASSISTED VISUAL MODE: Card Selector + Subdevice Selector */
+            <div className="space-y-2">
+              {/* Level 1: Sound Card / Host Hardware Selector */}
+              <div>
+                <label htmlFor="dest-alsa-card" className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
+                  {t('destinations.alsaSoundCard')}
+                </label>
                 <select
-                  id="dest-alsa-device"
-                  name="device"
-                  className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none focus:border-purple-400 transition-all ${
-                    validationErrors?.device ? 'border-red-500/50 bg-red-500/5' : 'border-white/10'
-                  }`}
-                  value={config.device || ''}
+                  id="dest-alsa-card"
+                  className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer"
+                  value={selectedCardId !== '' ? String(selectedCardId) : (config.device === 'default' ? '__default__' : '')}
                   onChange={e => {
-                    if (e.target.value === '__manual__') {
-                      setManualAlsaMode(true);
+                    const newCardId = e.target.value;
+                    if (newCardId === '__default__') {
+                      setSelectedCardId('__default__');
+                      update({ device: 'default' });
+                      return;
+                    }
+                    setSelectedCardId(newCardId);
+                    if (newCardId === '') {
                       update({ device: '' });
+                      return;
+                    }
+                    const card = alsaCards.find(c => String(c.card_id) === String(newCardId));
+                    if (card && card.devices && card.devices.length > 0) {
+                      update({ device: card.devices[0].device });
                     } else {
-                      update({ device: e.target.value });
+                      update({ device: '' });
                     }
                   }}
                 >
-                  <option value="default">{t('destinations.defaultDevice')}</option>
-                  {alsaDevices.map(d => (
-                    <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
+                  <option value="__default__">🌟 {t('destinations.defaultDevice', 'System Default (default)')}</option>
+                  <option value="">{t('destinations.alsaSelectCard')}</option>
+                  {alsaCards.map(c => (
+                    <option key={`dest-card-${c.card_id}`} value={String(c.card_id)}>
+                      🎛️ {c.card_label || `${c.card_name} [Card ${c.card_id}]`}
+                    </option>
                   ))}
-                  <option value="__manual__">{t('sources.manualInput')}</option>
                 </select>
-              ) : (
-                <div className="flex flex-col w-full gap-1.5">
-                  <div className="flex w-full gap-1.5">
-                    <input
-                      type="text"
-                      id="dest-alsa-device"
-                      name="device"
-                      placeholder="default, hw:0,0"
-                      className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none font-mono placeholder-white/20 ${
-                        validationErrors?.device ? 'border-red-500/50 focus:border-red-500 bg-red-500/5' : 'border-white/10'
-                      }`}
-                      value={config.device || ''}
-                      onChange={e => update({ device: e.target.value })}
-                    />
-                    <button
-                      type="button"
-                      className="px-2.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition-colors shrink-0"
-                      onClick={() => {
-                        setManualAlsaMode(false);
-                        update({ device: 'default' });
-                      }}
-                    >
-                      {t('common.list')}
-                    </button>
-                  </div>
+              </div>
+
+              {/* Level 2: Subdevice / Channel Selector (Shown only when physical card is selected) */}
+              {selectedCardId !== '__default__' && (
+                <div>
+                  <label htmlFor="dest-alsa-device" className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
+                    {t('destinations.alsaSubdevice')}
+                  </label>
+                  {(() => {
+                    const currentCard = alsaCards.find(c => String(c.card_id) === String(selectedCardId));
+                    const subdevices = currentCard ? (currentCard.devices || []) : alsaDevices;
+
+                    return (
+                      <select
+                        id="dest-alsa-device"
+                        name="device"
+                        className={`w-full bg-input-bg border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer disabled:opacity-50 ${
+                          validationErrors?.device ? 'border-red-500/50 bg-red-500/5' : 'border-glass-border'
+                        }`}
+                        disabled={subdevices.length === 0}
+                        value={config.device || ''}
+                        onChange={e => update({ device: e.target.value })}
+                      >
+                        <option value="">{t('destinations.alsaSelectSubdevice')}</option>
+                        {subdevices.map((d: any) => (
+                          <option key={d.device} value={d.device}>
+                            {d.name} ({d.device})
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  })()}
+                  {validationErrors?.device && (
+                    <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
+                  )}
                 </div>
-              )}
-              {validationErrors?.device && (
-                <span className="text-[10px] text-red-400 block mt-1">{validationErrors.device}</span>
               )}
             </div>
           )}
         </div>
       )}
+
+      {config.type === 'pipewire' && (() => {
+        const pipewireProviders = providers.filter(p => p.service_type === 'pipewire_hub');
+        const selectedHub = pipewireProviders.find(p => p.id === config.provider_service_id) || pipewireProviders[0];
+        const virtualSinks: any[] = selectedHub?.config?.virtual_sinks || selectedHub?.config?.pipewire_config?.virtual_sinks || [];
+        const currentSinkId = config.sink_id || config.device || (virtualSinks[0]?.id || 'mix_bus');
+
+        return (
+          <div className="space-y-3 p-3 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl animate-in fade-in duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🌐</span>
+                <span className="text-xs font-bold text-brand-lime uppercase tracking-wider">
+                  {t('destinations.pipewire.title', 'PipeWire Audio Hub Output')}
+                </span>
+              </div>
+              {selectedHub && (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${
+                  selectedHub.status === 'running'
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-zinc-500/10 border-zinc-500/30 text-[var(--text-secondary)]'
+                }`}>
+                  {selectedHub.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')}
+                </span>
+              )}
+            </div>
+
+            {pipewireProviders.length === 0 ? (
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-2">
+                <span>⚠️</span>
+                <div>
+                  <p className="font-semibold">{t('destinations.pipewire.noHubsTitle', 'No PipeWire Audio Hubs Found')}</p>
+                  <p className="text-[11px] text-amber-200/80 mt-0.5">
+                    {t('destinations.pipewire.noHubs', 'Create and start a PipeWire Audio Hub service first in the Services tab.')}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {/* Selector 1: Hub Service */}
+                <div>
+                  <label htmlFor="dest-pw-provider" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.pipewire.hubService', 'PipeWire Audio Hub Service')}
+                  </label>
+                  <select
+                    id="dest-pw-provider"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
+                    value={config.provider_service_id || ''}
+                    onChange={e => {
+                      const nextHubId = Number(e.target.value);
+                      const nextHub = pipewireProviders.find(h => h.id === nextHubId);
+                      const nextSinks = nextHub?.config?.virtual_sinks || nextHub?.config?.pipewire_config?.virtual_sinks || [];
+                      const defaultSink = nextSinks[0]?.id || 'mix_bus';
+                      update({
+                        provider_service_id: nextHubId,
+                        pipewire_service_id: nextHubId,
+                        sink_id: defaultSink,
+                        device: defaultSink,
+                      });
+                    }}
+                  >
+                    <option value="">{t('destinations.pipewire.selectHub', 'Select PipeWire Hub...')}</option>
+                    {pipewireProviders.map(h => (
+                      <option key={h.id} value={h.id}>
+                        {h.name} ({h.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Selector 2: Target Virtual Audio Sink */}
+                <div>
+                  <label htmlFor="dest-pw-sink" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
+                    {t('destinations.pipewire.sinkTarget', 'Target Virtual Audio Sink')}
+                  </label>
+                  <select
+                    id="dest-pw-sink"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
+                    value={currentSinkId}
+                    onChange={e => {
+                      const selectedSink = e.target.value;
+                      update({
+                        sink_id: selectedSink,
+                        device: selectedSink,
+                      });
+                    }}
+                  >
+                    {virtualSinks.length === 0 ? (
+                      <option value="default">{t('destinations.pipewire.defaultSink', 'System Default (default)')}</option>
+                    ) : (
+                      virtualSinks.map((s: any) => (
+                        <option key={s.id} value={s.id}>
+                          🎛️ {s.name || s.id} ({s.channels || 2}ch) [{s.id}]{s.aes67_enabled ? ' [AES67 Tx]' : ''}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-1">
+                    {t('destinations.pipewire.sinkHelp', 'FFmpeg injects uncompressed audio directly into this PipeWire virtual sink via the PulseAudio socket.')}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Recommended Broadcast Recipe Card ── */}
       {renderBroadcastRecipe(config.type, t)}
@@ -3750,6 +4675,13 @@ const renderBroadcastRecipe = (type: string, t: any) => {
       audio: "AAC / Opus / PCM",
       container: "RTP Session",
       details: "Flujo unicast directo sin contenedor de transporte pesado, comúnmente utilizado para contribuciones de bajísima latencia o integraciones con sistemas legacy."
+    },
+    pipewire: {
+      title: "PipeWire Audio Hub (Virtual Audio Bus)",
+      video: "Ninguno (Solo Audio)",
+      audio: "PCM (16/24-bit / Direct Stream Copy)",
+      container: "PulseAudio Emulation Socket",
+      details: "Inyección directa hacia un bus virtual de PipeWire. El audio inyectado se puede enrutar hacia salidas físicas locales o retransmitir por red mediante multidifusión AES67 / Dante."
     }
   };
 

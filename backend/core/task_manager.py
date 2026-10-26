@@ -156,7 +156,43 @@ class TaskManager:
             # 2. Spawn subprocess (outside database session)
             prepare_process_file_permissions(execution_id=execution_id, logger=self.logger)
             self.logger.info(f"Starting scheduled task FFmpeg cmd: {shlex.join(cmd)}")
+            
+            # Check if this scheduled task consumes or produces to a PipeWire Hub
+            pw_provider_id = None
+            check_targets = [val_input, val_output]
+            if isinstance(val_input, dict):
+                if "input1" in val_input:
+                    check_targets.append(val_input.get("input1"))
+                if "input2" in val_input:
+                    check_targets.append(val_input.get("input2"))
+            for c in check_targets:
+                if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                    cand_id = c.get("provider_service_id") or c.get("pipewire_service_id")
+                    if cand_id:
+                        try:
+                            pw_provider_id = int(cand_id)
+                            break
+                        except (ValueError, TypeError):
+                            pass
+
+            if not pw_provider_id:
+                for c in check_targets:
+                    if c and isinstance(c, dict) and c.get("type") in ("pipewire", "pipewire_hub"):
+                        try:
+                            with self.db_session_factory() as session:
+                                from database.models import Service
+                                pw_hubs = session.query(Service).filter(Service.service_type == "pipewire_hub").all()
+                                if len(pw_hubs) == 1:
+                                    pw_provider_id = pw_hubs[0].id
+                                    break
+                        except Exception:
+                            pass
+
             sub_env = {**os.environ, "FFMPEG_GUI_EXECUTION_ID": str(execution_id)}
+            if pw_provider_id:
+                sub_env["PULSE_SERVER"] = f"unix:/tmp/ffmpeg-gui/pipewire-{pw_provider_id}/pulse.sock"
+                sub_env["PIPEWIRE_RUNTIME_DIR"] = f"/tmp/ffmpeg-gui/pipewire-{pw_provider_id}"
+                sub_env["PULSE_RUNTIME_PATH"] = f"/tmp/ffmpeg-gui/pipewire-{pw_provider_id}"
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
@@ -166,6 +202,8 @@ class TaskManager:
             )
             self.running_processes[execution_id] = proc
             self.last_activity[execution_id] = datetime.utcnow()
+            if self.process_manager and hasattr(self.process_manager, "notify_pipewire_matrix_change"):
+                self.process_manager.notify_pipewire_matrix_change()
             
             # 3. Update execution PID and status in a second short transaction
             with self.db_session_factory() as session:
@@ -503,6 +541,8 @@ class TaskManager:
             self.running_processes.pop(execution_id, None)
             self.last_activity.pop(execution_id, None)
             cleanup_task_progress_files(execution_id)
+            if self.process_manager and hasattr(self.process_manager, "notify_pipewire_matrix_change"):
+                self.process_manager.notify_pipewire_matrix_change()
             
             if not should_retry:
                 from core.resource_lock_manager import resource_lock_manager

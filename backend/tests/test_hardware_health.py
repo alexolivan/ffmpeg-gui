@@ -11,13 +11,21 @@ if backend_dir not in sys.path:
 from core.audioscience_health import (
     parse_hpicontrol_list,
     parse_status_control_references,
+    parse_universal_control_id,
     parse_child_control,
     probe_audioscience_health,
+    _ADAPTER_CAPABILITIES_CACHE,
 )
 from core.hardware_health import HardwareHealthManager
 
 
 class TestAudioScienceHealth(unittest.TestCase):
+    def setUp(self):
+        import core.audioscience_health as ash
+        ash._ADAPTER_CAPABILITIES_CACHE.clear()
+        ash._CACHED_HEALTH = None
+        ash._LAST_PROBE_TIME = 0.0
+
     def test_parse_hpicontrol_list(self):
         output = """Local adapters: 2
   0 ASI5720, serial 105283, SW version 4.20.54, HW version F7, 2 inputs, 4 outputs
@@ -33,6 +41,23 @@ Network Adapters on default interface: 0
         self.assertEqual(adapters[1]["adapter_index"], 1)
         self.assertEqual(adapters[1]["name"], "ASI5810")
         self.assertEqual(adapters[1]["serial"], "114300")
+
+    def test_parse_universal_control_id(self):
+        # Case 1: card with universal status control (ASI5720)
+        out_universal = """Enumerate controls
+Control 0 CONTROL_LEVEL on SOURCENODE_LINEIN 0 : (1400, 1400) -10 to 24 step 1
+Control 9 CONTROL_UNIVERSAL on SOURCENODE_ADAPTER 0 Universal_Info
+Control 10 CONTROL_UNIVERSAL on SOURCENODE_ADAPTER 0 Universal_Info
+"""
+        self.assertEqual(parse_universal_control_id(out_universal), 9)
+
+        # Case 2: card without universal status control (ASI5640)
+        out_no_universal = """Enumerate controls
+Control 0 CONTROL_LEVEL on SOURCENODE_LINEIN 0 : (1400, 1400) -10 to 24 step 1
+Control 4 CONTROL_VOLUME on SOURCENODE_OSTREAM 0 to DESTNODE_LINEOUT 0 : (0, 0) dB [unmuted]
+Control 9 CONTROL_VOLUME on SOURCENODE_LINEIN 1 to DESTNODE_LINEOUT 0 : (-10000, -10000) dB [unmuted]
+"""
+        self.assertIsNone(parse_universal_control_id(out_no_universal))
 
     def test_parse_status_control_references(self):
         # Case 1: multiple references [10, 11]
@@ -98,6 +123,8 @@ float value[1]= 53.0
             m.returncode = 0
             if cmd == ["/usr/bin/hpicontrol.py", "list"]:
                 m.stdout = "  0 ASI5720, serial 105283, SW version 4.20.54\n"
+            elif cmd == ["/usr/bin/hpicontrol.py", "-a", "0", "controls"]:
+                m.stdout = "Control 9 CONTROL_UNIVERSAL on SOURCENODE_ADAPTER 0 Universal_Info\n"
             elif cmd == ["/usr/bin/hpicontrol.py", "-a", "0", "cget", "9"]:
                 m.stdout = "--reference value[2]= [10, 11]\n"
             elif cmd == ["/usr/bin/hpicontrol.py", "-a", "0", "cget", "10"]:
@@ -117,27 +144,47 @@ float value[1]= 53.0
 
     @patch("core.audioscience_health._find_hpicontrol_bin", return_value="/usr/bin/hpicontrol.py")
     @patch("subprocess.run")
-    def test_probe_audioscience_without_temp_sensor(self, mock_run, mock_bin):
-        # Card like ASI5810 where status only references control 10 (CPU load), no temp sensor
+    def test_probe_audioscience_zero_polling_on_non_universal_card(self, mock_run, mock_bin):
+        # Card like ASI5640 from test3: 122 controls, zero CONTROL_UNIVERSAL
+        executed_cmds = []
+
         def side_effect(cmd, **kwargs):
+            executed_cmds.append(list(cmd))
             m = MagicMock()
             m.returncode = 0
             if cmd == ["/usr/bin/hpicontrol.py", "list"]:
-                m.stdout = "  0 ASI5810, serial 114300, SW version 4.20.54\n"
-            elif cmd == ["/usr/bin/hpicontrol.py", "-a", "0", "cget", "9"]:
-                m.stdout = "--reference value[1]= 10\n"
-            elif cmd == ["/usr/bin/hpicontrol.py", "-a", "0", "cget", "10"]:
-                m.stdout = "--cstring classname[15]= b'CPU Utilization'\nint value[1]= 17\n"
+                m.stdout = "  0 ASI5640, serial 70705, SW version 4.20.56, HW version G3, 4 inputs, 4 outputs\n"
+            elif cmd == ["/usr/bin/hpicontrol.py", "-a", "0", "controls"]:
+                m.stdout = (
+                    "Control 0 CONTROL_LEVEL on SOURCENODE_LINEIN 0 : (1400, 1400)\n"
+                    "Control 4 CONTROL_VOLUME on SOURCENODE_OSTREAM 0 to DESTNODE_LINEOUT 0\n"
+                    "Control 9 CONTROL_VOLUME on SOURCENODE_LINEIN 1 to DESTNODE_LINEOUT 0\n"
+                )
             return m
 
         mock_run.side_effect = side_effect
+
+        # Initial call: discovers that adapter 0 has no universal controls
         cards = probe_audioscience_health()
         self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]["name"], "ASI5810")
-        self.assertEqual(cards[0]["dsp_cpu_percent"], 17)
+        self.assertEqual(cards[0]["name"], "ASI5640")
+        self.assertIsNone(cards[0]["dsp_cpu_percent"])
         self.assertIsNone(cards[0]["dsp_temp_c"])
         self.assertFalse(cards[0]["has_temp_sensor"])
         self.assertEqual(cards[0]["status"], "normal")
+
+        # Verify NO cget was called (which would cause header object 0 invalid in the driver)
+        for c in executed_cmds:
+            self.assertNotIn("cget", c)
+
+        # Second call: capabilities are already cached, controls is NOT run again
+        executed_cmds.clear()
+        cards2 = probe_audioscience_health()
+        self.assertEqual(len(cards2), 1)
+        self.assertEqual(cards2[0]["name"], "ASI5640")
+        self.assertIsNone(cards2[0]["dsp_cpu_percent"])
+        # Only 'list' is called; no 'controls' and no 'cget'
+        self.assertEqual(executed_cmds, [["/usr/bin/hpicontrol.py", "list"]])
 
 
 
@@ -253,6 +300,14 @@ class TestHardwareHealthManager(unittest.TestCase):
         mock_fans.return_value = [{"name": "Chassis Fan 1", "rpm": 0, "status": "stopped"}]
         snap_fan = self.mgr.collect_health_snapshot()
         self.assertTrue(any("fan failure" in a["message"].lower() for a in snap_fan["alerts"]))
+
+    def test_get_health_snapshot_non_blocking(self):
+        # Ensure get_health_snapshot returns cached data without triggering collect_health_snapshot
+        self.mgr._cached_snapshot = {"status": "normal", "max_temp_c": 42.0}
+        with patch.object(self.mgr, "collect_health_snapshot") as mock_collect:
+            snap = self.mgr.get_health_snapshot()
+            self.assertEqual(snap["max_temp_c"], 42.0)
+            mock_collect.assert_not_called()
 
 
 

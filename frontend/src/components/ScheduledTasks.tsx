@@ -127,9 +127,12 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
   // Handle Save (Create / Update)
   const handleSaveTask = async (payload: any) => {
+    const isManual = payload.schedule_type === 'manual';
     const finalPayload = {
       ...payload,
-      is_active: payload.is_active !== undefined ? payload.is_active : (editingTask ? editingTask.is_active : true)
+      is_active: isManual
+        ? true
+        : (payload.is_active !== undefined ? payload.is_active : (editingTask ? editingTask.is_active : true))
     };
     try {
       const url = editingTask ? `${API}/tasks/${editingTask.id}` : `${API}/tasks`;
@@ -232,7 +235,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
         body: JSON.stringify({
           name: `${task.name} (Copy)`,
           alias: task.alias ? `${task.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
-          is_active: false,
+          is_active: task.schedule_type === 'manual' ? true : false,
           input_config: task.input_config,
           output_config: task.output_config,
           codec_config: task.codec_config,
@@ -317,7 +320,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
   // Metrics
   const totalTasks = tasks.length;
-  const activeTasks = tasks.filter(t => t.is_active).length;
+  const activeTasks = tasks.filter(t => t.schedule_type === 'manual' || t.is_active).length;
   const recurringTasks = tasks.filter(t => t.schedule_type === 'recurring').length;
   const runningExecutions = taskExecutions.length;
 
@@ -383,21 +386,21 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
       {/* TASKS LIST - TWO STACKS (ACTIVE VS DISABLED) */}
       <div className="space-y-6">
-        {/* Active & Scheduled Tasks */}
+        {/* Active & On-Demand Tasks */}
         <div className="glass-card p-4 md:p-5 bg-white/5 border-white/5">
-          <h2 className="text-xl font-bold mb-3 text-[var(--text-primary)]">{t('tasks.activeScheduledTasks', 'Active & Scheduled Tasks')}</h2>
+          <h2 className="text-xl font-bold mb-3 text-[var(--text-primary)]">{t('tasks.activeAndOnDemand', 'Active & On-Demand Tasks')}</h2>
           
           {loading ? (
             <div className="py-12 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
           ) : error ? (
             <div className="py-8 text-center text-red-400 font-bold border border-red-500/20 rounded-2xl bg-red-500/5">{error}</div>
-          ) : tasks.filter(t => t.is_active).length === 0 ? (
+          ) : tasks.filter(t => t.schedule_type === 'manual' || t.is_active).length === 0 ? (
             <div className="py-12 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
-              {t('tasks.noActiveTasks', 'No active scheduled tasks.')}
+              {t('tasks.noActiveTasks', 'No active or on-demand tasks.')}
             </div>
           ) : (
             <div className="divide-y divide-white/5">
-              {tasks.filter(t => t.is_active).map(task => {
+              {tasks.filter(t => t.schedule_type === 'manual' || t.is_active).map(task => {
                 const liveExec = taskExecutions.find((e: any) => e.task_id === task.id && (e.status === 'running' || e.status === 'retrying'));
                 const exec = liveExec || task.last_execution;
                 const isRunning = exec && (exec.status === 'running' || exec.status === 'retrying');
@@ -487,10 +490,18 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             🛡️ WATCHDOG ({task.retry_policy.max_retries})
                           </span>
                         )}
-                        {task.is_system ? (
+                        {task.schedule_type === 'manual' ? (
+                          <span 
+                            title={t('tasks.onDemandHelp', 'This task runs exclusively on-demand via the Play button or API')}
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 bg-amber-500/10 text-amber-400 border-amber-500/20 select-none"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                            {t('tasks.onDemand', 'On-Demand')}
+                          </span>
+                        ) : task.is_system ? (
                           <span 
                             title="Managed via Settings > General > Logging"
-                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20"
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20 select-none"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
                             {t('common.enabled', 'Active')}
@@ -501,8 +512,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                               e.stopPropagation();
                               handleToggleTaskActive(task.id, task.is_active);
                             }}
-                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20"
-                            title={t('tasks.disableTask', 'Disable Task')}
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20 cursor-pointer"
+                            title={t('tasks.pauseSchedule', 'Pause automated schedule')}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
                             {t('common.enabled', 'Active')}
@@ -685,19 +696,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           )}
         </div>
 
-        {/* Configured Tasks (Disabled / Standby) */}
+        {/* Paused Scheduled Tasks */}
         <div className="glass-card p-4 md:p-5 bg-white/5 border-white/5">
-          <h2 className="text-xl font-bold mb-3 text-text-secondary">{t('tasks.configuredTasksDisabled', 'Configured Tasks (Disabled / Standby)')}</h2>
+          <h2 className="text-xl font-bold mb-3 text-text-secondary">{t('tasks.pausedScheduledTasks', 'Paused Scheduled Tasks (Standby)')}</h2>
           
           {loading ? (
             <div className="py-12 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
-          ) : tasks.filter(t => !t.is_active).length === 0 ? (
+          ) : tasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).length === 0 ? (
             <div className="py-12 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
-              {t('tasks.noDisabledTasks', 'No disabled tasks.')}
+              {t('tasks.noDisabledTasks', 'No paused scheduled tasks.')}
             </div>
           ) : (
             <div className="divide-y divide-white/5">
-              {tasks.filter(t => !t.is_active).map(task => {
+              {tasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).map(task => {
                 const isRunning = task.last_execution && (task.last_execution.status === 'running' || task.last_execution.status === 'retrying');
                 const exec = task.last_execution;
                 return (
@@ -791,8 +802,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                               e.stopPropagation();
                               handleToggleTaskActive(task.id, task.is_active);
                             }}
-                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10"
-                            title={t('tasks.enableTask', 'Enable Task')}
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider transition-all border flex items-center gap-1.5 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)] hover:bg-white/10 cursor-pointer"
+                            title={t('tasks.resumeSchedule', 'Resume automated schedule')}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
                             {t('common.disabled', 'Disabled')}

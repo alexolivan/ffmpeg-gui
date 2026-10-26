@@ -85,7 +85,15 @@ export const OUTPUT_COMPATIBLE_CODECS: Record<string, { video: string[]; audio: 
   },
   alsa: {
     video: [],
+    audio: ['pcm_s16le', 'pcm_s24le']
+  },
+  pipewire: {
+    video: [],
     audio: ['pcm_s16le', 'pcm_s24le', 'copy']
+  },
+  rtsp: {
+    video: ['libx264', 'h264_vaapi', 'h264_qsv', 'h264_nvenc', 'libx265', 'hevc_vaapi', 'hevc_nvenc', 'copy'],
+    audio: ['pcm_s16le', 'pcm_s24le', 'aac', 'libfdk_aac', 'libopus', 'libmp3lame', 'copy']
   }
 };
 
@@ -1001,10 +1009,42 @@ export interface SystemCapabilities {
   };
 }
 
+/**
+ * Evaluates whether an audio source delivers uncompressed raw PCM samples
+ * from hardware/generators, where 'copy' passthrough is invalid for streaming destinations.
+ */
+export function isRawHardwareAudioSource(inputType?: string): boolean {
+  if (!inputType) return false;
+  return ['alsa', 'decklink', 'lavfi_audio', 'pipewire'].includes(inputType);
+}
+
+/**
+ * Evaluates whether an uncompressed PCM stream can be passed through without transcoding
+ * between raw hardware/virtual audio sources and raw sinks (e.g. PipeWire -> ALSA, ALSA -> PipeWire, etc.).
+ */
+export function isPcmPassthroughViable(inputType?: string, outputType?: string): boolean {
+  if (!inputType || !outputType) return false;
+  // ALSA hardware audio sinks must never use streamcopy; they require explicit PCM transcoding & sample rate control (48 kHz).
+  if (outputType === 'alsa') return false;
+  const isRawInput = isRawHardwareAudioSource(inputType);
+  const isRawDest = ['pipewire'].includes(outputType);
+  return isRawInput && isRawDest;
+}
+
+/**
+ * Evaluates whether a video source delivers uncompressed raw pixel frames
+ * from hardware/generators, where 'copy' passthrough is invalid for streaming destinations.
+ */
+export function isRawHardwareVideoSource(inputType?: string): boolean {
+  if (!inputType) return false;
+  return ['desktop', 'decklink', 'v4l2', 'lavfi_video'].includes(inputType);
+}
+
 export function getAvailableVideoCodecs(
   buildOptions?: Record<string, boolean>,
   systemCapabilities?: SystemCapabilities,
-  outputType?: string
+  outputType?: string,
+  inputType?: string
 ): CodecDefinition[] {
   let codecs = VIDEO_CODECS;
   if (!buildOptions) {
@@ -1035,13 +1075,19 @@ export function getAvailableVideoCodecs(
     codecs = codecs.filter(c => allowed.includes(c.id));
   }
 
+  // If input is an uncompressed raw hardware source, exclude 'copy' (passthrough impossible)
+  if (isRawHardwareVideoSource(inputType)) {
+    codecs = codecs.filter(c => c.id !== 'copy');
+  }
+
   return codecs;
 }
 
 export function getAvailableAudioCodecs(
   buildOptions?: Record<string, boolean>,
   outputType?: string,
-  systemCapabilities?: SystemCapabilities
+  systemCapabilities?: SystemCapabilities,
+  inputType?: string
 ): CodecDefinition[] {
   let codecs = AUDIO_CODECS;
   
@@ -1068,6 +1114,33 @@ export function getAvailableAudioCodecs(
   if (outputType && OUTPUT_COMPATIBLE_CODECS[outputType]) {
     const allowed = OUTPUT_COMPATIBLE_CODECS[outputType].audio;
     codecs = codecs.filter(c => allowed.includes(c.id));
+  }
+
+  // Audio streamcopy ('copy') matrix:
+  // - ALSA destinations NEVER allow 'copy' to ensure guaranteed 48kHz PCM stability on hardware cards.
+  // - Raw hardware/virtual sources (pipewire, decklink) CAN streamcopy to PipeWire and containers supporting PCM (file, rtsp, rtp).
+  // - Raw sources CANNOT streamcopy to compressed streaming destinations (icecast, rtmp, whip, hls).
+  // - Compressed sources CANNOT streamcopy into raw PCM destinations (alsa, pipewire) without transcoding.
+  const isRawInput = isRawHardwareAudioSource(inputType);
+  const isCompressedDest = outputType ? ['icecast', 'rtmp', 'whip', 'hls'].includes(outputType) : false;
+  const isRawDest = outputType ? ['alsa', 'pipewire'].includes(outputType) : false;
+
+  if (outputType === 'alsa') {
+    codecs = codecs.filter(c => c.id !== 'copy');
+  } else if (isRawInput && isCompressedDest) {
+    codecs = codecs.filter(c => c.id !== 'copy');
+  } else if (!isRawInput && isRawDest) {
+    codecs = codecs.filter(c => c.id !== 'copy');
+  }
+
+  // When both input and output are raw PCM (e.g. PipeWire -> ALSA, ALSA -> PipeWire),
+  // prioritize streamcopy ('copy') at the top of the list
+  if (isPcmPassthroughViable(inputType, outputType)) {
+    codecs = [...codecs].sort((a, b) => {
+      if (a.id === 'copy') return -1;
+      if (b.id === 'copy') return 1;
+      return 0;
+    });
   }
 
   return codecs;

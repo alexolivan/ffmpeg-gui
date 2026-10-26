@@ -5,7 +5,733 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.50.0] - 2026-10-26
+
+### Added
+- **LAN Discovery Beacon & Kill-Switch (`discovery_beacon.py`, `SettingsView.tsx`, `network_inspector.py`)**:
+  - Implemented background UDP broadcast beacon service on port `59990/udp` broadcasting JSON node identity every 4 seconds.
+  - Implemented immediate reactive response to `{"cmd": "DISCOVER_QUERY"}` sent by desktop companion scanners.
+  - Generates immutable `node_id` derived from `/etc/machine-id` (falling back to persistent `data/node_id` UUID) ensuring robust node identification across DHCP IP changes and shared hostnames.
+  - Added user-configurable `discovery_beacon_enabled` setting in `SystemSettings` (default: `true`), allowing sysadmins to completely disable network beacons via Web GUI Settings (`Network & SSL` card) or REST API (`PATCH /api/settings`).
+  - Integrated port `59990/udp` into `NetworkInspector` live port matrix and automated 1-click UFW/iptables firewall rule generators.
+  - Added full multilingual translations in English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+  - Added comprehensive test suite `test_discovery_beacon.py`.
+- **Dedicated NetInfoView & VersionInfoView LCD Screens (`core/lcd/views/info.py`, `core/lcd/views/menu.py`, `test_lcd_views.py`)**:
+  - **`NetInfoView` ('5. Net Info')**: Displays full, untruncated IPv4 addresses on dedicated lines across 4-line and 2-line LCDs (preventing octet truncations). Accurately aligns and displays active HTTP and HTTPS (`-----` when disabled) listener ports. Implemented resilient network interface discovery via `psutil.net_if_addrs()` to guarantee accurate LAN IP reporting even in isolated broadcast environments without external internet connectivity.
+  - **`VersionInfoView` ('6. Versions')**: Displays live, synchronized component versions dynamically fetched from their respective Single Sources of Truth (`backend.version`, `frontend/package.json`, and `database.version.schema_version`), replacing legacy hardcoded v1.x strings.
+  - **Main Menu Navigation**: Added `5. Net Info` and `6. Versions` options to `MainMenuView` with smooth `X` key return navigation.
+  - **Backward Compatibility**: Preserved `SystemInfoView = NetInfoView` alias for legacy integrations.
+
+## [2.49.9] - 2026-10-21
+
+### Fixed
+- **Firefox Kiosk Notificationbox & Banner Shield (`process_manager.py`, `test_kiosk_browser.py`)**:
+  - Automatically enabled `toolkit.legacyUserProfileCustomizations.stylesheets` and generated `chrome/userChrome.css` for all Firefox Kiosk profiles.
+  - Suppressed all browser-level notification bars, infobars, warning decks, and prompt stacks (`notificationbox`, `notification-message-bar`, `.notificationbox-stack`, `#global-notificationbox`, `#tab-notification-deck`) via CSS `display: none !important;`.
+  - Guarantees clean, uninterrupted broadcast output across unattended kiosk displays (OBS, NDI, VNC) regardless of any unexpected internal browser state alerts.
+
+## [2.49.8] - 2026-10-21
+
+### Fixed
+- **Firefox Kiosk Unsupported Sandbox Warning Banner (`process_manager.py`, `test_kiosk_browser.py`)**:
+  - Removed `user_pref("security.sandbox.content.level", 0);` from the auto-generated Firefox kiosk `user.js` profile configuration.
+  - Allowing content process sandboxing to run at its standard default level eliminates the non-dismissible `"The security sandbox is disabled. Your configuration is unsupported and less secure"` warning banner while preserving `media.cubeb.sandbox: false` and `/dev/snd/` permissions for audio playback via ALSA loopback and PipeWire.
+
+## [2.49.7] - 2026-10-21
+
+### Changed
+- **Manual Tasks On-Demand Workflow Alignment (`ScheduledTasks.tsx`, `main.py`, `en.json`, `es.json`, `ca.json`)**:
+  - **Eliminated Ambiguous Active/Disabled Toggle for Manual Tasks**: Manual tasks (`schedule_type == 'manual'`) are on-demand workflows with no cron schedule or future execution timestamps. Replaced the confusing active/disabled toggle button on manual task rows with a dedicated `[⚡ On-Demand]` semantic badge.
+  - **Reclassified Tasks Lists**:
+    - **Active & On-Demand Tasks**: Houses active scheduled tasks along with on-demand manual workflows ready for manual execution.
+    - **Paused Scheduled Tasks (Standby)**: Exclusively reserves the secondary list for scheduled tasks whose automated cron/one-shot timer has been paused.
+  - **Cloning & Save Resilience**: Cloning or editing a manual task guarantees `is_active: true`, keeping the cloned preset immediately available in the on-demand stack while preserving safety locks (`is_active: false`) when cloning scheduled tasks.
+  - **Backend Synchronization**: Updated `create_task` and `update_task` in `backend/main.py` to ensure manual tasks always default to `is_active: true` with `next_run: None`.
+
+## [2.49.6] - 2026-10-21
+
+### Fixed
+- **Unified Alias Validation & Real-time Visual Feedback (`AliasField.tsx`, `ProcessConfigForm.tsx`, `DesktopConfigForm.tsx`, `KioskConfigForm.tsx`, `IcecastConfigForm.tsx`, `MediaMtxConfigForm.tsx`, `PipeWireConfigForm.tsx`, `SettingsView.tsx`)**:
+  - **Reusable Atomic `AliasField` Component**: Extracted a dedicated, multi-theme compliant component (`frontend/src/components/common/AliasField.tsx`) enforcing `maxLength={12}` and strict character whitelist matching backend Pydantic validation (`^[a-zA-Z0-9\s-_]+$`).
+  - **Live Dynamic Character Counter**: Added a real-time `{charCount}/12` counter that shifts to brand accent color when reaching the 12-character limit.
+  - **Inline Real-time Validation Errors**: Added instant, accessible inline error text for required field violations, length overflows, and invalid characters, replacing silent input stripping or unexpected 422 HTTP alerts upon save.
+  - **Normalized Realistic Placeholders**: Replaced legacy placeholders that exceeded 12 characters (e.g., `"e.g. Main Studio Screen"` or `"e.g. Studio TV Main Feed"`) with valid compact examples (`"e.g. STUDIO-DESK"`, `"e.g. KIOSK-MAIN"`, `"e.g. RADIO-LIVE"`, `"e.g. PW-HUB"`).
+  - **Form Guardrails**: Synchronized `validateConfig` and form submit handlers across all service forms and scheduled tasks to disallow submission when alias validation criteria are violated.
+  - **Full i18n Key Parity**: Registered new translation keys in `en.json`, `es.json`, and `ca.json` with 100% key parity.
+
+## [2.49.5] - 2026-10-21
+
+### Fixed
+- **Volatile Storage Directory Auto-Creation (`backend/database/db.py`, `backend/main.py`, `backend/tests/test_storage_cache.py`)**:
+  - **Reboot Resilience for RAM Mounts**: Fixed an issue where volatile RAM-backed storages (such as `Default Cache Storage` on `/dev/shm/ffmpeg-gui-cache`) disappeared across system reboots because `/dev/shm` is in `tmpfs`.
+  - **Startup Re-Creation in `init_db()`**: Updated `init_db()` in `backend/database/db.py` to iterate through all registered storages and ensure their target directories exist on disk/RAM on every service startup.
+  - **On-Demand Auto-Creation**: Enhanced `telemetry_broadcast_loop`, `get_storages`, and `get_auth_status` in `backend/main.py` to automatically attempt `os.makedirs(s.path, exist_ok=True)` if a registered storage directory does not exist, immediately restoring volatile RAM storages to healthy/writable status without requiring manual operator intervention.
+
+## [2.49.4] - 2026-10-21
+
+### Fixed
+- **Storage Permission Health Introspection & Live UI Feedback (`backend/main.py`, `backend/run_server.py`, `DashboardView.tsx`, `SettingsView.tsx`, `App.tsx`, `useAuth.ts`, `en.json`, `es.json`, `ca.json`)**:
+  - **Reverted Systemd Unit Directives**: Removed hardcoded `LogsDirectory`, `StateDirectory`, and `RuntimeDirectory` from `install.sh` and `update.sh` to preserve user-defined storages, custom `fstab` mount options, and non-root user-space deployments.
+  - **Dynamic Storage Writability Evaluation**: Extended `telemetry_broadcast_loop` and `GET /settings/storages` to inspect `os.access(path, os.W_OK)` on every tick, adding `is_writable` and `write_error` fields to all storage objects.
+  - **Live Permission Recovery Feedback**: The system detects when write permissions to the configured log path or storages are restored on the host (e.g. via `chown` or `chmod` in SSH). The UI transitions immediately in real time, notifying the operator that permissions are restored and prompting for a service reload/restart to resume file logging.
+  - **Pre-Login Storage Warning Banner**: Updated `GET /api/auth/status` and `App.tsx` (Login page) with dynamic polling, rendering a clear alert banner if any storage is read-only or if logging is operating in fallback mode.
+  - **Dashboard & Settings Visual Indicators**: In `DashboardView.tsx`, non-writable storages are highlighted with a prominent `⚠️ READ-ONLY (PERMISSION DENIED)` badge and pulsing red progress bar. In `SettingsView.tsx`, storages display `✓ WRITABLE` or `⚠️ READ-ONLY` badges, and a dedicated status banner appears under Logging Configuration.
+
+## [2.49.3] - 2026-10-21
+
+### Fixed
+- **Systemd Service LogsDirectory & tmpfs Mount Resilience (`install.sh`, `update.sh`, `backend/run_server.py`, `backend/tests/test_logging_handler.py`)**:
+  - **Native Systemd Directory Directives**: Added `LogsDirectory=ffmpeg-gui`, `StateDirectory=ffmpeg-gui`, and `RuntimeDirectory=ffmpeg-gui` to `/etc/systemd/system/ffmpeg-gui.service` in both `install.sh` and `update.sh`. On boot, systemd automatically creates these directories and guarantees correct `ffmpeg-gui:ffmpeg-gui` ownership (0755), eliminating permission denied failures on systems configured with `tmpfs` mounts on `/var/log/ffmpeg-gui` (e.g. industrial SATADOM flash storage setups).
+  - **Graceful Logging Fallback Shield**: Hardened server startup in `backend/run_server.py` with pre-flight write probes for both main server log and access log. If log directory permissions or a read-only filesystem prevent writing to file handlers (`PermissionError` / `OSError`), the daemon prints a diagnostic warning to `stderr` (captured by `journalctl`) and automatically falls back to console/journalctl logging without crashing Python or aborting daemon startup.
+  - **Automated Service Reconciliation in Update**: Updated `update.sh` to automatically detect missing `LogsDirectory=`, `StateDirectory=`, and `RuntimeDirectory=` directives in existing systemd units and append them on upgrade, avoiding manual `systemctl edit` or `ExecStartPre` workarounds.
+
+## [2.49.2] - 2026-10-20
+
+### Fixed
+- **ALSA Modprobe Slot Generator & Conflict Resolution (`backend/core/alsa_manager.py`, `install.sh`, `AlsaAudioSettingsCard.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - **Exact Kernel Module Introspection**: Enhanced `AlsaManager.get_cards()` to query `/proc/asound/modules` (and `/sys/class/sound/cardX/device/driver`), resolving exact kernel module names (`snd_hda_intel`, `snd_asihpi`, `snd_aloop`, etc.) rather than attempting to guess module names from verbose hardware address/IRQ lines in `/proc/asound/cards`.
+  - **Multi-Instance Module Pinning**: Fixed slot configuration generator for systems where multiple soundcards share the exact same kernel module (e.g. NVidia GPU HDMI + motherboard HD-Audio Generic). Emits clean array options (`options snd_hda_intel index=0,1 id=NVidia,Generic` and `options snd slots=snd_hda_intel,snd_hda_intel,snd_aloop`), eliminating card index gaps and invalid duplicate option directives.
+  - **Conflict Auto-Remediation in Installer**: Updated `install.sh` (`configure_alsa_loopback`) to check if any `/etc/modprobe.d/*.conf` file already configures `slots=` or `snd-aloop`. When pinned slots are detected, automatically removes obsolete fallback `/etc/modprobe.d/snd-aloop.conf` (`index=-2`) to prevent modprobe index collisions.
+  - **Live Diagnostics Re-Check Button**: Added a dedicated `🔄 Re-check` action in the ALSA Advisor banner allowing sysadmins to re-evaluate kernel cmdline and `/etc/modprobe.d/` changes on the fly without refreshing the browser or restarting services.
+  - **Explicit Conflict Remediation Notice**: Added clear warning badge with copyable `sudo rm -f /etc/modprobe.d/snd-aloop.conf` command whenever negative index fallback conflicts are detected alongside pinned slots.
+  - **Reboot Notice**: Added informational footer explaining that kernel command-line and modprobe driver slot bindings take effect upon system reboot.
+
+## [2.49.1] - 2026-10-20
+
+### Fixed
+- **ALSA Kernel Advisor UI/UX & Universal Clipboard (`AlsaAudioSettingsCard.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - **Universal Clipboard Integration**: Replaced direct `navigator.clipboard` calls with `copyToClipboard` from `frontend/src/utils/clipboard.ts`. This ensures copy actions succeed on LAN test nodes accessed via unencrypted HTTP where `navigator.clipboard` is restricted by browser security policies.
+  - **IOMMU Remediation Layout**: Relocated `intel_iommu=pt iommu=pt` and its Copy button immediately adjacent to `(GRUB_CMDLINE_LINUX_DEFAULT):`, eliminating wide whitespace gaps on desktop displays.
+  - **BIOS VT-d Alternative Note**: Added an advisory note suggesting disabling Intel VT-d directly in the BIOS as a simpler alternative when the system is not hosting virtual machines with PCIe passthrough.
+  - **Visible Modprobe Snippet**: Rendered the full `/etc/modprobe.d/alsa-base.conf` snippet in a preformatted monospace block with `select-all` styling and dedicated 1-click copy action, making the generated configuration visible and easily selectable.
+
+## [2.49.0] - 2026-10-20
+
+### Added
+- **ALSA & Kernel Hardware Advisor (`backend/core/alsa_manager.py`, `backend/main.py`, `backend/tests/test_alsa_advisor.py`, `AlsaAudioSettingsCard.tsx`)**:
+  - **Intel VT-d (IOMMU) DMA Hazard Detection**: Proactively inspects kernel command line (`/proc/cmdline`) and IOMMU sysfs status (`/sys/class/iommu`) when AudioScience cards are detected. Warns sysadmins of strict page-translation modes that cause 32-bit DMA timeouts (`DMAR: [DMA Read NO_PASID] ... PTE Read access is not set`, HPI error 207 / 105) and offers 1-click copyable GRUB remediation (`intel_iommu=pt iommu=pt`).
+  - **ALSA Soundcard Modprobe Slot Persistence**: Analyzes installed soundcards against `/etc/modprobe.d/` configurations to prevent asynchronous driver loading and device index shuffling (`hw:0` vs `hw:1`) across reboots. Automatically generates a clean, non-conflicting `/etc/modprobe.d/alsa-base.conf` snippet with explicit slots and 8 loopback substreams.
+  - **Diagnostics API Endpoint**: Exposes `GET /api/settings/alsa/diagnostics` and feeds summary diagnostic flags to system telemetry.
+  - **Compact Settings Advisor Banner**: Displays a responsive, non-intrusive diagnostic card directly beneath the soundcard selector in *Settings > ALSA Audio*, remaining completely hidden when no hazards or unpinned slots are detected.
+  - **Installer Configuration Guard**: Hardened `install.sh` (`configure_alsa_loopback`) to inspect existing `/etc/modprobe.d/` files and preserve custom configurations, preventing accidental overrides or conflicting `index=-2` directives when `snd-aloop` is already pinned.
+- **Host System & Service Uptime Telemetry (`backend/main.py`, `DashboardView.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - **Dual Uptime Tracking**: Added `system_uptime_seconds` (via `psutil.boot_time()`) and `service_uptime_seconds` (tracking `ffmpeg-gui` systemd process uptime since module initialization) to WebSocket telemetry and status APIs.
+  - **Dashboard SYSTEM STATUS Display**: Rendered side-by-side uptime indicators directly below CPU/RAM/GPU load bars in `DashboardView.tsx` with formatted `Xd Xh Xm` durations.
+  - **Dashboard Semantic Badges**: Added contextual warning pills in the ALSA section under *HARDWARE & PERIPHERALS* alerting sysadmins to VT-d DMA hazards on AudioScience hardware and unpinned slot orders.
+
+## [2.48.2] - 2026-10-20
+
+### Fixed
+- **AudioScience DSP Stability Shield & Staggered ALSA Teardown (`backend/core/alsa_manager.py`, `backend/core/process_manager.py`, `backend/utils/process_utils.py`, `backend/main.py`)**:
+  - **Zero-Interference Busy Guard**: Implemented `AlsaManager.hardware_busy_guard()` (supporting both sync and async contexts) and `detect_alsa_card_index()`. During service start, stop, or reload transitions, real-time hardware telemetry queries (`amixer contents`) are bypassed and cached metrics are returned, eliminating PCI mailbox contention and DMA lockup on DSP chips (e.g. `snd-asihpi` C6205).
+  - **WebSocket Polling Cadence Throttling**: Throttled `/ws/alsa/meters/{card_index}` polling interval for AudioScience cards (`is_asihpi`) from 100ms (10 Hz) to 300ms (~3.3 Hz), decreasing HPI mailbox commands by over 70% while frontend CSS transition smoothing maintains fluid VU meter animation.
+  - **Graceful Process Termination**: Replaced abrupt raw `SIGKILL` in `cleanup_rogue_processes` with a graceful `SIGTERM` followed by a 1.5-second timeout before escalating to `SIGKILL`, allowing ALSA drivers to cleanly execute `snd_pcm_close()` and release hardware DMA buffers.
+  - **Staggered Multi-Stream Shutdown**: In `ProcessManager.stop_all_processes`, processes sharing the exact same physical ALSA sound card (`hw:<card_idx>`) are now stopped sequentially with a 300ms delay between each process (~3 procs/sec), preventing concurrent `snd_pcm_close()` DMA collisions on the DSP during updates and service restarts while non-ALSA services continue stopping concurrently.
+
+
+## [2.48.1] - 2026-10-20
+
+### Fixed
+- **PipeWire AES67 Transmitter Channel Routing & Node Affinity (`backend/core/pipewire_matrix_supervisor.py`, `backend/tests/test_pipewire_matrix_supervisor.py`)**:
+  - Aligned transmitter target ports with native `libpipewire-module-rtp-sink` port names (`send_FL` / `send_FR`, `send_0`) and receiver source ports with `libpipewire-module-rtp-source` (`receive_FL` / `receive_FR`, `receive_0`).
+  - Removed source sink ID (`s_id`) from transmitter `target_aliases`, preventing the patchbay supervisor from selecting the null-sink's own playback ports as target ports.
+  - Enforced strict same-node affinity in `PipeWireMatrixSupervisor._match_ports()`, guaranteeing that stereo channel pairs (`p0` and `p1`) always belong to the exact same audio node and never mix across disparate nodes.
+  - Added proactive detection and teardown of illegal self-loopback links (`monitor_* -> playback_*` on the same sink node) during reconciliation via `pw-link -d`, permanently eliminating feedback loop harmonic buzzing and comb filter oscillations.
+
+## [2.48.0] - 2026-10-20
+
+### Added
+- **Configurable AoIP Timing & Network Jitter Profiles (`backend/core/pipewire_config.py`, `PipeWireConfigForm.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - Added user-configurable AoIP packet cadence (`rtp_ptime_mode`: Relaxed Auto `2–20ms`, Balanced `4ms`, Strict `1ms`) in `PipeWireConfigForm.tsx` and `PipeWireConfigGenerator`, optimizing timerfd cadence and interrupt load for non-RT kernels and standard hardware.
+  - Added configurable network jitter buffer depth (`jitter_buffer_ms`: Auto safe `4×Quantum`, `20ms`, `50ms`, `100ms`, `200ms`) with mathematical guardrails enforcing `effective_latency_ms >= ceil(3 * quantum_ms)`.
+  - Displayed dynamic minimum safe latency badge in UI and disabled choices below `3×Quantum` to prevent audio underruns and buffer truncation.
+- **Real-Time RAM & Storage Protection Circuit Breaker (`backend/core/process_manager.py`, `backend/tests/test_log_flood_shield.py`)**:
+  - Implemented an in-place truncation circuit breaker in `ProcessManager._file_log_tailer()` that truncates flooded daemon logs in-place (`os.truncate(log_path, 0)`) when exceeding `rotation_max_bytes` (default 10 MB), protecting RAM partitions (`tmpfs` / SATADOM protection) from exhaustion.
+
+### Fixed
+- **PipeWire AES67 SSRC Resynchronization & Error-Only Logging (`backend/core/pipewire_config.py`, `backend/core/process_manager.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Added `sess.ignore-ssrc = true` on `libpipewire-module-rtp-source` (Remote AoIP Sinks), allowing receivers to automatically resynchronize when remote transmitter hubs restart with a new random RTP SSRC instead of dropping 100% of packets with `unexpected SSRC`.
+  - Defaulted daemon log level to `ERROR` (`log.level = 1` / `PIPEWIRE_DEBUG = 1`) unless `debug_mode` is enabled, preventing high-frequency real-time `[W]` warnings from flooding disk and RAM storage.
+
+## [2.47.1] - 2026-10-20
+
+### Fixed
+- **PipeWire AES67 RTP/SAP Stream Clocking & Listener Isolation (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Replaced `node.passive = true` with `node.always-process = true` on `libpipewire-module-rtp-sink` (Tx) and `libpipewire-module-rtp-source` (Rx), resolving infinite buffer repetition loops, frozen vumeters, and parallel harmonic comb-filter lines in spectral analysis.
+  - Added `node.always-process = true` to `support.null-audio-sink` adapters for all virtual and remote sinks, ensuring `Dummy-Driver` continuously advances the audio graph at the designated sample rate.
+  - Restricted `libpipewire-module-rtp-sap` rules strictly to `announce-stream` (`matches = [ { sess.sap.announce = true } ]`), completely suppressing the default `create-stream` behavior that auto-spawned duplicate unmanaged RTP receivers whenever SAP announcements were received on the network.
+  - Suppressed generation of `libpipewire-module-rtp-sap` when hubs only declare reception endpoints (`remote_sinks`), preventing unnecessary multicast SAP broadcast sockets.
+  - Aligned AES67 RTP packet framing with `sess.min-ptime = 1`, `sess.max-ptime = 1`, `sess.latency.msec = 3`, `net.ttl = 32`, and `net.loop = false` matching the official AES67 specification.
+
+## [2.47.0] - 2026-10-19
+
+### Added
+- **PipeWire Port Collision Detection & Task Protection (`backend/utils/port_validator.py`, `backend/tests/test_pipewire_ports.py`)**:
+  - Added full `service_type == "pipewire_hub"` port extraction into `extract_ports_from_service()`, tracking Remote Sinks (AoIP Rx RTP UDP), Virtual Sinks (AES67 Tx RTP UDP), and SAP Discovery/Announcements (9875 UDP).
+  - Enforced internal collision validation preventing duplicate `(multicast_ip, rtp_port)` configurations within the same hub while allowing standard AES67 multi-stream port sharing across distinct multicast IPs.
+  - Implemented cross-service collision protection against `ffmpeg_stream` unicast/SRT/UDP listeners, `mediamtx_hub` RTSP/SRT ports, `icecast_server`, and the GUI web panel.
+  - Allowed shared multicast SAP 9875 UDP discovery across multiple concurrent PipeWire hubs on the same host without false collision errors.
+  - Connected `ScheduledTask` validation into `validate_service_port_conflicts()`, preventing collisions between active scheduled FFmpeg pipelines and services.
+  - Guaranteed that auxiliary port auto-allocators (`get_next_available_mediamtx_ports`, `get_next_available_icecast_ports`, `get_next_available_desktop_display_and_vnc_port`) automatically bypass ports reserved by PipeWire Hubs.
+- **Firewall Rule Generator & Network Port Matrix (`backend/core/network_inspector.py`, `FirewallPortMatrixCard.tsx`, `backend/tests/test_port_matrix.py`)**:
+  - Integrated `pipewire_hub` into `get_active_port_matrix()` in `Settings -> Network`, exposing Remote Sinks (AoIP Rx), Virtual Sinks (AES67 Tx), SAP Discovery (9875 UDP), and PTPv2 Clock Sync (319/320 UDP).
+  - Integrated `ffmpeg_stream` listener ports (SRT listener, UDP/RTP input) into the active port matrix.
+  - Filtered inbound firewall rule generation via `requires_inbound_firewall`, outputting precise, reproducible UFW and iptables rules for AoIP Rx, SAP, and PTP while excluding egress-only multicast and localhost loopback bindings.
+  - Added dedicated visual badges (`PIPEWIRE / AOIP` and `STREAM PIPELINE`) and service icons in `FirewallPortMatrixCard.tsx`.
+
+## [2.46.0] - 2026-10-19
+
+### Added
+- **PipeWire Audio Hubs in System Backup & Restore (`backend/main.py`, `backend/database/models.py`, `BackupRestoreCard.tsx`, `test_backup_restore_api.py`)**:
+  - Added granular `pipewire_hubs` selection toggle in system backup export request (`BackupExportRequest`) and Settings UI.
+  - Added dedicated `sections["pipewire_hubs"]` in backup JSON export containing PipeWire Hub daemons, virtual sinks, remote network sinks (AES67 AoIP Rx), watchdog settings, and software build metadata, cleanly segregated from standard media streaming pipelines.
+  - Added robust import restoration handler calling `migrate_and_validate_profile` to sanitize PTP clock domains and multicast prefixes on foreign host imports, while maintaining backwards compatibility for legacy backups containing `pipewire_hub` inside `services`.
+  - Implemented name-based relational re-linking (`pipewire_hub_name`) in Virtual Desktops (`desktop_config.pipewire_service_id`) upon import, ensuring restored desktops seamlessly connect to the correct local PipeWire Audio Hub ID across systems.
+  - Added PipeWire Hubs to export options, import preview metadata grid, and restore summary alerts in `BackupRestoreCard.tsx`.
+  - Added getter/setter properties for `pipewire_config`, `desktop_config`, and `kiosk_config` on `Service` model in `backend/database/models.py`.
+  - Added comprehensive automated unit tests covering PipeWire Hub backup export, restoration, legacy payload migration, and desktop re-linking in `backend/tests/test_backup_restore_api.py`.
+- **Internationalization (`frontend/src/locales/en.json`, `es.json`, `ca.json`)**:
+  - Registered translation keys `settings.backup.sectionPipeWireTitle` and `settings.backup.sectionPipeWireDesc` across English (SSOT), Spanish, and Catalan with 100% key parity.
+
+
+### Fixed
+- **ALSA Process Subdevice Binding Regression (`backend/main.py`, `backend/core/alsa_manager.py`, `AlsaAudioSettingsCard.tsx`)**:
+  - Fixed premature early return in `analyze_alsa_process_info()` that set `subdevice_index = None`, which previously caused all active FFmpeg playout services sharing `pcmC0D0p` (such as AudioScience `hw:0,0,0`, `hw:0,0,1`, `hw:0,0,2` or snd-aloop subdevices) to falsely clump together into `PCM 0`.
+  - Added kernel `/proc/asound/card{c}/pcm{d}{dir}/sub*/status` inspection reading `owner_pid` to accurately detect the active subdevice directly from ALSA procfs, with fallback to CLI device parsing (`hw:card,dev,sub`).
+  - Added `subdevice_index` and `pcm_device` metadata extraction for `PCM <index>` groups in `AlsaManager.get_card_topology()`.
+  - Hardened frontend `getGroupProcesses()` to perform exact `pcm_device` and `subdevice_index` matching, preventing false keyword matches on generic terms (like `pcm` matching `pcm_s16le` codec names).
+- **ALSA Vumeter Polling Frequency Compromise (`backend/main.py`)**:
+  - Tuned `sleep_interval` in `/ws/alsa/meters/{card_index}` from 0.50s (2 Hz) to 0.10s (10 Hz) for AudioScience cards, providing fluid, responsive visual level animations while remaining safely protected under single bulk `amixer contents` execution and `audio_hw_lock`.
+
+## [2.45.3] - 2026-10-19
+
+### Fixed
+- **AudioScience DSP & Driver Crash Shield (`backend/core/audioscience_health.py`)**:
+  - Implemented one-time capability discovery inspecting `hpicontrol.py -a <idx> controls` for `CONTROL_UNIVERSAL` status telemetry controls.
+  - Eliminated repetitive invalid `cget 9` invocations on adapters without universal status controls (e.g., ASI5640 where Control 9 is a matrix volume control and ASI5810), preventing the kernel driver error `hpicmn.c:75 Header object 0 invalid`.
+  - Permanently caches `has_telemetry: False` for non-telemetry cards, enforcing zero subsequent driver queries (0 subprocesses, 0 HPI mailbox calls).
+  - Increased telemetry cache TTL to 30s and automatically skips polling whenever the ALSA Mixer WebSocket is active.
+- **ALSA Mixer WebSocket Throttling & Mailbox Protection (`backend/core/alsa_manager.py`, `backend/main.py`)**:
+  - Combined meter levels and jack sensor queries into `read_realtime_telemetry()` under a shared `audio_hw_lock`, executing `amixer contents` only once per iteration instead of twice.
+  - Throttled WebSocket stream interval to 2 Hz (0.50s) for AudioScience (`asihpi`) adapters and 4 Hz (0.25s) for standard cards, reducing PCI mailbox transactions from 60/sec to 2/sec to eliminate `hpi6205.c` timeout lockups (`HPI error 207`).
+  - Added active WebSocket client tracking (`active_mixer_ws_count`) to coordinate with hardware health collector.
+- **ALSA Hardware Clock Protection & Sample Rate Shield (`frontend/src/components/codec/codecRegistry.ts`, `backend/core/builders/ffmpeg_builder.py`)**:
+  - Removed `copy` from `OUTPUT_COMPATIBLE_CODECS.alsa.audio` and excluded ALSA destinations from `isPcmPassthroughViable()`, preventing direct streamcopy into ALSA outputs.
+  - Enforced `pcm_s16le` transcoding and guaranteed explicit `-ar 48000` and `-ac 2` parameters on all ALSA hardware outputs, ensuring incoming streams (including 44.1 kHz streams or synthetic sine tones) cannot alter master hardware sample clocks.
+  - Added explicit `-sample_rate` and `-channels` propagation on ALSA inputs when configured.
+- **Graceful Watchdog Process Teardown (`backend/core/process_manager.py`)**:
+  - Replaced immediate `SIGKILL` invocations in Watchdog timeout/stall blocks with `_safe_terminate_process()`, which delivers `SIGTERM` and awaits up to 1.5s for clean `snd_pcm_close()` teardown by `libavdevice/alsa` before escalating to `SIGKILL`.
+
+## [2.45.2] - 2026-10-19
+
+### Changed
+- **PipeWire Preview Modal Tab Structure (`PipeWirePreviewModal.tsx`)**:
+  - Reordered modal tabs to place the `AoIP / Network` tab penultimate and `Raw Telemetry` last, reflecting operational utility.
+  - Homogenized tab button styling: removed emoji prefix and badge pill, aligning with standard `({count})` notation used across all tabs.
+- **PTP Grandmaster Hierarchy & Non-Alarmist Feedback (`PipeWireConfigForm.tsx`, locales)**:
+  - Differentiated local node master broadcast from remote external clocks using network inspection `is_local` metadata and IP address matching.
+  - Eliminated false warning alerts on the Grandmaster node itself when running with priority 128.
+  - Refactored PTP status banners into calm, non-alarmist states:
+    - Displaying healthy BMCA secondary/backup topology in calm blue (`BMCA Backup`) when priority >= 200 and auto-inhibit is enabled, without displaying warning indicators or action buttons.
+    - Providing clear informative guidance and optional "Set Backup Priority (200)" adjustment only when a contention scenario occurs (remote master detected and local priority <= 128).
+    - Preventing redundant auto-seeding of priority 200 on the master node itself.
+  - Added full translation key parity across English, Spanish, and Catalan.
+
+## [2.45.1] - 2026-10-19
+
+### Fixed
+- **AoIP SAP Multicast Listener & Cross-Platform Datagram Protocol (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Replaced Python 3.11-specific `loop.sock_recvfrom` with universal `asyncio.DatagramProtocol` via `loop.create_datagram_endpoint`, resolving silent listener stalls and exceptions on Python 3.8-3.10 systems.
+  - Upgraded multicast membership joining on designated interfaces using `struct ip_mreqn` with `imr_ifindex` (`socket.if_nametoindex`), guaranteeing physical NIC packet ingress on multi-NIC hosts regardless of system multicast routing tables.
+  - Joined both AES67 standard (`224.0.0.56:9875`) and global SAP standard (`224.2.127.254:9875`) multicast groups with `SO_REUSEADDR` and `SO_REUSEPORT`.
+  - Added explicit `INFO` logs when streams are discovered or removed, replacing suppressed `DEBUG` logs.
+- **Frontend Stream Property Parity & Authentication (`PipeWirePreviewModal.tsx`, `PipeWireConfigForm.tsx`)**:
+  - Added property aliases (`session_name`, `session_id`, `sample_rate`) matching frontend expectations in both `parse_sap_packet()` and modal rendering.
+  - Added `Authorization: Bearer <token>` headers to `fetchGraphTelemetry` and `fetchAoIpDiscovery` API calls.
+  - Hardened stream field fallback resolution and table rendering in `PipeWirePreviewModal`.
+
+## [2.45.0] - 2026-10-19
+
+### Added
+- **AoIP Discovery Supervisor & SAP Radar (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Implemented RFC 2974 (SAP) and RFC 4566 (SDP) multicast packet parser and background supervisor listening on `224.2.127.254:9875`.
+  - Discovers remote AES67 / Dante multicast audio sessions, parsing origin IP, multicast group, RTP port, channel count, sampling rate, audio encoding format (`L24`/`S24BE`, `L16`/`S16BE`), and PTP clock identities (`a=ts-refclk:ptp=IEEE1588-2008`).
+  - Added REST endpoint `GET /api/pipewire/aoip-discovery` returning active supervisor state and real-time discovered stream table.
+- **Persistent Remote AoIP Sinks in PipeWire Hub (`backend/core/pipewire_config.py`, `pipewire_matrix_supervisor.py`)**:
+  - Added `remote_sinks` configuration schema enabling deterministic on-boot instantiation of virtual audio sink endpoints (`support.null-audio-sink`) and network receivers (`libpipewire-module-rtp-source`).
+  - Implemented automatic hot-linking in `PipeWireMatrixSupervisor` connecting discovered or incoming RTP receiver streams (`rtp_rx_{id}`) to target landing sinks.
+- **Dual Sink Lists & Assisted Import in `PipeWireConfigForm.tsx`**:
+  - Added Section 4 dedicated to Remote AoIP Sinks (Rx) alongside Section 3 Local Virtual Sinks.
+  - Added SAP discovery assistant with dropdown selector allowing 1-click importing of active network streams into persistent hub configuration, with manual override support.
+- **Real-Time AoIP Radar & 1-Click Config Shortcut (`PipeWirePreviewModal.tsx`)**:
+  - Added dedicated "AoIP / Network" tab displaying live PTPv2 clock synchronization state (Grandmaster IP, Clock ID, ptp4l state, priority/domain), configured remote sinks status (`Online / Linked` vs `Waiting for Stream`), and real-time LAN SAP radar.
+  - Added `[ ⚙️ Configure in Hub ]` shortcut on discovered streams, seamlessly cloning and routing the stream into the Hub configuration form for review and persistence.
+- **FFmpeg AoIP Ingest Integration (`InputSourcePanel.tsx`)**:
+  - Integrated `remote_sinks` into the PipeWire audio input selector, cleanly organizing local buses (`Tx`) and remote streams (`Rx`) under descriptive `optgroups`.
+- **Internationalization (i18n)**:
+  - Added translation keys with 100% key parity across `en.json`, `es.json`, and `ca.json`.
+
+## [2.44.2] - 2026-10-16
+
+### Added
+- **PTP Backup Priority 1-Click Action & Auto-Seed (`PipeWireConfigForm.tsx`)**:
+  - Automatically seeds `priority1 = 200` (Backup Master mode) when configuring a new PipeWire service on an interface where an external Grandmaster is already detected.
+  - Added responsive 1-click action button `[ 🛡️ Set Backup Priority (200) ]` directly inside the amber status banner when another Grandmaster is detected and local priority is `< 200`.
+  - Added visual badge `✓ Backup Node (Priority 200)` next to the Priority 1 input and in the status banner when priority is 200 or higher.
+  - Decoupled clock priority adjustment completely from the multicast IP prefix `Recalc` button.
+  - Added translation keys with 100% key parity across `en.json`, `es.json`, and `ca.json`.
+
+## [2.44.1] - 2026-10-16
+
+### Fixed
+- **PipeWire `ptp4l` IPC UDS Sockets Permission Denied in `/var/run` (`PipeWireConfigGenerator`)**:
+  - Explicitly configured `uds_address /dev/shm/ptp4l_{service_id}.uds` and `uds_ro_address /dev/shm/ptp4lro_{service_id}.uds` in `ptp4l.conf`.
+  - Prevents `ptp4l` from attempting to create sockets in root-owned `/var/run/` (`uds: bind failed: Permission denied`), allowing unprivileged `ffmpeg-gui` execution without marking ports as `FAULTY`.
+  - Added cleanup of lingering `.uds` socket files in `ProcessManager` upon service shutdown.
+- **Modern IEEE 1588-2019 Server Directive**:
+  - Replaced deprecated `masterOnly` directive with modern standard `serverOnly` in `ptp4l.conf`, resolving linuxptp deprecation warnings.
+- **Linux Kernel Capabilities for Non-Root PTP Execution (`setup-system-capabilities.sh`, `install.sh`)**:
+  - Added automatic capability assignment on `/usr/sbin/ptp4l`: `cap_net_bind_service,cap_net_admin,cap_net_raw,cap_sys_time=+ep`.
+  - Extended systemd service unit `CapabilityBoundingSet` and `AmbientCapabilities` to include `CAP_NET_ADMIN`, `CAP_NET_RAW`, and `CAP_SYS_TIME`.
+- **Fast Multicast PTP Detection Probe (`network_inspector.py`)**:
+  - Enhanced `probe_network_ptp_master()` to probe both port 319 (Sync events, sent at 8 packets/sec in AES67) and port 320 (Announce).
+  - Enables instant and reliable passive discovery of active Grandmasters across nodes without missing transmission windows.
+
+## [2.44.0] - 2026-10-16
+
+### Added
+- **NIC PTP Capability Tri-State Audit (`ethtool -T`)**:
+  - Implemented automatic network interface timestamping audit classifying adapters into three clear tiers:
+    - 🟢 `hardware`: Hardware timestamping supported (`SOF_TIMESTAMPING_TX_HARDWARE` / `/dev/ptpX`).
+    - ⚠️ `software`: Software timestamping supported (`SOF_TIMESTAMPING_TX_SOFTWARE`).
+    - 🔴 `none`: No PTP timestamping support detected.
+  - Added visual status badges directly in the PipeWire Hub network interface selector and card displays.
+- **Active Network PTP Master Discovery**:
+  - Added non-intrusive multicast probe listening on `224.0.1.129:320` to detect active PTP Announce packets from external Grandmasters on the local subnet.
+  - Returns `active_ptp_master` with detected state and source IP in network capability audit.
+- **Managed `ptp4l` Master Clock Sidecar with BMCA Auto-Inhibition**:
+  - Integrated `ptp4l` as an auxiliary daemon tied directly to the PipeWire Hub lifecycle in `ProcessManager`.
+  - Configured ephemeral configurations safely stored in `/dev/shm/ptp4l_{id}.conf` with strict file permissions (`0o600`).
+  - Added BMCA auto-inhibition toggle (`ptp_auto_inhibit`, default: `true`):
+    - When enabled, `ptp4l` runs in standard BMCA negotiation mode, yielding smoothly if an external Grandmaster is present.
+    - When disabled, enforces `masterOnly=1` with visual collision alarms if another Grandmaster is active.
+  - Added intercompatibility tuning parameters: `priority1` (0-255, default 128), `domain` (0-127, default 0), and profile selection (`aes67` [8 sync/s, DSCP 46/34] vs `ieee1588` [1 sync/s]).
+- **Profile Import PTP Sanitization (`migrate_and_validate_profile`)**:
+  - Automatically resets `auto_inhibit = True` and elevates `priority1 >= 200` (backup slave mode) on imported service configurations to guarantee newly cloned nodes do not disrupt existing broadcast Grandmasters.
+- **System Dependencies**:
+  - Added `ethtool` and `linuxptp` to Debian/Ubuntu, RHEL/Fedora, and Arch installation scripts (`install.sh`) and documentation (`INSTALL.md`).
+
+## [2.43.1] - 2026-10-15
+
+### Fixed
+- **PipeWire Hub Nested Config Profile Import Sanitization (`migrate_and_validate_profile`)**:
+  - Fixed profile import sanitization when `aes67_network` and `virtual_sinks` are nested under `config.pipewire_config` (standard payload structure from UI export).
+  - Automatically resolves foreign physical network interfaces (`interface`) to local active IPv4 interfaces, re-seeding the IP address, base multicast prefix (`239.69.X`), and all virtual sink multicast destination IPs.
+  - Detects foreign `239.69.X.Y` multicast destination IPs and re-seeds them to the local node's canonical prefix (`PipeWireConfigGenerator.get_canonical_sink_multicast_ip()`), preventing silent collisions when cloning configurations across nodes.
+- **Frontend Multicast Recalculation & Missing Interface Auto-Adaptation (`PipeWireConfigForm.tsx`)**:
+  - Fixed Recalc button behavior: now re-derives canonical base multicast prefix from the active local NIC and automatically re-seeds ALL virtual sinks' multicast IPs (`${newPrefix}.${index + 1}`) and sequential RTP ports (`5004 + index * 2`), updating SAP names with the local node identifier.
+  - Added dedicated `[ ↻ Recalc Sinks ]` button in the Virtual Sinks Manager header.
+  - Auto-adapts `selectedInterface` when loading imported configurations where the original NIC does not exist on the local host, preventing state/select desynchronization.
+  - Added animated visual feedback badges (`✓ Synchronized (239.69.X.X)`) on route recalculation.
+  - Reordered form sections so that **AES67 / Dante Broadcast Network Module** appears as Section 2 (immediately after General Info) and **Virtual Sinks Manager** as Section 3, ensuring network interface, PTP clock, and base multicast prefix are configured before declaring virtual sinks.
+
+## [2.43.0] - 2026-10-15
+
+### Added
+- **Canonical AoIP (AES67 / Dante) Multicast Addressing (`239.69.<host_ip_last_octet>.<sink_index>`)**:
+  - Implemented deterministic canonical multicast address calculation in `PipeWireConfigGenerator.get_canonical_base_multicast_prefix()` and `get_canonical_sink_multicast_ip()`, mapping each host's IPv4 last octet into the RFC 2365 / AES67 `239.69.X.X` administrative multicast range.
+  - Automatically avoids multicast IP collisions across distinct nodes in the same broadcast domain (e.g. `test1` on `.11` streams on `239.69.11.1+`, while `test3` on `.13` streams on `239.69.13.1+`), ensuring Layer 2 IGMP Snooping switches isolate audio streams without flooding.
+  - Retained full manual operator editability for custom multicast base prefixes and individual sink IP/port assignments.
+- **Intelligent Service Profile Import Sanitizer (`migrate_and_validate_profile`)**:
+  - Automatically sanitizes imported PipeWire Hub JSON profiles across environments (e.g. importing profiles from `test1` to `test3`).
+  - Resolves foreign or missing physical network interface names (`interface`) to local host active IPv4 adapters, updating local IP addresses seamlessly.
+  - Re-seeds canonical base multicast prefixes and sink multicast IPs if they originated from a foreign host IP, while preserving user-defined custom multicast routes.
+  - Dynamically updates SAP session names (`sap_name`) to replace foreign hostnames with local host identifiers without duplicating strings (`test1 aes_bus` -> `test3 aes_bus`).
+  - Validates PipeWire software builds (`software_build_id`), gracefully resolving to local ready PipeWire engines if the foreign build ID does not exist.
+- **Multicast Validation & Active Collision Detection Endpoint (`/api/pipewire/validate-multicast`)**:
+  - Added REST endpoint to validate multicast IPv4 syntax, standard AES67 range compliance (`239.69.0.0/16`), and reserved control protocol range warnings (`224.0.0.0/24` for SAP, PTP, IGMP).
+  - Queries active database services to alert operators of route collisions against other local PipeWire Hubs, providing IGMP advisory warnings if duplicate multicast IPs share different UDP ports.
+- **UI Collision Guard & Locked SAP Hostname Badging (`PipeWireConfigForm.tsx`)**:
+  - Added Base Multicast Prefix input field with a one-click `[ ↻ Recalc ]` button to re-derive canonical prefixes directly from the selected NIC.
+  - Locked the machine hostname prefix visually (`[ 🖥️ test1 ]`) next to the editable sink suffix with live SDP session preview (`s=test1 aes_bus`), preventing operator naming confusion.
+  - Enforced zero-lag in-memory duplicate route validation and asynchronous `onBlur` network validation, displaying error banners and disabling submission when internal collisions exist.
+- **Multi-Language Parity (i18n)**:
+  - Added translation keys for canonical base prefixes, recalculation, SAP locked host badges, and collision alerts in `en.json`, `es.json`, and `ca.json` with 100% key parity.
+
+## [2.42.1] - 2026-10-15
+
+### Fixed
+- **AES67 Virtual Sink Monitoring & PulseAudio Capture Parity**:
+  - Maintained `support.null-audio-sink` instantiation in `context.objects` for all virtual sinks (including AES67 buses) with `adapter.auto-port-config = { mode = dsp, monitor = true, position = preserve }`. This ensures local consumers capturing from `<sink_id>.monitor` via `-f pulse` or ALSA bridge receive audio frames reliably without timing out.
+  - Decoupled `libpipewire-module-rtp-sink` as a dedicated network transmitter stream (`node.name = rtp_tx_<sink_id>`) using `target.object = <sink_id>`, `sess.sap.announce = true`, `stream.dont-remix = true`, and `node.passive = true` without overriding `media.class = "Audio/Sink"`.
+- **Multi-Architecture Library Path Resolution for PipeWire CLI Tools (`pw-link`)**:
+  - Expanded `LD_LIBRARY_PATH` resolution in `PipeWireMatrixSupervisor` to check multi-arch library directories (`lib`, `lib64`, `lib/x86_64-linux-gnu`, `lib/aarch64-linux-gnu`) alongside `PIPEWIRE_NO_DBUS = 1` and `PIPEWIRE_NO_RT = 1`, preventing shared object loading errors (`libpipewire-0.3.so.0`) on Debian/Ubuntu systems during background matrix reconciliation.
+- **Explicit AES67 Transmitter Desired Link & Matrix Telemetry**:
+  - Added explicit routing reconciliation for `sink.monitor -> rtp_tx_<sink_id>` in `PipeWireMatrixSupervisor._resolve_desired_links()`, ensuring active patchbay verification and real-time visualization of network broadcast routes in the UI graph inspector modal.
+
+## [2.42.0] - 2026-10-15
+
+### Added
+- **Native PipeWire 1.x Modular AES67 Architecture (`libpipewire-module-rtp-sap` & `libpipewire-module-rtp-sink`)**:
+  - Refactored `PipeWireConfigGenerator` to generate decoupled modern PipeWire 1.x network audio modules.
+  - Automatically loads `libpipewire-module-rtp-sap` with multicast announcement parameters (`224.0.0.56:9875` on `local.ifname`) whenever AES67 is enabled on any virtual bus.
+  - Configures AES67 sinks directly via `libpipewire-module-rtp-sink` using `local.ifname`, `source.ip`, `destination.ip`, `destination.port`, `audio.format = "S24BE"`, and `stream.props = { media.class = "Audio/Sink", sess.sap.announce = true }`, bypassing redundant null-audio-sink collision.
+- **Hardware NIC Conflict Prevention & Multi-Hub In-Use Detection**:
+  - Extended `PipeWireConfigForm.tsx` to detect and audit active network interfaces currently held by other running PipeWire Hubs for AES67 broadcast.
+  - Disabled and annotated occupied interfaces in the dedicated audio NIC dropdown (`[In use by: Hub #{id}]`), and introduced an informative conflict banner with submit button lock to prevent PTP clock and SAP port contention on single-NIC hosts.
+- **PipeWire Version Guard in Software Forge (`>= 1.0.0`)**:
+  - Filtered remote git tags in `GET /builds/tags/pipewire` to offer only supported modular versions (`>= 1.0.0`).
+  - Added frontend compile validation in `BuildFormModal.tsx` that warns and blocks compilation of legacy `0.3.x` branches.
+  - Enforced server-side validation in `PipeWireRecipe.compile()` to abort compilation early if sub-1.0 tags are requested.
+- **Multi-Language Parity (i18n)**:
+  - Added translation keys for Forge PipeWire minimum version requirements and NIC in-use conflict banners across `en.json`, `es.json`, and `ca.json` with 100% key parity.
+
+## [2.41.4] - 2026-10-15
+
+### Fixed
+- **PipeWire Hub & Matrix Supervisor Resilience Across Warm Reloads (`update.sh`)**:
+  - Automatically re-instantiates and launches `PipeWireMatrixSupervisor` during `reattach_process` when the backend restarts via `update.sh` or systemd service reload.
+  - Implemented self-healing `get_or_create_pipewire_supervisor` across telemetries, REST matrix inspection, and startup reconciliation, ensuring surviving PipeWire hub daemons are never orphaned without an active patchbay supervisor.
+  - Resolved missing node detection in `_resolve_desired_links` and `_check_and_trigger_ffmpeg_reconnect` by checking liveness across both active subprocess instances and `reattached_pids` via `psutil.pid_exists`.
+- **Automatic Kiosk Browser Audio Recovery & Socket Refresh**:
+  - Extended cascading consumer restart (`_restart_dependent_pipewire_consumers`) to detect both active and reattached Kiosk browser processes targeting a Virtual Desktop with PipeWire audio.
+  - Ensures Chromium and Firefox automatically refresh their PulseAudio unix socket (`/tmp/ffmpeg-gui/pipewire-{id}/pulse.sock`) after PipeWire daemon restarts, preventing dead audio pipelines without disrupting the X11 display.
+
+## [2.41.3] - 2026-10-15
+
+### Added
+- **Human-Friendly Aliases in PipeWire Preview Modal & Graph Inspector**:
+  - Extended `PipeWireMatrixSupervisor` and `ProcessManager.get_pipewire_telemetry` with database entity lookup, resolving human-readable service aliases and task names for dynamic sinks, FFmpeg streams, and Kiosk browsers.
+  - Updated `PipeWirePreviewModal.tsx` to prominently display human entity labels alongside `#{id}` badges across Audio Nodes, Dynamic Patchbay Matrix Routes, and Active Graph Links, demoting raw node IDs (`kiosk_13`, `ffmpeg_service_15`) to secondary monospace details.
+- **Intelligent PCM-to-PCM Codec Copy Auto-Suggestion**:
+  - Introduced `isPcmPassthroughViable` in `codecRegistry.ts` to identify lossless passthrough viability between uncompressed audio sources (`alsa`, `pipewire`, `decklink`, `lavfi_audio`) and sinks (`alsa`, `pipewire`).
+  - Prioritized streamcopy (`-c:a copy`) at the top of available audio codecs for PCM routes to eliminate CPU transcoding overhead, prevent resampling artifacts, and minimize latency.
+  - Added contextual recommendation and status banners in `AudioCodecPanel.tsx` and `ProcessConfigForm.tsx` with a 1-click action button (`[⚡ Use Stream Copy]`).
+  - Automatically defaults audio codec to `copy` when configuring routes between uncompressed PCM endpoints.
+- **Mandatory LCD Alias & Real-Time Auto-Suggestion**:
+  - In `ProcessConfigForm.tsx`, typing a service or task name automatically suggests an LCD alias (sanitized to 12 alphanumeric characters, spaces, hyphens, and underscores).
+  - Enforced mandatory alias validation in the Forge compiler form to ensure all processes have clean labels for hardware displays and PipeWire patchbay routing.
+- **Multi-Language Parity (i18n)**:
+  - Registered translation keys for node entity labels, alias validation, and PCM passthrough banners in `en.json`, `es.json`, and `ca.json` with 100% key parity.
+
+### Fixed
+- **PipeWire & AES67 Output Configuration Persistence**:
+  - Whitelisted `'pipewire'`, `'pipewire_hub'`, and `'aes67'` output types in `sanitize_output_config_data` (`backend/main.py`) to prevent `provider_service_id` and `pipewire_service_id` from being stripped on save, service update, and database daemon boot sanitization.
+  - Hardened `DependencyManager.sync_auto_dependencies` to protect PipeWire/AES67 outputs from having their provider keys purged during reconciliation.
+- **Deterministic Service Naming in FFmpeg Command Builder**:
+  - Updated `FFmpegCommandBuilder` (`_append_input` and `_append_output`) to inspect `.service_type` on SQLAlchemy `Service` models, resolving deterministic `-name ffmpeg_service_{id}` (instead of falling back to `ffmpeg_proc_{id}`).
+- **Implicit PipeWire Hub Fallback & Multi-Alias Port Resolution**:
+  - Added single-hub fallback in `PipeWireMatrixSupervisor._resolve_desired_links`, `ProcessManager.start_process`, and `TaskManager.start_task_process`: if only one PipeWire Hub exists in the system, services and tasks with PipeWire inputs/outputs automatically bind to that hub even if `provider_service_id` was omitted.
+  - Expanded port resolution aliases in `PipeWireMatrixSupervisor` to match `ffmpeg_service_{id}`, `ffmpeg_proc_{id}`, `ffmpeg_{id}`, the service display name, and generic client tokens.
+  - Added support for ScheduledTasks producing/publishing audio directly to PipeWire virtual sinks.
+
+
+### Added
+- **Human-Readable PipeWire Links & Dynamic Matrix Routes UI (`PipeWirePreviewModal.tsx`)**:
+  - Enriched graph telemetry resolving node names and port names for all active links (`master_bus:monitor_FL → ffmpeg_service_1:input_FL`).
+  - Added dedicated **Dynamic Patchbay Matrix Routes** section in the Links tab displaying high-level routing pairs (`Kiosk #13 -> master_bus`, `master_bus.monitor -> FFmpeg Service #1`) with real-time status pills (`Linked`, `Pending Source`, `Pending Target`, `Linking`).
+  - Added manual **Reconcile Now** action button triggering immediate patchbay convergence.
+  - Multi-language translation support (`en.json`, `es.json`, `ca.json`) with 100% key parity and strict CSS theme tokens.
+
+- **FFmpeg Auto-Reconnect & Cascading Restart on PipeWire Hub Lifecycle**:
+  - Implemented `ProcessManager._restart_dependent_ffmpeg_consumers` to automatically cascade a graceful restart to running FFmpeg services when their PipeWire Hub provider starts or restarts.
+  - Added active connection watchdog in `PipeWireMatrixSupervisor` that monitors running FFmpeg transcode processes and triggers reconnection if their PulseAudio node disappears from the PipeWire graph for $\ge 6$ seconds (with 30-second cooldown protection).
+  - Explicitly preserved Virtual Desktop and Kiosk processes without unnecessary restarts (kiosks reconnect to PulseAudio sockets automatically once unmuted).
+  - Added unit test coverage in `test_pipewire_process.py` and `test_pipewire_matrix_supervisor.py`.
+
+## [2.41.0] - 2026-10-14
+
+### Added
+- **Dedicated Companion PipeWire Matrix Supervisor (`PipeWireMatrixSupervisor`)**:
+  - Independent 1:1 background companion worker bound to the lifecycle of each active `pipewire_hub` instance.
+  - Automatically reconciles dynamic audio patchbay routing between browser outputs (Kiosk/Desktop), virtual null sinks, and FFmpeg recording/playout streams in real time.
+  - Resilient port matching algorithm (`_match_ports`) with directional separation (outputs vs inputs) supporting exact names, client aliases (`Chromium`, `Firefox`, `cubeb`), and channel index tokens (`output_0`/`output_1`, `FL`/`FR`).
+  - Hot routing without restarts: dynamically reconciles connections on service create, update, delete, start, and stop events without interrupting active PipeWire daemons.
+  - REST API endpoints for matrix observability: `GET /api/services/{id}/pipewire/matrix` and `POST /api/services/{id}/pipewire/matrix/reconcile`.
+  - Comprehensive unit test suite (`test_pipewire_matrix_supervisor.py`).
+
+### Changed
+- **Replaced Myopic 10-Second Linker**:
+  - Replaced the previous 10-second bounded polling method (`_ensure_pipewire_links`) in `ProcessManager` with event-driven notifications (`notify_pipewire_matrix_change()`) dispatched to the active hub companion supervisor.
+  - Browser audio ports appearing late (e.g. after user unmutes web players or finishes buffering) are now immediately captured and connected at any point during process execution.
+  - Ingest from virtual sink monitors (`<sink>.monitor`) to FFmpeg playout and capture streams is automatically established and maintained.
+
+### Added
+- **Asynchronous Headless PipeWire Linker (`ProcessManager._ensure_pipewire_links`)**:
+  - Automatically queries active audio ports via `pw-link -o` and dynamically links browser audio ports (`Chromium:output_FL/FR`, `Firefox:output_FL/FR`) directly to virtual sink playback ports (`<sink>:playback_FL/FR`).
+  - Implements fast bounded polling loop (<100ms first check, 10s maximum duration) that prevents browser audio buffer stalls and stream suspensions without a standalone session manager daemon.
+  - Zero log spam: emits clean structured telemetry logs (`[PipeWireLinker]`) and terminates gracefully without infinite loops upon successful link or client process exit.
+  - Reusable CLI binary resolution helper (`_get_pipewire_tool_binary`) supporting both custom Forge build directories and host system PATH.
+
+### Changed
+- **Headless PipeWire Minimalist SPA Architecture**:
+  - Removed redundant modules (`libpipewire-module-session-manager`, `libpipewire-module-client-device`, and `libpipewire-module-spa-device-factory`) from headless daemon configuration to ensure fast startup and clean socket initialization without D-Bus contention.
+  - Added `stream.properties = { adapter.auto-port-config = { mode = dsp } }` and sink adapter monitor properties for native port mapping.
+  - Injected deterministic client `-name` (`ffmpeg_<type>_<id>`) and `-stream_name` for all FFmpeg PulseAudio demuxers and muxers.
+
+### Fixed
+- **Chromium Kiosk Audio Isolation under PipeWire**:
+  - Omitted `--alsa-output-device` and bypassed ALSA loopback `.asoundrc` generation when Virtual Desktop audio backend is set to `pipewire_hub`.
+  - Added `AudioServiceSandbox` to `--disable-features` in Chromium launch arguments, allowing seamless native connection to headless PipeWire pulse socket without root D-Bus requirements.
+
+## [2.39.1] - 2026-10-09
+
+### Fixed
+- **FFmpeg Version Detection & Deprecated `-vsync` Resolution**:
+  - Fixed `get_ffmpeg_version` regex to support Git tag prefix `n` (e.g. `n7.1`, `n9.0.2`), version prefix `v`, and Git snapshots (`N-118000`).
+  - Resolved `Unrecognized option 'vsync'` crash on FFmpeg 7+ by correctly detecting versions >= 5.1 and generating `-fps_mode` instead of the removed legacy `-vsync` flag.
+  - Updated modern default fallback from legacy 4.4 to 7.0 for future-proof compatibility with modern FFmpeg releases.
+
+## [2.39.0] - 2026-10-09
+
+### Added
+- **First-Class PulseAudio / PipeWire Client Integration (`-f pulse`)**:
+  - Elevated PulseAudio / PipeWire client library (`libpulse`) to core system requirement alongside ALSA (`libasound2`).
+  - Added `libpulse-dev` (Debian/Ubuntu), `pulseaudio-libs-devel` (Fedora), and `libpulse` (Arch) to `install.sh` system dependencies and `INSTALL.md`.
+  - Added `libpulse` dependency verification (`pkg-config --exists libpulse` with `/usr/include/pulse/pulseaudio.h` fallback) in `BuildManager`.
+  - Added `--enable-libpulse` compilation flag in `FfmpegRecipe` to build both `pulse` input device (`-f pulse -i <sink>.monitor`) and `pulse` output device (`-f pulse <sink>`) in custom Forge FFmpeg builds.
+  - Added `libpulse` package mappings for Debian, Fedora, and Arch in `ForgeView.tsx`.
+
+
+### Added
+- **PipeWire Universal Audio Matrix (Inputs & Outputs)**:
+  - Phase 4 of PipeWire roadmap: full input and output audio integration for FFmpeg streams and scheduled tasks.
+  - **FFmpeg Command Generation**:
+    - Input: captures uncompressed audio directly from PipeWire virtual monitors (`-f pulse -i <sink>.monitor`).
+    - Output: injects uncompressed audio into PipeWire virtual sinks (`-f pulse <sink>`).
+    - Pure audio protections: automatically suppresses video stream maps (`-vn`) and disables secondary video preview commands for audio-only PipeWire processes to prevent FFmpeg crashes.
+  - **Direct Stream Copy (`-c:a copy`) Audio Matrix**:
+    - Preserves bit-perfect 0% CPU PCM passthrough between raw audio sources and destinations (`pipewire` ↔ `alsa`, `pipewire` ↔ `pipewire`, `pipewire` ↔ `file`/`rtsp`/`rtp`).
+    - Excludes `copy` when routing uncompressed raw sources to compressed destinations (`icecast`, `rtmp`, `whip`, `hls`).
+    - Excludes `copy` when routing compressed inputs to raw PCM destinations (`alsa`, `pipewire`), forcing `pcm_s16le`.
+  - **On-Demand Subprocess Leasing & Environment Variable Injection**:
+    - Automatic lease acquisition (`acquire_lease(pw_id, lease_holder=f"service:{process_id}")`) on PipeWire Hub daemons when FFmpeg processes start.
+    - Automatic lease release with auto-stop on process shutdown.
+    - Subprocess environment injection: `PULSE_SERVER=unix:/tmp/ffmpeg-gui/pipewire-{pw_id}/pulse.sock` and `PIPEWIRE_RUNTIME_DIR=/tmp/ffmpeg-gui/pipewire-{pw_id}` into FFmpeg workers and scheduled task runners.
+    - Dependency manager automatic stream linking via `extract_provider_id`.
+  - **UI / Frontend Integration**:
+    - `InputSourcePanel`: integrated PipeWire Audio Hub input source with Hub dropdown, Virtual Audio Bus monitor target selector (`.monitor`), and active status badges.
+    - `DestinationPanel`: integrated PipeWire Audio Hub output destination with Hub dropdown, Target Virtual Audio Sink selector (displaying channels and AES67 multicast status), and broadcast recipe guide.
+    - `ProcessConfigForm`: added `pipewire` to `AUDIO_ALLOWED_TYPES`, pure audio toggling rules, form validation, and secondary input migration.
+    - Localized translations across English, Spanish, and Catalan with 100% key parity.
+
+## [2.37.5] - 2026-10-08
+
+### Fixed
+- **ALSA Input and Playout Device Selector Mode Switching & Infinite Loop**:
+  - Replaced ambiguous toggle link with an explicit segmented mode selector (`Detected Devices` vs `Manual Input`) across both `InputSourcePanel` and `DestinationPanel`.
+  - Fixed infinite state reconciliation loop where clicking the list toggle repeatedly reverted back to manual mode and caused UI flicker when `config.device` held a non-hardware string (e.g. `default`).
+  - Strict separation of concerns: in `Detected Devices` mode, only hierarchical Sound Card and Subdevice dropdown selectors (along with `System Default (default)`) are displayed with no redundant manual text field; in `Manual Input` mode, only the custom string input is shown.
+  - Styled `Refresh` button with actionable background, border, and spinner, visible only in `Detected Devices` mode to avoid redundancy during manual typing.
+  - Added synthesized card hierarchy fallback if hierarchical device queries fail, ensuring card selectors populate from flat device lists.
+
+## [2.37.4] - 2026-10-08
+
+### Added
+- **Human-Readable Service & Task Aliases in Active Lease Badges**:
+  - Implemented `resolve_lease_display_name()` in `backend/main.py` resolving raw lease identifiers (`service:<id>`, `desktop:<id>`, `kiosk:<id>`, `task:<id>`, and `peer:<name>`) to human-readable process aliases or names.
+  - Exposed `active_leases_raw` alongside `active_leases` in both `/api/processes` and `/ws/telemetry` for backward compatibility.
+  - Updated hover tooltips across `DesktopServiceCard`, `PipeWireServiceCard`, `MediaMtxServiceCard`, `IcecastServiceCard`, `MediaMtxPreviewModal`, and `IcecastPreviewModal` to display localized strings with process aliases (e.g., `Active connected consumers: Tac12 Kiosk, CTE Agenda Kiosk`).
+  - Added localized translation keys `common.activeConnectedConsumers` and `common.activeConnectedBroadcasters` across English, Spanish, and Catalan.
+
+## [2.37.3] - 2026-10-08
+
+### Fixed
+- **In-Memory Active Leases Loss on Backend Restart & Reattach**:
+  - Implemented `reconcile_active_leases()` in `DependencyManager` executed on startup to rebuild in-memory lease tracking for all active/running services (Virtual Desktops, Kiosks, FFmpeg streams, and PipeWire Hubs) without requiring manual service restarts.
+  - Re-registered active leases in `reattach_process()` so reattached services immediately restore their lease holder records on PipeWire Hub and Virtual Desktops.
+  - Fixed Kiosk dependency auto-detection in `sync_auto_dependencies()` to support `target_desktop_service_id` alongside legacy `desktop_service_id`.
+
+## [2.37.2] - 2026-10-08
+
+### Fixed
+- **Process Manager `spawn_lock` Deadlock on On-Demand PipeWire Hub Leases**:
+  - Moved PipeWire Hub lease acquisition for Virtual Desktops and Kiosks to execute *before* acquiring `spawn_lock`. This prevents non-reentrant `asyncio.Lock` deadlocks when starting desktop/kiosk consumers with the PipeWire Hub initially stopped.
+  - Removed duplicate lease acquisition blocks under `spawn_lock`.
+- **Service Pinning Loss on Backend Restart / Reattach**:
+  - Automatically marks alive reattached processes as pinned (`dependency_manager.mark_pinned(process_id)`) upon backend startup. This prevents provider daemons (such as PipeWire Hub) from being auto-stopped prematurely when an associated consumer desktop or kiosk is stopped.
+  - Added PipeWire Hub to startup log tailing on reattachment.
+- **Stale X11 Display Lock Recovery for Virtual Desktops**:
+  - Added pre-launch detection and removal of dead `/tmp/.X{display_num}-lock` and `/tmp/.X11-unix/X{display_num}` sockets before spawning Xvfb, eliminating startup failures after unexpected service terminations.
+
+## [2.37.1] - 2026-10-08
+
+### Added
+- **2-Level Hierarchical ALSA Audio Selector (Input & Playout)**:
+  - Added card and subdevice level selection for both capture (`InputSourcePanel`) and playout (`DestinationPanel`).
+  - Level 1: Sound Card / Host Hardware Selector (`HDA Intel`, `AudioScience ASI5810`, `ALSA Loopback`).
+  - Level 2: Subdevice / Channel Selector (`Line In 1`, `hw:2,0,0`, etc.).
+  - Added dedicated manual string input toggle (`✏️ Manual` / `📋 List`) with instant fallback to custom strings (`hw:...`, `plughw:...`, `default`).
+  - Added on-demand refresh button (`🔄`) allowing re-probing devices without page reloading.
+  - Hierarchical API endpoints `/alsa/devices-hierarchical` and `/alsa/playback-devices-hierarchical`.
+
+### Fixed
+- **PipeWire Graph & Node Inspector Preview Hang**:
+  - Loaded `libpipewire-module-spa-node-factory` and `libpipewire-module-link-factory` in the PipeWire daemon configuration, enabling PipeWire client registry synchronization (`pw-dump`) to complete without timing out.
+  - Hardened daemon telemetry queries with dedicated 5.0s timeouts and explicit process cleanup.
+- **FFmpeg Engine Binary Resolution & Recipe Import Sanitization**:
+  - Prevented non-FFmpeg engines (such as Icecast or MediaMTX) from being inadvertently executed with FFmpeg arguments when recipe build IDs mismatch target environments.
+  - Recipe import now sanitizes engine build IDs and automatically resynchronizes local managed Icecast provider credentials, resolving the 401 Unauthorized regression.
+- **ALSA Sound Card Disappearance with `snd-aloop`**:
+  - Replaced slow subprocess `arecord -l` / `aplay -l` scanning with direct kernel parsing of `/proc/asound/cards` and `/proc/asound/pcm*`, eliminating timeouts when `snd-aloop` is loaded alongside multi-channel cards.
+
+## [2.37.0] - 2026-10-07
+
+### Added
+- **Virtual Desktop Dual Audio Subsystem (ALSA Loopback vs PipeWire Audio Hub)**:
+  - Added selectable audio backend in `DesktopConfigForm`: operators can toggle between traditional `ALSA Loopback (snd-aloop)` and `PipeWire Audio Hub`.
+  - Automatic discovery and selection of configured PipeWire Hub daemons and their target Virtual Audio Sinks (`mix_bus`, `kiosk_bus`, etc.).
+  - Visual badges indicating when target Virtual Sinks have active network AES67/Dante broadcast (Tx).
+  - Preserved 100% backward compatibility for existing ALSA Loopback setups (Chesterton's Fence).
+- **Automated PipeWire Hub On-Demand Lease Lifecycle for Desktops & Kiosks**:
+  - Virtual Desktops automatically acquire leases (`desktop:{id}`) on the target PipeWire Hub at startup and release them at shutdown.
+  - Kiosks automatically acquire dependent leases (`kiosk:{id}`) at startup and release them at shutdown.
+  - Restart guard: `allow_auto_stop=(not is_restart)` prevents provider bouncing during desktop or kiosk reboots.
+  - Lease operations execute safely outside database session contexts to eliminate SQLite lock contention.
+- **Native Browser Audio Streaming & `apulse` Bypass**:
+  - In PipeWire Hub mode, Firefox and Chromium connect natively to the isolated PulseAudio emulator socket (`PULSE_SERVER=unix:/tmp/ffmpeg-gui/pipewire-{id}/pulse.sock`) and `PULSE_SINK`.
+  - Bypasses the `apulse` wrapper requirement and emulation libraries for Firefox on PipeWire desktops.
+- **Audio Routing Telemetry & UI Indicators**:
+  - Added dedicated audio backend badge to `DesktopServiceCard` specifications strip (`🌐 PW Hub #{id} • {sink}` or `🔊 ALSA hw:Loopback,0,{sub}`).
+  - Added inherited audio output routing card to `KioskConfigForm`, providing instant visibility of browser audio destinations.
+
+
+### Fixed
+- **PipeWire Service Card Symmetry & Platform Tag Parity**:
+  - Aligned `PipeWireServiceCard` with standard platform badge hierarchy (matching `MediaMtxServiceCard` and `IcecastServiceCard`).
+  - Added process status indicator dot with dynamic pulsing animation and service Alias display (`Alias [Original Name]`).
+  - Replaced arbitrary `AUTO` tag with standard `BOOT (#order | delay)` tag (`LightningIcon`).
+  - Added daemon `WATCHDOG` supervision badge displaying restart counts, `PENDING REBOOT` tag, and active `LEASES` counter.
+  - Removed redundant `RUNNING` text tag.
+- **PipeWire Config Form Cleanup**:
+  - Removed duplicate floating `Auto-Start Service` checkbox from Section 1 header, consolidating boot management exclusively in Section 5 (Boot Lifecycle, Order & Delay).
+
+### Changed
+- **PTP / AES67 Synchronization Guidance**:
+  - Clarified UI guidance in `PipeWireConfigForm` for clock modes: explicitly presents System Monotonic Clock as the default, safe, non-interfering mode for general network and software receiver use.
+  - Added dedicated amber technical warning for hardware PTP (`linuxptp`), warning that `ptp4l` should only be deployed by broadcast engineers in client-only mode (`slaveOnly=1`) to prevent accidental Grandmaster contention on production Dante/AES67 networks.
+
+## [2.36.2] - 2026-10-07
+
+### Fixed
+- **PipeWire Process Spawn & ORM Session Isolation**:
+  - Extracted scalar `pw_root` path within database session scope prior to commit, resolving `DetachedInstanceError` (`SoftwareBuild is not bound to a Session`) during environment preparation.
+  - Added binary path prefix fallback to detect install roots from executable paths (`.../bin/pipewire`).
+  - Modernized SQLAlchemy queries to `session.get(FfmpegBuild, build_id)` avoiding deprecated `Query.get()`.
+
+### Changed
+- **Dismantled PipeWire Peer Federation**:
+  - Clarified architectural scope: PipeWire Hub is a host-local audio engine operating on Unix domain sockets (`AF_UNIX`) and local multicast AoIP (AES67/SAP), not a remote-routable streaming server.
+  - Removed peer federation controls (`is_shared_with_peers`, `allow_peer_lease`) from `PipeWireConfigForm`.
+  - Filtered out `pipewire_hub` from `PeerManager.get_shared_catalog` so local PipeWire instances are never exposed in the remote peer catalog.
+
+## [2.36.1] - 2026-10-06
+
+### Fixed
+- **PipeWire Forge Execution & Environment Discovery**:
+  - Fixed binary resolution to handle `SoftwareBuild.install_path` fallback alongside `install_dir`.
+  - Added automatic detection and environment exports for `SPA_PLUGIN_DIR` (`lib/spa-0.2`, `lib/x86_64-linux-gnu/spa-0.2`) and `PIPEWIRE_MODULE_DIR` (`lib/pipewire-0.3`, `lib/x86_64-linux-gnu/pipewire-0.3`), ensuring null audio sinks and RTP modules load properly in isolated Forge builds.
+- **Service Card Visual Symmetry**:
+  - Removed redundant inspector button from `PipeWireServiceCard` action bar (retaining intuitive card-click modal trigger).
+  - Replaced expansive virtual sinks list on the card with an aggregated count badge (`N Sinks [RTP]`) to prevent card height blowup.
+
+### Added
+- **PipeWire Configuration Form Parity**:
+  - Added Binary Engine selector (`SoftwareBuild` vs system binary).
+  - Added service Alias (`alias`), Log Storage volume selector (`log_storage_id`), Boot Lifecycle controls (`auto_start`, `startup_order`, `startup_delay`), Watchdog & Crash Protection (`watchdog_enabled`, `watchdog_retries`), and Peer Federation (`is_shared_with_peers`, `allow_peer_lease`).
+- **Live Observability & Virtual Console**:
+  - Added dedicated "Console & Logs" tab to `PipeWirePreviewModal` with real-time log streaming (`/api/processes/{id}/logs`), auto-scroll, log copy, and log download.
+
+## [2.36.0] - 2026-10-06
+
+### Added
+- **PipeWire Hub Service Orchestration (`service_type: 'pipewire_hub'`)**:
+  - Implemented dynamic configuration generator `PipeWireConfigGenerator` creating ephemeral PipeWire SPA/JSON configuration in RAM (`/dev/shm/pipewire_{id}.conf`) with virtual null-audio-sink adapters and PulseAudio emulator socket (`pulse.sock`).
+  - Added runtime process isolation in `/tmp/ffmpeg-gui/pipewire-{id}` with strict permissions (`0o700`) preventing collisions with user-space PipeWire sessions.
+  - Implemented full service lifecycle management, auto-start, watchdog supervision, and on-demand lease reference counting (`acquire_lease`, `release_lease`) in `ProcessManager`.
+- **AES67 / Dante Audio-over-IP (Tx) Multicast & SAP Broadcast**:
+  - Implemented RTP multicast audio streaming (`libpipewire-module-rtp-sink`) and automatic SAP/SDP announcements (`239.255.255.255:9875`) for virtual audio sinks.
+  - Added dedicated physical network interface (NIC) reservation in `ResourceManager` to prevent network contention.
+  - Added network inspection endpoint (`GET /api/pipewire/network-audit`) detecting active physical interfaces, hardware timestamping via `ethtool`, and non-intrusive host `ptp4l` (IEEE 1588-2008) detection.
+- **Real-time Graph Nodes & Telemetry Inspection**:
+  - Implemented `GET /api/services/{id}/pipewire/nodes` querying the isolated PipeWire instance via `pw-dump` with subprocess timeout reaping and standardized telemetry responses.
+  - Added interactive `PipeWirePreviewModal` displaying live audio graph nodes, port routings, active links, and raw telemetry with auto-refresh.
+- **Frontend Services UI Integration**:
+  - Created `PipeWireConfigForm` with General Settings (Sample Rate, Quantum), Virtual Sinks Manager, and AES67 Network Module.
+  - Created `PipeWireServiceCard` with engine badges, live status, virtual sinks pills, AES67 Tx status, and 1-click Graph Inspector action.
+  - Maintained 100% key parity across English, Spanish, and Catalan locale files.
+
+## [2.35.0] - 2026-10-06
+
+### Added
+- **PipeWire Audio Engine Registration & Host System Audit**:
+  - Registered `pipewire` in `SUPPORTED_ENGINES` within `SoftwareManager` with automatic system binary auditing and `libpipewire <version>` parsing (`pipewire --version`).
+  - Added vector SVG fallback for PipeWire in backend software icon endpoints and fallback branding in `EngineLogo` and `Icons.tsx` (`PipewireLogoIcon`).
+- **PipeWire Forge Build Recipe (`PipeWireRecipe`) & Dependency Management**:
+  - Implemented Meson and Ninja compilation workflow in Forge for compiling PipeWire from official GitLab releases with custom configuration options (`--libdir=lib`, `-Dpipewire-pulse=enabled`, `-Dpipewire-alsa=enabled`, `-Dudev=enabled`).
+  - Added dependency detection for build tools (`meson`, `ninja` / `ninja-build`, `gcc`, `git`, `pkg-config`) and Linux system libraries (`libasound2`, `libdbus-1`, `libudev`).
+  - Added upstream GitLab release tag discovery endpoint (`GET /builds/tags/pipewire`) with resilient offline fallback tags.
+- **Frontend Forge UI Integration for PipeWire**:
+  - Added dedicated PipeWire compilation tab in `ForgeView.tsx` with dynamic OS package resolution for Debian, Fedora, and Arch.
+  - Added PipeWire configuration support to `BuildFormModal.tsx` with architecture details card, default profile name, and tag selector.
+  - Maintained 100% key parity across English, Spanish, and Catalan locale files.
+
+## [2.34.3] - 2026-10-05
+
+### Fixed
+- **ALSA Hardware Output Codec Compatibility & Enforcement**:
+  - Excluded invalid `copy` (Audio Passthrough) option from ALSA destination compatible audio codecs in `codecRegistry.ts`, restricting choices strictly to uncompressed PCM (`pcm_s16le`, `pcm_s24le`).
+  - Added backend defense in `FFmpegCommandBuilder`: if an ALSA destination is configured with `copy` or a compressed/non-PCM codec, the generator automatically forces safe fallback to `pcm_s16le` to prevent FFmpeg subprocess crashes against Linux sound drivers.
+
+## [2.34.2] - 2026-10-05
+
+### Fixed
+- **Session Cookie Support in `verify_token` Dependency**:
+  - Fixed `401 Unauthorized` response on `GET /api/hardware/health` when logged in using browser session cookies (`gui_session`), aligning the FastAPI `verify_token` dependency with `AuthBarrierMiddleware`.
+- **Software Engine Built-in Vector SVG Icons & Elimination of 404s**:
+  - Serves built-in high-quality vector SVGs (Chromium, Firefox, FFmpeg, MediaMTX, Icecast2) with HTTP 200 instead of returning HTTP 404 on `GET /api/settings/software/{type}/icon` when no custom icon has been uploaded on disk.
+  - Added `has_custom_icon` boolean telemetry flag to `GET /api/settings/software` and synchronized `SoftwareEngineCard` state so the delete/reset icon button is only presented when a custom icon is actually stored.
+
+## [2.34.1] - 2026-10-05
+
+### Added
+- **Tri-State Services Counter in Dashboard (`ServicesDashboardCard`)**:
+  - Replaced 2-column card with a 3-column metrics grid: **Active**, **Running**, and **Inactive**.
+  - Added visual degradation alert: if active services suffer an unexpected crash and are undergoing watchdog backoff (`runningCount < activeCount`), the card highlights with a red border (`border-red-500/30`), the **Running** counter glows in red with a pulse animation (`text-red-400 animate-pulse`), and the badge reflects the degradation instantly.
+
+## [2.34.0] - 2026-10-05
+
+### Added
+- **Dual Service Retry and Deactivate Controls (`PowerIcon`)**:
+  - Replaced ambiguous "Stop" and non-functional "Restart" buttons during `isRetrying` / crash-backoff states with explicit dual controls:
+    - **Retry Now / Force Start (`PlayIcon`)**: Immediately restarts dead processes without waiting for the watchdog backoff sleep timer.
+    - **Deactivate Service / Cancel Retries (`PowerIcon`)**: Formally deactivates the crashed service, aborts pending watchdog retries, resets restart counters, sets status to `stopped`, and moves the card to "Configured Services (Inactive)".
+  - Updated `FfmpegServiceCard` and `UnifiedServiceCard` to cleanly decouple active running controls (`Restart` + `Stop`) from retrying/crashed controls (`Retry Now` + `Deactivate`).
+  - Updated crash-loop banner in `FfmpegPreviewModal` with dual "Retry Now" and "Deactivate Service & Cancel Retries" action buttons.
+  - Enhanced `ServicesView` Active Services header to provide honest, real-time counters: distinguishes running processes from services undergoing watchdog crash-recovery backoff (`ACTIVE SERVICES (X running · Y retrying)`).
+  - Added new IEC 60417-5009 standard `PowerIcon` in `frontend/src/components/Icons.tsx`.
+
+## [2.33.1] - 2026-10-05
+
+### Fixed
+- **MediaMTX Idle Path State Filtering**:
+  - Filtered out registered but idle paths in `MediaMtxPreviewModal` by validating `ready: true` and `source !== null` from MediaMTX's `/v3/paths/list` API response.
+  - Eliminated false-positive active stream status and external publisher misattribution for configured paths that have no active publisher.
+
+## [2.33.0] - 2026-10-05
+
+### Added
+- **RTSP Push Output & MediaMTX Hub Integration**:
+  - Added native `rtsp` output destination in `DestinationPanel` and FFmpeg command generator (`FFmpegCommandBuilder`).
+  - Implemented TCP-interleaved transport support (`-rtsp_transport tcp`) for jitter-free, robust network delivery.
+  - MediaMTX Hub integration supporting local and federated remote peer hubs, automated path selection, and TLS/RTSPS toggle.
+  - Enabled uncompressed PCM audio distribution (`pcm_s16le`, `pcm_s24le`) over RTSP for lossless master distribution across local broadcast infrastructure.
+- **Dynamic Codec Filtering & Auto-Healing**:
+  - Filtered out `copy` codec option when input is an uncompressed raw hardware or generator source (`alsa`, `decklink`, `v4l2`, `desktop`, `lavfi_*`, future `pipewire`), preventing FFmpeg startup crashes.
+  - Added reactive auto-healing in `ProcessConfigForm` and codec panels that automatically reverts invalid `copy` selection to standard default codecs (`libx264` / `aac`) when switching input sources.
+- **MediaMTX Telemetry & Multi-Publisher Contention Detection**:
+  - Enhanced path resolution for SRT URLs parsing `streamid=#!::r=<path>` parameters accurately.
+  - Replaced the erroneous false-alarm warning with a unified status card: silent when inactive and uncontended, positive green status (`🟢 Emisión en Vivo Activa`) when streaming with publisher process attribution, and an amber warning banner (`⚠️ Concurrencia Detectada`) listing contending processes whenever 2 or more configured publishers target the same path.
 
 ## [2.32.1] - 2026-10-02
 

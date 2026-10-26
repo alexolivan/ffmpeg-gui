@@ -1,0 +1,1063 @@
+import React, { useEffect, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { EngineLogo } from '../common/EngineLogo';
+import { RefreshIcon, ClipboardIcon, CheckIcon } from '../Icons';
+import { copyToClipboard as universalCopy } from '../../utils/clipboard';
+
+interface PipeWirePreviewModalProps {
+  selectedProcess: any;
+  telemetry: any[];
+  actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
+  logs?: any[];
+  onClose: () => void;
+  onEditProcess: (proc: any) => void;
+  onCloneProcess?: (proc: any) => void;
+  onStartService: (id: number) => void;
+  onStopService: (id: number, name?: string) => void;
+  onRestartService: (id: number, name: string) => void;
+  API: string;
+}
+
+interface TelemetryNode {
+  id: number;
+  name: string;
+  human_label?: string | null;
+  entity_type?: string | null;
+  entity_id?: number | null;
+  nick?: string;
+  media_class?: string;
+  state?: string;
+  description?: string;
+  rate?: number;
+  channels?: number;
+}
+
+interface TelemetryPort {
+  id: number;
+  node_id: number;
+  name: string;
+  direction: 'input' | 'output';
+  channel?: string;
+}
+
+interface TelemetryLink {
+  id: number;
+  output_node_id: number;
+  output_port_id: number;
+  input_node_id: number;
+  input_port_id: number;
+  output_node_name?: string;
+  output_node_label?: string;
+  output_port_name?: string;
+  input_node_name?: string;
+  input_node_label?: string;
+  input_port_name?: string;
+  state?: string;
+}
+
+interface MatrixRoute {
+  source: string;
+  source_label?: string;
+  target: string;
+  target_label?: string;
+  description: string;
+  type: string;
+  status: 'linked' | 'pending_source' | 'pending_target' | 'linking';
+  source_ports: string[];
+  target_ports: string[];
+  source_entity_type?: string;
+  source_entity_id?: number;
+  target_entity_type?: string;
+  target_entity_id?: number;
+}
+
+interface MatrixTelemetry {
+  hub_id: number;
+  running: boolean;
+  desired_links_count: number;
+  active_links_count: number;
+  pending_links_count: number;
+  routes: MatrixRoute[];
+}
+
+interface AoIpStream {
+  session_id: string;
+  session_name: string;
+  origin_ip: string;
+  multicast_ip: string;
+  rtp_port: number;
+  channels: number;
+  sample_rate: number;
+  format: string;
+  ptp_clock_id?: string | null;
+  last_seen?: number;
+  is_local?: boolean;
+}
+
+interface AoIpTelemetry {
+  running: boolean;
+  interface?: string | null;
+  streams_count: number;
+  ptp_status?: {
+    running: boolean;
+    grandmaster_ip?: string | null;
+    clock_identity?: string | null;
+    state?: string | null;
+    priority1?: number;
+    domain?: number;
+  };
+  discovered_streams: AoIpStream[];
+}
+
+interface GraphTelemetryData {
+  active: boolean;
+  nodes: TelemetryNode[];
+  ports: TelemetryPort[];
+  links: TelemetryLink[];
+  matrix?: MatrixTelemetry | null;
+  aoip_discovery?: AoIpTelemetry | null;
+  remote_sinks?: any[];
+  raw_summary: {
+    nodes_count: number;
+    ports_count: number;
+    links_count: number;
+  };
+  error?: string | null;
+}
+
+export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
+  selectedProcess,
+  telemetry,
+  actionPending,
+  onClose,
+  onEditProcess,
+  onStartService,
+  onStopService,
+  onRestartService,
+  API,
+}) => {
+  const { t } = useTranslation();
+  const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
+  const isRunning = currentProcess.status === 'running';
+  const isPending = !!actionPending[currentProcess.id];
+
+  const [graphData, setGraphData] = useState<GraphTelemetryData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw' | 'aoip'>('nodes');
+  const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
+  const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const handleReconcileMatrix = async () => {
+    if (!currentProcess?.id || isReconciling) return;
+    setIsReconciling(true);
+    try {
+      await fetch(`${API}/api/services/${currentProcess.id}/pipewire/matrix/reconcile`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+      });
+      await fetchGraphTelemetry(true);
+    } catch (err) {
+      console.error('Failed to reconcile PipeWire matrix:', err);
+    } finally {
+      setIsReconciling(false);
+    }
+  };
+
+  const fetchGraphTelemetry = async (isManual = false) => {
+    if (!isRunning) return;
+    try {
+      if (isManual || !graphData) setLoading(true);
+      const token = localStorage.getItem('token') || '';
+      const res = await fetch(`${API}/api/services/${currentProcess.id}/pipewire/nodes`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setGraphData(data);
+      }
+    } catch {
+      // ignore network errors on polling
+    } finally {
+      if (isManual || !graphData) setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchGraphTelemetry();
+    if (!autoRefresh || !isRunning) return;
+    const interval = setInterval(() => fetchGraphTelemetry(false), 3000);
+    return () => clearInterval(interval);
+  }, [currentProcess.id, isRunning, autoRefresh]);
+
+  // Poll daemon execution logs only when console tab is active
+  useEffect(() => {
+    if (activeTab !== 'console' || !isRunning) return;
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch(`${API}/api/processes/${currentProcess.id}/logs`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setDaemonLogs(data);
+          }
+        }
+      } catch {
+        // ignore polling network errors
+      }
+    };
+
+    fetchLogs();
+    const interval = setInterval(fetchLogs, 2000);
+    return () => clearInterval(interval);
+  }, [currentProcess.id, API, activeTab, isRunning]);
+
+  // Auto-scroll virtual terminal
+  useEffect(() => {
+    if (processLogsContainerRef.current && isRunning) {
+      processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
+    }
+  }, [daemonLogs, isRunning, activeTab]);
+
+  const handleCopyLogs = () => {
+    const text = daemonLogs
+      .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+      .join('\n');
+    universalCopy(text).then((success) => {
+      if (success) {
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      }
+    });
+  };
+
+  const pwConfig = currentProcess.config?.pipewire_config || currentProcess.config || {};
+  const virtualSinks = Array.isArray(pwConfig.virtual_sinks) ? pwConfig.virtual_sinks : [];
+  const remoteSinks = Array.isArray(pwConfig.remote_sinks) ? pwConfig.remote_sinks : [];
+  const isAes67Enabled = Boolean(pwConfig.aes67_network?.enabled);
+  const showAoIpTab = isAes67Enabled || remoteSinks.length > 0;
+
+  const handleConfigureStreamInHub = (stream: AoIpStream | any) => {
+    const rawName = stream.session_name || stream.sap_name || stream.name || 'Remote AoIP Stream';
+    const baseId = rawName
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '_')
+      .replace(/_+/g, '_')
+      .slice(0, 24) || 'remote_stream';
+    const existingIds = new Set(remoteSinks.map((s: any) => s.id));
+    let uniqueId = baseId;
+    let counter = 1;
+    while (existingIds.has(uniqueId)) {
+      uniqueId = `${baseId}_${counter++}`;
+    }
+
+    const newRemoteSink = {
+      id: uniqueId,
+      name: rawName,
+      channels: Number(stream.channels) || 2,
+      multicast_ip: stream.multicast_ip,
+      rtp_port: Number(stream.rtp_port) || 5004,
+      format: stream.format === 'S16BE' ? 'S16BE' : 'S24BE',
+      rate: Number(stream.sample_rate || stream.rate) || 48000,
+      sap_name: rawName,
+      origin_ip: stream.origin_ip || '',
+    };
+
+    const updatedProc = JSON.parse(JSON.stringify(currentProcess));
+    if (!updatedProc.config) updatedProc.config = {};
+    if (updatedProc.config.pipewire_config) {
+      if (!Array.isArray(updatedProc.config.pipewire_config.remote_sinks)) {
+        updatedProc.config.pipewire_config.remote_sinks = [];
+      }
+      updatedProc.config.pipewire_config.remote_sinks.push(newRemoteSink);
+    } else {
+      if (!Array.isArray(updatedProc.config.remote_sinks)) {
+        updatedProc.config.remote_sinks = [];
+      }
+      updatedProc.config.remote_sinks.push(newRemoteSink);
+    }
+
+    onClose();
+    onEditProcess(updatedProc);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-2xl bg-[var(--bg-card)] border border-[var(--glass-border)] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-[var(--glass-border)] bg-black/20">
+          <div className="flex items-center gap-3 min-w-0">
+            <EngineLogo softwareType="pipewire" size={28} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-lg font-black text-[var(--text-primary)] truncate">{currentProcess.name}</h3>
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                  {t('services.pipewire.service_name', 'PipeWire Audio Hub')}
+                </span>
+                {isRunning ? (
+                  <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    {t('common.running', 'RUNNING')}
+                  </span>
+                ) : (
+                  <span className="text-[9px] bg-zinc-500/20 text-zinc-400 border border-zinc-500/30 px-2 py-0.5 rounded font-bold">
+                    {t('common.offline', 'OFFLINE')}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[var(--text-secondary)] mt-0.5 font-mono">
+                Socket: /tmp/ffmpeg-gui/pipewire-{currentProcess.id}/pulse.sock
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isRunning && (
+              <button
+                onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
+                disabled={isPending}
+                className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1.5 px-3 border border-white/10 text-emerald-400 flex items-center gap-1.5"
+                title={t('services.restartService', 'Restart Service')}
+              >
+                <RefreshIcon size={13} />
+                <span className="hidden sm:inline">{t('common.restart', 'Restart')}</span>
+              </button>
+            )}
+            {isRunning ? (
+              <button
+                onClick={() => onStopService(currentProcess.id, currentProcess.name)}
+                disabled={isPending}
+                className="pill-button bg-red-500/15 hover:bg-red-500/25 text-xs py-1.5 px-3 border border-red-500/30 text-red-400 font-bold"
+              >
+                {t('common.stop', 'Stop')}
+              </button>
+            ) : (
+              <button
+                onClick={() => onStartService(currentProcess.id)}
+                disabled={isPending}
+                className="pill-button bg-brand-lime hover:bg-brand-lime/90 text-xs py-1.5 px-3 text-black font-bold shadow-lg shadow-brand-lime/10"
+              >
+                {t('common.start', 'Start')}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                onClose();
+                onEditProcess(currentProcess);
+              }}
+              className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1.5 px-3 border border-white/10 text-[var(--text-primary)]"
+            >
+              {t('common.edit', 'Edit')}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-sm border border-white/10 transition-colors ml-1"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-4 sm:p-5 flex-1 overflow-y-auto space-y-4">
+          {/* Summary Strip */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="p-3 rounded-xl bg-white/2 border border-[var(--glass-border)]">
+              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block">
+                {t('services.pipewire.virtualSinksTitle', 'Configured Sinks')}
+              </span>
+              <span className="text-xl font-black text-purple-400">{virtualSinks.length}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-white/2 border border-[var(--glass-border)]">
+              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block">
+                {t('services.pipewire.liveNodes', 'Live Graph Nodes')}
+              </span>
+              <span className="text-xl font-black text-brand-lime">{graphData?.raw_summary?.nodes_count ?? '-'}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-white/2 border border-[var(--glass-border)]">
+              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block">
+                {t('services.pipewire.livePorts', 'Active Ports')}
+              </span>
+              <span className="text-xl font-black text-cyan-400">{graphData?.raw_summary?.ports_count ?? '-'}</span>
+            </div>
+            <div className="p-3 rounded-xl bg-white/2 border border-[var(--glass-border)]">
+              <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] block">
+                {t('services.pipewire.liveLinks', 'Graph Links')}
+              </span>
+              <span className="text-xl font-black text-emerald-400">{graphData?.raw_summary?.links_count ?? '-'}</span>
+            </div>
+          </div>
+
+          {/* Offline Notice if Stopped */}
+          {!isRunning && (
+            <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-300 text-xs flex items-center justify-between">
+              <span>
+                {t(
+                  'services.pipewire.startToInspect',
+                  'Start this PipeWire service to inspect live audio graph nodes, streams, and virtual sinks.'
+                )}
+              </span>
+              <button
+                onClick={() => onStartService(currentProcess.id)}
+                className="px-3 py-1 rounded-lg bg-brand-lime text-black font-bold text-xs"
+              >
+                {t('common.start', 'Start')}
+              </button>
+            </div>
+          )}
+
+          {/* Navigation Tabs Bar */}
+          <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setActiveTab('nodes')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'nodes'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                }`}
+              >
+                {t('services.pipewire.nodesTab', 'Audio Nodes')} ({graphData?.nodes?.length || 0})
+              </button>
+              <button
+                onClick={() => setActiveTab('links')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'links'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                }`}
+              >
+                {t('services.pipewire.linksTab', 'Links & Routes')} ({graphData?.links?.length || 0})
+              </button>
+              <button
+                onClick={() => setActiveTab('console')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'console'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                }`}
+              >
+                {t('services.pipewire.consoleTab', 'Console & Logs')} ({daemonLogs.length})
+              </button>
+              {showAoIpTab && (
+                <button
+                  onClick={() => setActiveTab('aoip')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'aoip'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                  }`}
+                >
+                  {t('services.pipewire.aoipTab', 'AoIP / Network')} ({graphData?.aoip_discovery?.discovered_streams?.length ?? graphData?.aoip_discovery?.streams_count ?? 0})
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab('raw')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  activeTab === 'raw'
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                }`}
+              >
+                {t('services.pipewire.rawTab', 'Raw Telemetry')}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  className="rounded border-[var(--glass-border)] text-brand-lime"
+                />
+                <span>{t('common.autoRefresh', 'Auto-refresh (3s)')}</span>
+              </label>
+              <button
+                onClick={() => fetchGraphTelemetry(true)}
+                disabled={loading || !isRunning}
+                className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 text-[var(--text-primary)] disabled:opacity-30"
+                title={t('common.refresh', 'Refresh')}
+              >
+                <RefreshIcon size={12} className={loading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          {/* Active Tab Contents */}
+          {activeTab === 'nodes' && (
+            <div className="space-y-2">
+              {graphData?.nodes && graphData.nodes.length > 0 ? (
+                <div className="overflow-x-auto rounded-xl border border-[var(--glass-border)]">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                      <tr>
+                        <th className="p-2.5">ID</th>
+                        <th className="p-2.5">{t('services.pipewire.nodeNameEntity', 'Node / Entity Name')}</th>
+                        <th className="p-2.5">Media Class</th>
+                        <th className="p-2.5">State</th>
+                        <th className="p-2.5">Format</th>
+                        <th className="p-2.5">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--glass-border)]">
+                      {graphData.nodes.map((node) => (
+                        <tr key={node.id} className="hover:bg-white/2 transition-colors">
+                          <td className="p-2.5 text-zinc-500">#{node.id}</td>
+                          <td className="p-2.5">
+                            <div className="flex flex-col">
+                              {node.human_label ? (
+                                <>
+                                  <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                                    {node.human_label}
+                                    {node.entity_id && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] bg-brand-lime/10 text-brand-lime border border-brand-lime/30 font-mono font-semibold">
+                                        #{node.entity_id}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-500 font-mono">{node.name}</span>
+                                </>
+                              ) : (
+                                <span className="font-bold text-[var(--text-primary)]">{node.name}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-2.5">
+                            <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/10 text-purple-300 border border-purple-500/20">
+                              {node.media_class || 'Node'}
+                            </span>
+                          </td>
+                          <td className="p-2.5">
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                node.state === 'running'
+                                  ? 'bg-emerald-500/15 text-emerald-400'
+                                  : node.state === 'idle'
+                                  ? 'bg-blue-500/15 text-blue-400'
+                                  : 'bg-zinc-500/15 text-zinc-400'
+                              }`}
+                            >
+                              {node.state || 'suspended'}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-zinc-400">
+                            {node.channels ? `${node.channels}ch` : '-'}
+                            {node.rate ? ` · ${node.rate}Hz` : ''}
+                          </td>
+                          <td className="p-2.5 text-[var(--text-secondary)] truncate max-w-xs">
+                            {node.description || node.nick || '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-xs text-[var(--text-secondary)] border border-dashed border-white/10 rounded-xl">
+                  {isRunning
+                    ? t('services.pipewire.noNodesDetected', 'No active nodes detected in PipeWire graph.')
+                    : t('services.pipewire.serviceStopped', 'PipeWire service is currently stopped.')}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'links' && (
+            <div className="space-y-4">
+              {/* 1. Dynamic Matrix Routes (from Supervisor) */}
+              {graphData?.matrix?.routes && graphData.matrix.routes.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-1.5">
+                        <span>🎛️</span>
+                        <span>{t('services.pipewire.matrixRoutesTitle', 'Dynamic Patchbay Matrix Routes')}</span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/15 text-purple-300 font-mono">
+                          {graphData.matrix.active_links_count}/{graphData.matrix.desired_links_count}
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-[var(--text-secondary)]">
+                        {t('services.pipewire.matrixRoutesHelp', 'Real-time audio routes maintained by PipeWireMatrixSupervisor companion')}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleReconcileMatrix}
+                      disabled={isReconciling || !isRunning}
+                      className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1 px-2.5 border border-white/10 text-brand-lime font-bold flex items-center gap-1 disabled:opacity-40"
+                    >
+                      <RefreshIcon size={12} className={isReconciling ? 'animate-spin' : ''} />
+                      <span>{isReconciling ? t('services.pipewire.reconciling', 'Reconciling...') : t('services.pipewire.reconcileMatrix', 'Reconcile Now')}</span>
+                    </button>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-[var(--glass-border)] bg-black/10">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                        <tr>
+                          <th className="p-2.5">Route</th>
+                          <th className="p-2.5">Source (Output)</th>
+                          <th className="p-2.5 text-center">Direction</th>
+                          <th className="p-2.5">Target (Input)</th>
+                          <th className="p-2.5 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-border)]">
+                        {graphData.matrix.routes.map((route, idx) => (
+                          <tr key={idx} className="hover:bg-white/2 transition-colors">
+                            <td className="p-2.5 font-sans font-semibold text-[var(--text-primary)]">
+                              {route.description || `${route.source_label || route.source} → ${route.target_label || route.target}`}
+                            </td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-purple-300">
+                                  {route.source_label || route.source}
+                                </span>
+                                {route.source_label && route.source_label !== route.source && (
+                                  <span className="text-[10px] text-zinc-500 font-mono">({route.source})</span>
+                                )}
+                                {route.source_ports && route.source_ports.length > 0 && (
+                                  <span className="text-[10px] text-zinc-400">
+                                    {route.source_ports.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-center text-brand-lime font-bold">→</td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col">
+                                <span className="font-bold text-cyan-300">
+                                  {route.target_label || route.target}
+                                </span>
+                                {route.target_label && route.target_label !== route.target && (
+                                  <span className="text-[10px] text-zinc-500 font-mono">({route.target})</span>
+                                )}
+                                {route.target_ports && route.target_ports.length > 0 && (
+                                  <span className="text-[10px] text-zinc-400">
+                                    {route.target_ports.join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-right">
+                              {route.status === 'linked' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  {t('services.pipewire.routeLinked', 'Linked')}
+                                </span>
+                              ) : route.status === 'pending_source' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1">
+                                  <span>⏳</span>
+                                  {t('services.pipewire.routePendingSource', 'Pending Source (Muted / Buffering)')}
+                                </span>
+                              ) : route.status === 'pending_target' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                                  {t('services.pipewire.routePendingTarget', 'Pending Target (Sink Offline)')}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                  {t('services.pipewire.routeLinking', 'Linking...')}
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Low-level PipeWire Graph Links */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
+                  <span>🔗</span>
+                  <span>{t('services.pipewire.rawLinksTitle', 'Active Graph Links (pw-dump)')}</span>
+                  <span className="text-[10px] text-zinc-500 font-mono">({graphData?.links?.length || 0})</span>
+                </h4>
+
+                {graphData?.links && graphData.links.length > 0 ? (
+                  <div className="overflow-x-auto rounded-xl border border-[var(--glass-border)]">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                        <tr>
+                          <th className="p-2.5">Link ID</th>
+                          <th className="p-2.5">Output (Source Port)</th>
+                          <th className="p-2.5 text-center">Direction</th>
+                          <th className="p-2.5">Input (Target Port)</th>
+                          <th className="p-2.5 text-right">State</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-border)]">
+                        {graphData.links.map((link) => (
+                          <tr key={link.id} className="hover:bg-white/2 transition-colors">
+                            <td className="p-2.5 text-zinc-500 font-bold">#{link.id}</td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col">
+                                <span className="text-[var(--text-primary)] font-bold">
+                                  {link.output_node_label || link.output_node_name || `Node #${link.output_node_id}`} :{' '}
+                                  <span className="text-purple-400">{link.output_port_name || `Port #${link.output_port_id}`}</span>
+                                </span>
+                                <span className="text-[10px] text-zinc-500">
+                                  {link.output_node_name && link.output_node_label && link.output_node_name !== link.output_node_label ? `${link.output_node_name} · ` : ''}Node #{link.output_node_id} · Port #{link.output_port_id}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-center text-brand-lime font-bold">→</td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col">
+                                <span className="text-[var(--text-primary)] font-bold">
+                                  {link.input_node_label || link.input_node_name || `Node #${link.input_node_id}`} :{' '}
+                                  <span className="text-cyan-400">{link.input_port_name || `Port #${link.input_port_id}`}</span>
+                                </span>
+                                <span className="text-[10px] text-zinc-500">
+                                  {link.input_node_name && link.input_node_label && link.input_node_name !== link.input_node_label ? `${link.input_node_name} · ` : ''}Node #{link.input_node_id} · Port #{link.input_port_id}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-right">
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                {link.state || 'active'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="py-8 text-center text-xs text-[var(--text-secondary)] border border-dashed border-white/10 rounded-xl">
+                    {t('services.pipewire.noLinksDetected', 'No active routing links detected in graph.')}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'console' && (
+            <div className="bg-black/60 border border-[var(--glass-border)] rounded-xl p-4 font-mono space-y-3">
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                  <span>📟</span>
+                  {t('services.pipewire.consoleTitle', 'PipeWire Hub Daemon Console')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyLogs}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    {copySuccess ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                    <span>{copySuccess ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = daemonLogs
+                        .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+                        .join('\n');
+                      const blob = new Blob([text], { type: 'text/plain' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `pipewire_${currentProcess.id}_console.log`;
+                      a.click();
+                    }}
+                    className="px-2.5 py-1 bg-brand-lime/10 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/20 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    {t('services.pipewire.downloadLogs', 'Download Logs')}
+                  </button>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold ml-1">
+                    {daemonLogs.length} {t('common.lines', 'lines')}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                ref={processLogsContainerRef}
+                className="h-80 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
+              >
+                {daemonLogs.length === 0 ? (
+                  <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-24 select-none">
+                    {isRunning
+                      ? t('services.pipewire.waitingLogs', 'Daemon active. Waiting for PipeWire audio routing output...')
+                      : t('services.pipewire.stoppedLogs', 'Daemon is stopped. Start service to view execution output.')}
+                  </div>
+                ) : (
+                  daemonLogs.map((log, i) => {
+                    const logMsg = typeof log === 'string' ? log : log.message || '';
+                    const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                    const isErr = logMsg.toLowerCase().includes('err') || (typeof log === 'object' && log.level === 'ERROR');
+                    const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
+
+                    return (
+                      <div key={i} className="whitespace-pre-wrap flex items-start gap-2">
+                        {logTime && (
+                          <span className="text-[var(--text-secondary)] select-none shrink-0 opacity-70">
+                            [{logTime}]
+                          </span>
+                        )}
+                        <span
+                          className={`${
+                            isErr ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {logMsg}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'aoip' && (
+            <div className="space-y-4">
+              {/* Card 1: PTPv2 Synchronization Clock */}
+              <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--glass-border)] space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">⏱️</span>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                      {t('services.pipewire.ptpClockStatus', 'PTPv2 Synchronization Clock')}
+                    </h4>
+                  </div>
+                  {pwConfig.aes67_network?.ptp?.enabled ? (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30">
+                      IEEE 1588-2008 / AES67
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono text-[var(--text-secondary)] bg-white/5 border border-white/10">
+                      PTP Master Disabled
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                  <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
+                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                      {t('services.pipewire.ptpGrandmasterIp', 'Grandmaster IP')}
+                    </span>
+                    <span className="font-mono font-semibold text-[var(--text-primary)]">
+                      {graphData?.aoip_discovery?.ptp_status?.grandmaster_ip || (pwConfig.aes67_network?.ptp?.enabled ? 'Local Node' : '-')}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
+                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                      {t('services.pipewire.ptpClockIdentity', 'Clock Identity')}
+                    </span>
+                    <span className="font-mono font-semibold text-brand-lime truncate block" title={graphData?.aoip_discovery?.ptp_status?.clock_identity || '-'}>
+                      {graphData?.aoip_discovery?.ptp_status?.clock_identity || '-'}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
+                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                      {t('services.pipewire.ptpRole', 'Local ptp4l State')}
+                    </span>
+                    <span className="font-mono font-bold text-cyan-400 uppercase">
+                      {graphData?.aoip_discovery?.ptp_status?.state || (pwConfig.aes67_network?.ptp?.enabled ? 'MASTER' : 'INACTIVE')}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
+                    <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                      BMCA Priority / Domain
+                    </span>
+                    <span className="font-mono text-[var(--text-secondary)]">
+                      Prio: {pwConfig.aes67_network?.ptp?.priority1 ?? 128} · Dom: {pwConfig.aes67_network?.ptp?.domain ?? 0}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Configured Remote AoIP Receivers (Rx) */}
+              <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--glass-border)] space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📡</span>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                      {t('services.pipewire.configuredRemoteSinks', 'Configured Remote AoIP Receivers (Rx)')}
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-bold">
+                    {remoteSinks.length}
+                  </span>
+                </div>
+
+                {remoteSinks.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-[var(--text-secondary)]">
+                    <p>{t('services.pipewire.noRemoteSinksConfigured', 'No remote AoIP sinks configured in this Hub.')}</p>
+                    <p className="text-[11px] opacity-75 mt-1">
+                      {t('services.pipewire.noRemoteSinks', 'Add remote network audio streams to receive multichannel audio over the LAN.')}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                        <tr>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteSinkId', 'ID / Monitor')}</th>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteSinkName', 'Name / Description')}</th>
+                          <th className="py-2 px-3">Multicast Route</th>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteChannels', 'Channels')}</th>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteFormat', 'Format')}</th>
+                          <th className="py-2 px-3 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-border)]">
+                        {remoteSinks.map((rs: any, idx: number) => {
+                          const isOnline = isRunning && Boolean(
+                            graphData?.nodes?.some((n) => n.name === `rtp_rx_${rs.id}` || n.name === rs.id)
+                          );
+                          return (
+                            <tr key={rs.id || idx} className="hover:bg-white/2 transition-colors">
+                              <td className="py-2.5 px-3 font-bold text-[var(--text-primary)]">
+                                <div>{rs.id}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)] font-normal">{rs.id}.monitor</div>
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-primary)] font-sans">
+                                {rs.name || rs.id}
+                              </td>
+                              <td className="py-2.5 px-3 text-cyan-400">
+                                {rs.multicast_ip}:{rs.rtp_port}
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                                {rs.channels || 2}ch
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                                {rs.format || 'S24BE'}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                {isOnline ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                    🟢 {t('services.pipewire.statusOnline', 'Online / Linked')}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                    🟡 {t('services.pipewire.statusWaiting', 'Waiting for Stream')}
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Card 3: Discovered LAN AoIP Streams (SAP Radar) */}
+              <div className="p-4 rounded-xl bg-[var(--bg-card)] border border-[var(--glass-border)] space-y-3">
+                <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📡</span>
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--text-primary)]">
+                      {t('services.pipewire.discoveredLanStreams', 'Discovered LAN AoIP Streams (SAP Radar)')}
+                    </h4>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 font-bold">
+                    {graphData?.aoip_discovery?.discovered_streams?.length || 0}
+                  </span>
+                </div>
+
+                {(!graphData?.aoip_discovery?.discovered_streams || graphData.aoip_discovery.discovered_streams.length === 0) ? (
+                  <div className="py-6 text-center text-xs text-[var(--text-secondary)]">
+                    <div className="inline-block p-2 rounded-full bg-white/5 border border-white/10 mb-2">
+                      <span className="animate-spin inline-block text-brand-lime">↻</span>
+                    </div>
+                    <p>{t('services.pipewire.noLanStreamsDiscovered', 'Listening on 224.0.0.56 / 224.2.127.254:9875... No SAP announcements detected yet.')}</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                        <tr>
+                          <th className="py-2 px-3">{t('services.pipewire.remoteSinkName', 'Session / Stream Name')}</th>
+                          <th className="py-2 px-3">Multicast Endpoint</th>
+                          <th className="py-2 px-3">Audio Profile</th>
+                          <th className="py-2 px-3">{t('services.pipewire.streamOrigin', 'Origin')}</th>
+                          <th className="py-2 px-3">{t('services.pipewire.streamClock', 'PTP Clock')}</th>
+                          <th className="py-2 px-3 text-right">Action / State</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--glass-border)]">
+                        {graphData.aoip_discovery.discovered_streams.map((stream: any) => {
+                          const sName = stream.session_name || stream.sap_name || stream.name || 'Unnamed Stream';
+                          const sId = stream.session_id || `${stream.multicast_ip}:${stream.rtp_port}`;
+                          const sRate = stream.sample_rate || stream.rate || 48000;
+                          const isConfigured = remoteSinks.some(
+                            (rs: any) => rs.multicast_ip === stream.multicast_ip && Number(rs.rtp_port) === Number(stream.rtp_port)
+                          );
+
+                          return (
+                            <tr key={sId} className="hover:bg-white/2 transition-colors">
+                              <td className="py-2.5 px-3">
+                                <div className="font-bold text-[var(--text-primary)] font-sans">{sName}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)]">{sId}</div>
+                              </td>
+                              <td className="py-2.5 px-3 text-cyan-400 font-semibold">
+                                {stream.multicast_ip}:{stream.rtp_port}
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                                {stream.channels}ch · {stream.format || 'S24BE'} · {sRate}Hz
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                                {stream.origin_ip || '-'}
+                              </td>
+                              <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[120px]" title={stream.ptp_clock_id || '-'}>
+                                {stream.ptp_clock_id || '-'}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                {stream.is_local ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                                    {t('services.pipewire.localTxStream', 'Local Tx')}
+                                  </span>
+                                ) : isConfigured ? (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                    ✓ {t('services.pipewire.alreadyConfigured', 'Persisted')}
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={() => handleConfigureStreamInHub(stream)}
+                                    className="px-2.5 py-1 rounded-lg bg-brand-lime hover:bg-brand-lime/90 text-black text-xs font-bold transition-all shadow-sm"
+                                    title="Import this stream into PipeWire Hub configuration"
+                                  >
+                                    ⚙️ {t('services.pipewire.configureInHub', 'Configure in Hub')}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'raw' && (
+            <pre className="p-4 rounded-xl bg-black/50 border border-[var(--glass-border)] text-[11px] font-mono text-[var(--text-secondary)] overflow-x-auto max-h-96">
+              {JSON.stringify(graphData || { active: isRunning }, null, 2)}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

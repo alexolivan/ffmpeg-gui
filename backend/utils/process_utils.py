@@ -70,9 +70,16 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
                     proc_desc = name if name else "process"
                     logger.warning(f"Terminating rogue {proc_desc} process {pid} because: {reason}")
                     try:
-                        proc.send_signal(signal.SIGKILL)
+                        proc.send_signal(signal.SIGTERM)
+                        try:
+                            proc.wait(timeout=1.5)
+                        except (psutil.TimeoutExpired, TimeoutError):
+                            logger.warning(f"Process {pid} did not terminate after SIGTERM (1.5s timeout); escalating to SIGKILL")
+                            proc.send_signal(signal.SIGKILL)
+                    except (psutil.NoSuchProcess, ProcessLookupError):
+                        pass
                     except Exception as e:
-                        logger.error(f"Failed to SIGKILL rogue process {pid}: {e}")
+                        logger.error(f"Failed to terminate rogue process {pid}: {e}")
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             continue
 
@@ -82,13 +89,20 @@ def get_ffmpeg_version(binary_path: str = "ffmpeg") -> float:
     try:
         res = subprocess.run([binary_path, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=2)
         first_line = res.stdout.split('\n')[0]
-        # Match pattern like "ffmpeg version 4.4" or "version 5.1-css"
-        match = re.search(r'version\s+([0-9]+\.[0-9]+)', first_line)
+        # Match pattern like "ffmpeg version 7.1", "version n7.0.2", "version v6.1", "version 5.1-css"
+        match = re.search(r'version\s+(?:v|n|git-)?([0-9]+(?:\.[0-9]+)?)', first_line, re.IGNORECASE)
         if match:
             return float(match.group(1))
+        # Secondary fallback: search for major.minor anywhere in first line
+        match_secondary = re.search(r'([0-9]+\.[0-9]+)', first_line)
+        if match_secondary:
+            return float(match_secondary.group(1))
+        # If it's a git snapshot or trunk build (e.g. N-118000...), modern FFmpeg is guaranteed
+        if "version" in first_line:
+            return 7.0
     except Exception:
         pass
-    return 4.4  # Default fallback
+    return 7.0  # Default fallback for modern systems (FFmpeg 5.1+ uses -fps_mode)
 
 def prepare_process_file_permissions(process_id: int = None, execution_id: int = None, logger=None):
     """

@@ -94,6 +94,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
 - **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping, crosspoint volume matrix routing, and real-time DSP core load (%) and hardware temperature (°C) telemetry via `hpicontrol.py`.
+- **ALSA & Kernel Hardware Advisor**: Real-time sysadmin diagnostics detecting Intel VT-d (IOMMU) DMA hazards on AudioScience DSP hardware with copyable kernel cmdline remediation (`intel_iommu=pt iommu=pt`), and slot order analyzer preventing asynchronous soundcard index shuffling across reboots via generated `/etc/modprobe.d/alsa-base.conf` configurations.
 - **ALSA Loopback (`snd-aloop`) Routing**: Clean 8-subdevice virtual topology in the ALSA mixer with browser audio sandboxing (`asound.conf`), 1-click secondary audio pairing for virtual desktops, and fixed routing indicators (`◄ PCM X Playback`) between playout (`hw:Loopback,0,X`) and broadcast ingest (`hw:Loopback,1,X`).
 - **Graphical Overlay Studio**: Fully graphical editor to place, scale, and preview graphic overlays on top of video streams.
 - **Audio Dynamics & Filters**: Dynamic range compressors, multi-band graphic equalizers, and ALSA loopback routing.
@@ -108,33 +109,44 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Graphic EQ & Dynamics Compressor](docs/assets/screenshot7.png)
 
-### 🛡️ 8. Decoupled Watchdog Recovery
+### 🎚️ 8. PipeWire Audio Hub & Universal Audio Matrix
+- **Isolated Daemon Orchestration**: Deploy dedicated PipeWire server daemons running entirely in ephemeral RAM directories (`/tmp/ffmpeg-gui/pipewire-{id}`) with custom quantum and sample rate (48000 Hz) isolation.
+- **Virtual Audio Sinks & AES67 Multicast Broadcast**: Configure custom multi-channel virtual audio sinks (`mix_bus`, `kiosk_audio`, etc.) with optional AES67 / Dante multicast broadcast output over physical network interfaces with PTP clock domain support.
+- **Desktop & Web Kiosk Native Audio Routing**: Route Virtual Desktop and Kiosk audio directly to PipeWire sinks via native PulseAudio emulation sockets (`PULSE_SERVER`), completely bypassing legacy `apulse` or `snd-aloop` constraints.
+- **Universal FFmpeg Audio Matrix**:
+  - Ingest directly from virtual bus monitors (`-f pulse -i <sink>.monitor`).
+  - Playout directly into virtual sinks (`-f pulse <sink>`).
+  - Bit-perfect 0% CPU Stream Copy (`-c:a copy`) passthrough between raw sources/destinations (ALSA, PipeWire, RTSP, RTP, file recording).
+  - Automated lease management keeping the PipeWire daemon alive while active consumers stream and stopping cleanly on idle.
+- **Real-Time Graph & Node Inspector**: Telemetry modal providing real-time audio graph visualization (`pw-dump`), listing all active nodes, ports, links, and execution states.
+
+### 🛡️ 9. Decoupled Watchdog Recovery
 - **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
 - **Freeze Protection**: Actively monitors process FPS, bitrate, and outputs, force-restarting streams if frames freeze or connection drops.
 - **Jittered Backoff**: Uses exponential backoff delays combined with randomized jitter to break lockstep recovery loops and reduce server resource peaks during network outages.
 
-### ⏰ 9. Task Scheduler & Bilateral Cloning
+### ⏰ 10. Task Scheduler & Bilateral Cloning
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 
 ![Scheduled Tasks & Cron Automation](docs/assets/screenshot4.png)
 
-### 🔒 10. HTTPS & Let's Encrypt SSL Manager
+### 🔒 11. HTTPS & Let's Encrypt SSL Manager
 - **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
 - **ACME Challenge Handler**: Integrated HTTP-01 challenge router (`/.well-known/acme-challenge/*`) for automated domain verification.
 - **Status & Monitoring**: Real-time display of certificate validity, domain bindings, and automated expiration warnings.
 
-### 💾 11. Granular Backup & Restore
-- **Selective Section Toggles**: Export and import specific configuration parts (e.g., backing up media services, virtual desktops, web kiosks, scheduled tasks, storage volumes, software engines, and peer federation credentials while leaving SMTP credentials or network port configs unchanged).
-- **Format Verification & SSOT Synchronization**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions (`SystemSettings`) and configuration file updates. Dynamic desktop-name re-resolution ensures web kiosks bind correctly to restored parent virtual desktops.
+### 💾 12. Granular Backup & Restore
+- **Selective Section Toggles**: Export and import specific configuration parts (e.g., backing up media services, PipeWire Audio Hubs & AES67 AoIP profiles, virtual desktops, web kiosks, scheduled tasks, storage volumes, software engines, and peer federation credentials while leaving SMTP credentials or network port configs unchanged).
+- **Format Verification & SSOT Synchronization**: Validates file integrity, application signature, and version compatibility before performing atomic SQLite database insertions (`SystemSettings`) and configuration file updates. Dynamic name re-resolution ensures web kiosks bind correctly to restored parent virtual desktops and virtual desktops re-link to designated PipeWire audio hubs.
 
-### 🗄️ 12. Storage, HTTP HLS Routes, Log Retention & Branding
+### 🗄️ 13. Storage, HTTP HLS Routes, Log Retention & Branding
 - **Storage Management & HTTP HLS Delivery**: Configure local or mounted storage volumes, monitor disk space usage in real time, and map custom HTTP route paths (`/route_path -> HLS Storage`) with CORS and video caching headers to serve live and archived HLS manifests (`.m3u8`) and segments (`.ts`) directly through the web engine.
 - **Decoupled Logging & Automated Rotation**: Decouples application server logs (`ffmpeg-gui.log`) from HTTP access logs (`access.log`), with noise suppression for media chunks and copytruncate rotation with configurable retention periods.
 - **Branding Customization**: Customize the application name, panel headers, and console branding directly from the interface settings.
 
-### 🔔 13. State-Based SMTP Notifications
+### 🔔 14. State-Based SMTP Notifications
 - **Alert Fatigue Prevention**: Stateful notification queue that filters redundant alerts. Emails are dispatched exclusively on initial stream crashes, recovery success, and final retry exhaustion.
 - **System Health Checks**: Active warnings for pending SSL/TLS certificate expirations, disk space utilization exceeding 90%, and debounced hardware thermal overheating and throttling events.
 
@@ -157,6 +169,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ### 🌡️ 16. Industrial Hardware Telemetry & Thermal Shielding
 - **Kernel-Level Health Extraction**: Direct `/sys/class/hwmon` and `/sys/devices/system/cpu` reading with package/core temperatures, cooling fan RPM tachometers, and CPU throttling detection (`throttle_active`, `package_throttled`, `core_throttled`).
+- **Host System & Service Uptimes**: Live side-by-side telemetry comparison of host OS uptime versus `ffmpeg-gui` systemd unit runtime directly in the Dashboard.
 - **Specialized Card Telemetry**: AudioScience DSP load and temperature tracking via `hpicontrol.py`, Magewell Pro Capture FPGA core temperatures, and Blackmagic DeckLink PCIe link generation/bus width.
 - **Debounced Multi-Tier Thermal Alerting**: SMTP email alerts with 15-minute hysteresis cooldowns, Crystalfontz CFA635 USB LCD red LED `THERM` alerts, and dashboard alarms.
 - **Active Thermal Protection Shielding**: Optional toggle (`thermal_active_protection`) that automatically blocks starting new scheduled tasks or FFmpeg Forge compilation jobs when critical temperature limits are reached, protecting broadcast transcoders from thermal damage.
@@ -193,11 +206,16 @@ sudo fail2ban-client reload
 ./bin/ffmpeg-gui-admin reset-admin
 ```
 
-### 🌐 18. Dynamic Interface Binding & Live Firewall Matrix
+### 🌐 19. Dynamic Interface Binding & Live Firewall Matrix
 - **Dynamic Interface Enumeration**: Detects all physical, virtual, and loopback interfaces (IP, netmask, MAC, speed, and link state).
 - **Fail-Safe Bind Resolver**: Prevents administrative lock-out if network interfaces change, drop, or migrate; automatically falls back to `0.0.0.0` with clear diagnostic warnings.
-- **Daemon Integration**: Bind FFmpeg-GUI core, MediaMTX, and Icecast2 to specific interfaces or individual IP addresses.
-- **Live Firewall Matrix & Rule Generator**: Real-time socket scanner reporting live listening ports across all daemons with 1-click copyable UFW and iptables rule sets.
+- **Daemon Integration**: Bind FFmpeg-GUI core, MediaMTX, Icecast2, and PipeWire Audio Hubs (AES67 AoIP, SAP discovery, PTPv2) to specific interfaces or individual IP addresses.
+- **Live Firewall Matrix & Rule Generator**: Real-time socket scanner reporting live listening ports across all daemons, stream pipelines, and AoIP receivers with 1-click copyable UFW and iptables rule sets.
+
+### 📡 20. LAN Discovery Beacon & Desktop Companion
+- **UDP Broadcast Beacon**: Background presence service broadcasting JSON appliance heartbeats on port `59990/udp` with an immutable hardware-backed node identity.
+- **Web GUI Kill-Switch**: Fully configurable and toggleable from Web GUI Settings (`Network & SSL`) or REST API.
+- **Desktop Companion App**: Pair with [ffmpeg-gui-scanner](https://github.com/alexolivan/ffmpeg-gui-scanner) on Windows, macOS, or Linux for zero-configuration LAN discovery, live vitality tracking, and 1-click dashboard access.
 
 ---
 

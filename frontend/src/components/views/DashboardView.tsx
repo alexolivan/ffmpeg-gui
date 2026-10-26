@@ -14,6 +14,19 @@ interface DashboardViewProps {
   settings: any;
 }
 
+const formatUptime = (seconds?: number): string => {
+  if (seconds === undefined || seconds === null || seconds < 0) return '—';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) {
+    return `${d}d ${h}h ${m}m`;
+  }
+  if (h > 0) {
+    return `${h}h ${m}m`;
+  }
+  return `${m}m`;
+};
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   telemetry,
@@ -297,6 +310,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
             </div>
 
+            {/* System & Service Uptimes */}
+            <div className="pt-2 border-t border-[var(--glass-border)] grid grid-cols-2 gap-2 text-xs">
+              <div className="flex flex-col p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider">
+                  {t('dashboard.systemUptime', 'System Uptime')}
+                </span>
+                <span className="font-mono font-bold text-[var(--text-primary)] text-xs mt-0.5">
+                  {formatUptime(systemTelemetry.system_uptime_seconds)}
+                </span>
+              </div>
+              <div className="flex flex-col p-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg">
+                <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider">
+                  {t('dashboard.serviceUptime', 'Service Uptime')}
+                </span>
+                <span className="font-mono font-bold text-brand-lime text-xs mt-0.5">
+                  {formatUptime(systemTelemetry.service_uptime_seconds)}
+                </span>
+              </div>
+            </div>
+
             {/* Thermal & Industrial Health */}
             <div className="pt-2.5 border-t border-[var(--glass-border)]">
               <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2 flex items-center justify-between">
@@ -403,13 +436,48 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             {systemTelemetry.storages && systemTelemetry.storages.length > 0 && (
               <div className="mt-3 pt-3 border-t border-[var(--glass-border)]">
-                <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider mb-2">
-                  {t('dashboard.storageCapacities')}
-                </h4>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[10px] font-black uppercase text-text-secondary tracking-wider">
+                    {t('dashboard.storageCapacities')}
+                  </h4>
+                  {systemTelemetry.logging_status?.fallback_active && (
+                    <span
+                      className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${
+                        systemTelemetry.logging_status.permissions_recovered
+                          ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                          : 'bg-red-500/15 text-red-400 border-red-500/30 animate-pulse'
+                      }`}
+                      title={systemTelemetry.logging_status.permissions_recovered
+                        ? t('dashboard.loggingPermissionsRecovered', 'Log permissions restored on host! Reload or restart service to resume file logging.')
+                        : t('dashboard.loggingFallbackActive', 'Log path read-only. Daemon operating in journalctl fallback mode.')}
+                    >
+                      {systemTelemetry.logging_status.permissions_recovered ? '✅ ' + t('common.readyToReload', 'PERMS RESTORED') : '⚠️ ' + t('common.fallback', 'JOURNAL FALLBACK')}
+                    </span>
+                  )}
+                </div>
+
+                {systemTelemetry.logging_status?.fallback_active && (
+                  <div className={`mb-2.5 p-2 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                    systemTelemetry.logging_status.permissions_recovered
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                      : 'bg-red-500/10 border-red-500/30 text-red-400'
+                  }`}>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="shrink-0">{systemTelemetry.logging_status.permissions_recovered ? '✅' : '⚠️'}</span>
+                      <span className="text-[11px] truncate">
+                        {systemTelemetry.logging_status.permissions_recovered
+                          ? t('dashboard.loggingPermissionsRecovered', 'Log storage permissions restored! Restart or reload service to resume file logging.')
+                          : t('dashboard.loggingFallbackActive', 'Log path is read-only. Logs are safely redirected to systemd journal.')}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-2">
                   {systemTelemetry.storages.map((storage: any) => {
                     const percent = storage.percent !== undefined ? storage.percent : 0;
                     const freeGb = storage.free_gb !== undefined ? storage.free_gb : 0;
+                    const isWritable = storage.is_writable !== false;
                     return (
                       <div key={storage.id || storage.name} className="space-y-1">
                         <div className="flex items-center justify-between text-xs">
@@ -420,21 +488,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             <span className="text-[8px] font-black uppercase bg-brand-orange/20 text-brand-orange px-1.5 py-0.2 rounded tracking-wider shrink-0">
                               {storage.type}
                             </span>
+                            {!isWritable && (
+                              <span
+                                className="text-[8px] font-black uppercase bg-red-500/20 text-red-500 border border-red-500/40 px-1.5 py-0.2 rounded tracking-wider shrink-0 flex items-center gap-0.5 animate-pulse"
+                                title={storage.write_error || t('dashboard.storageReadOnly', 'Read-Only / Permission Denied')}
+                              >
+                                ⚠️ {t('dashboard.storageReadOnlyShort', 'READ-ONLY')}
+                              </span>
+                            )}
                           </div>
-                          <span className="text-text-secondary font-mono text-[10px] shrink-0">
-                            {percent}% ({freeGb} {t('dashboard.freeGb')})
+                          <span className={`font-mono text-[10px] shrink-0 ${isWritable ? 'text-text-secondary' : 'text-red-400 font-bold'}`}>
+                            {isWritable ? `${percent}% (${freeGb} ${t('dashboard.freeGb')})` : t('dashboard.storagePermissionDenied', 'Permission Denied')}
                           </span>
                         </div>
-                        <div className="h-1.5 bg-[var(--track-bg)] border border-[var(--glass-border)] rounded-full overflow-hidden">
+                        <div className={`h-1.5 bg-[var(--track-bg)] border ${isWritable ? 'border-[var(--glass-border)]' : 'border-red-500/50'} rounded-full overflow-hidden`}>
                           <div
                             className={`h-full transition-all duration-500 ${
-                              percent < 75
+                              !isWritable
+                                ? 'bg-red-500 animate-pulse'
+                                : percent < 75
                                 ? 'bg-brand-lime'
                                 : percent <= 90
                                 ? 'bg-brand-orange'
                                 : 'bg-red-500 animate-pulse'
                             }`}
-                            style={{ width: `${Math.min(100, percent)}%` }}
+                            style={{ width: `${Math.min(100, isWritable ? percent : 100)}%` }}
                           ></div>
                         </div>
                       </div>
@@ -571,8 +649,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   </div>
                 )}
                 {key === 'alsa' && value.available && value.cards && value.cards.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1 text-[9px] text-text-secondary font-mono leading-normal">
+                  <div className="mt-2 pt-2 border-t border-white/5 space-y-1.5 text-[9px] text-text-secondary font-mono leading-normal">
                     <div><span className="text-text-secondary">Cards:</span> {value.cards.join(', ')}</div>
+                    {(() => {
+                      const alsaAdvisor = systemTelemetry.alsa_advisor || value.advisor;
+                      const hasIommuHazard = alsaAdvisor?.has_audioscience && alsaAdvisor?.iommu_hazard;
+                      const hasUnpinnedSlots = alsaAdvisor?.slots_unpinned;
+                      if (!hasIommuHazard && !hasUnpinnedSlots) return null;
+                      return (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {hasIommuHazard && (
+                            <span 
+                              title={t('dashboard.iommuHazardTooltip', 'Intel VT-d is active in strict mode with AudioScience hardware. Risk of DMA timeout and DSP crash.')}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                            >
+                              ⚠️ {t('dashboard.iommuHazardBadge', 'VT-d / IOMMU DMA Hazard')}
+                            </span>
+                          )}
+                          {hasUnpinnedSlots && (
+                            <span 
+                              title={t('dashboard.slotsUnpinnedTooltip', 'Multiple soundcards detected without permanent modprobe slot assignment.')}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                            >
+                              ℹ️ {t('dashboard.slotsUnpinnedBadge', 'ALSA Slots Unpinned')}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 {key === 'decklink' && value.available && (

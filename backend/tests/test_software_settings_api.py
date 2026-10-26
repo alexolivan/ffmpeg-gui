@@ -106,6 +106,21 @@ class TestSoftwareSettingsApi(unittest.TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["tag"], "1.9.3")
 
+    def test_software_settings_has_custom_icon_flag(self):
+        res = self.client.get("/api/settings/software")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        for key in ["ffmpeg", "mediamtx", "icecast2", "chromium", "firefox"]:
+            self.assertIn("has_custom_icon", data[key])
+            self.assertIsInstance(data[key]["has_custom_icon"], bool)
+
+    def test_get_software_icon_default_svg(self):
+        for engine_key in ["chromium", "firefox", "ffmpeg", "mediamtx", "icecast2"]:
+            res = self.client.get(f"/api/settings/software/{engine_key}/icon")
+            self.assertEqual(res.status_code, 200)
+            self.assertIn("image/svg+xml", res.headers.get("content-type", ""))
+            self.assertIn("<svg", res.text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,9 +26,10 @@ class TestProcessUtils(unittest.TestCase):
 
         mock_iter.return_value = [mock_proc1, mock_proc2, mock_proc3, mock_proc4]
 
-        # Test case 1: target process_id = 5
+        # Test case 1: target process_id = 5 (clean exit after SIGTERM)
         cleanup_rogue_processes(process_id=5)
-        mock_proc1.send_signal.assert_called_once_with(signal.SIGKILL)
+        mock_proc1.send_signal.assert_called_once_with(signal.SIGTERM)
+        mock_proc1.wait.assert_called_once_with(timeout=1.5)
         mock_proc2.send_signal.assert_not_called()
 
         # Reset mocks
@@ -38,7 +39,8 @@ class TestProcessUtils(unittest.TestCase):
         # Test case 2: target execution_id = 42
         cleanup_rogue_processes(execution_id=42)
         mock_proc1.send_signal.assert_not_called()
-        mock_proc2.send_signal.assert_called_once_with(signal.SIGKILL)
+        mock_proc2.send_signal.assert_called_once_with(signal.SIGTERM)
+        mock_proc2.wait.assert_called_once_with(timeout=1.5)
 
         # Reset mocks
         mock_proc1.reset_mock()
@@ -47,7 +49,18 @@ class TestProcessUtils(unittest.TestCase):
         # Test case 3: Startup cleanup with active PIDs = {101}
         cleanup_rogue_processes(active_pids={101})
         mock_proc1.send_signal.assert_not_called()  # Active, do not kill
-        mock_proc2.send_signal.assert_called_once_with(signal.SIGKILL)  # Stale, kill
+        mock_proc2.send_signal.assert_called_once_with(signal.SIGTERM)  # Stale, kill
+
+        # Reset mocks
+        mock_proc1.reset_mock()
+        mock_proc2.reset_mock()
+
+        # Test case 4: Process hangs on SIGTERM and escalates to SIGKILL
+        mock_proc1.wait.side_effect = psutil.TimeoutExpired(1.5)
+        cleanup_rogue_processes(process_id=5)
+        self.assertEqual(mock_proc1.send_signal.call_count, 2)
+        mock_proc1.send_signal.assert_any_call(signal.SIGTERM)
+        mock_proc1.send_signal.assert_any_call(signal.SIGKILL)
 
     def test_prepare_process_file_permissions(self):
         import os

@@ -8,7 +8,7 @@ interface BuildFormModalProps {
   onSubmit: (data: BuildFormData) => void
   buildDeps: any
   onOpenSdksModal?: () => void
-  initialSoftwareType?: string
+  initialSoftwareType?: 'ffmpeg' | 'icecast2' | 'decklink_tools' | 'pipewire' | string
 }
 
 export interface BuildFormData {
@@ -19,6 +19,7 @@ export interface BuildFormData {
   sdk_paths: Record<string, string>
   auto_clean: boolean
   storage_id: number | null
+  software_type?: string
 }
 
 const API_BASE = '';
@@ -29,11 +30,13 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   const [softwareType] = useState(defaultSoftwareType)
   const [name, setName] = useState(editBuild?.name || (
     defaultSoftwareType === 'decklink_tools' ? 'DeckLink Tools (Production)' :
-    defaultSoftwareType === 'icecast2' ? 'Icecast Server (Production)' : ''
+    defaultSoftwareType === 'icecast2' ? 'Icecast Server (Production)' :
+    defaultSoftwareType === 'pipewire' ? t('forge.pipewireProfileDefault', 'PipeWire Standard (Meson/Ninja)') : ''
   ))
   const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || (
     defaultSoftwareType === 'decklink_tools' ? '1.0.0' :
-    defaultSoftwareType === 'icecast2' ? '2.4.4' : ''
+    defaultSoftwareType === 'icecast2' ? '2.4.4' :
+    defaultSoftwareType === 'pipewire' ? '1.6.9' : ''
   ))
   const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || (editBuild?.build_options as any)?.srt_version || '')
   const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
@@ -280,8 +283,14 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     setIsSubmitting(false)
   }
 
+  const isPipewireSub1 = softwareType === 'pipewire' && (() => {
+    const match = ffmpegVersion.trim().match(/^v?(\d+)\.(\d+)/);
+    return match ? Number(match[1]) < 1 : false;
+  })();
+
   const isValid = name.trim().length > 0 && 
                   ffmpegVersion.length > 0 && 
+                  !isPipewireSub1 &&
                   (softwareType === 'decklink_tools' ? (decklinkSdks.length > 0 && (!!sdkPaths.decklink || decklinkSdks.length > 0)) :
                    softwareType !== 'ffmpeg' || (
                     (!options.decklink || !!sdkPaths.decklink) && 
@@ -424,14 +433,39 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     </label>
                     <input
                       type="text"
-                      placeholder={softwareType === 'icecast2' ? '2.4.4' : '6.1.1'}
+                      placeholder={softwareType === 'icecast2' ? '2.4.4' : softwareType === 'pipewire' ? '1.6.9' : '6.1.1'}
                       className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
                       value={ffmpegVersion}
                       onChange={e => setFfmpegVersion(e.target.value)}
                     />
+                    {isPipewireSub1 && (
+                      <p className="text-[10px] text-red-400 font-semibold mt-1 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>{t('forge.pipewireVersionTooOld', 'PipeWire < 1.0.0 is not supported. ffmpeg-gui requires PipeWire >= 1.0.0 for AES67 modular RTP/SAP architecture.')}</span>
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
+
+              {/* PipeWire Architecture Info Card */}
+              {softwareType === 'pipewire' && (
+                <div className="p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl space-y-1.5 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs">⚡</span>
+                    <span className="text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+                      {t('forge.pipewireOption', 'PipeWire Audio')}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30 text-[9px] font-mono font-bold">
+                      {t('forge.pipewireMinVersionBadge', 'Requires >= 1.0.0')}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed">
+                    {t('forge.pipewireInfo', 'PipeWire is built using Meson/Ninja with native ALSA, D-Bus, and udev hardware support.')}{' '}
+                    {t('forge.pipewireModularNotice', 'Versions >= 1.0.0 decouple RTP streaming and SAP announcement modules for broadcast-grade AES67.')}
+                  </p>
+                </div>
+              )}
 
               {/* Build Storage Selector */}
               <div>

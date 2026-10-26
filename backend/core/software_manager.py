@@ -76,6 +76,16 @@ SUPPORTED_ENGINES: Dict[str, Dict[str, Any]] = {
         "always_enabled": False,
         "version_cmd": ["--version"],
     },
+    "pipewire": {
+        "name": "PipeWire Audio Server",
+        "description": "Professional audio/multimedia graph engine with virtual buses and AES67/Dante support.",
+        "default_binary": "pipewire",
+        "supports_forge": True,
+        "supports_installed": True,
+        "supports_precompiled": False,
+        "always_enabled": False,
+        "version_cmd": ["--version"],
+    },
 }
 
 
@@ -108,6 +118,9 @@ class SoftwareManager:
             "firefox_enabled": True,
             "firefox_installed_enabled": True,
             "firefox_precompiled_enabled": True,
+            "pipewire_enabled": True,
+            "pipewire_installed_enabled": True,
+            "pipewire_forge_enabled": True,
         }
         self._cached_releases: Dict[str, Any] = {}
         self._cached_releases_time: Dict[str, float] = {}
@@ -166,10 +179,16 @@ class SoftwareManager:
             
             # Extract clean semver/version pattern (handles 3 or 4 segments like 130.0.6723.91, and suffixes like -esr / esr)
             v_match = re.search(r"(?:version\s*|v)?(\d+(?:\.\d+)+(?:-[a-zA-Z0-9.]+|esr)?|n\d+\.\d+)", first_line, re.IGNORECASE)
-            if v_match:
-                version_str = v_match.group(1)
-            else:
-                version_str = first_line[:30].strip() if first_line else "Unknown"
+            if software_type == "pipewire":
+                pw_match = re.search(r"(?:Compiled with libpipewire|libpipewire)\s+([0-9\.]+)", raw_out)
+                if pw_match:
+                    version_str = pw_match.group(1)
+
+            if not version_str:
+                if v_match:
+                    version_str = v_match.group(1)
+                else:
+                    version_str = first_line[:30].strip() if first_line else "Unknown"
         except Exception as e:
             logger.debug(f"Error probing version for {bin_path}: {e}")
             version_str = "Detected"
@@ -179,6 +198,43 @@ class SoftwareManager:
             "path": bin_path,
             "version": version_str
         }
+
+    def get_active_binary(self, software_type: str, db_session: Optional[Session] = None) -> Optional[str]:
+        """
+        Resolves the active binary path for a given software engine.
+        Priority:
+        1. Default SoftwareBuild for the engine in DB (if status == 'ready' and binary_path exists).
+        2. Any ready SoftwareBuild for the engine in DB.
+        3. Host system binary via audit_system_binary / shutil.which.
+        """
+        if db_session:
+            from database.models import SoftwareBuild
+            default_build = db_session.query(SoftwareBuild).filter(
+                SoftwareBuild.software_type == software_type,
+                SoftwareBuild.status == 'ready',
+                SoftwareBuild.is_default == True
+            ).first()
+            if default_build and default_build.binary_path and os.path.exists(default_build.binary_path):
+                return default_build.binary_path
+
+            any_build = db_session.query(SoftwareBuild).filter(
+                SoftwareBuild.software_type == software_type,
+                SoftwareBuild.status == 'ready'
+            ).first()
+            if any_build and any_build.binary_path and os.path.exists(any_build.binary_path):
+                return any_build.binary_path
+
+        audit = self.audit_system_binary(software_type)
+        if audit.get("found") and audit.get("path") and os.path.exists(audit["path"]):
+            return audit["path"]
+
+        meta = SUPPORTED_ENGINES.get(software_type, {})
+        def_bin = meta.get("default_binary", software_type)
+        sys_which = shutil.which(def_bin)
+        if sys_which and os.path.exists(sys_which):
+            return sys_which
+
+        return None
 
     def validate_safety_invariants(self, software_type: str, proposed_config: Dict[str, bool]) -> None:
         """
@@ -208,7 +264,10 @@ class SoftwareManager:
         Aggregates complete status across all supported software engines,
         including $PATH audit, registered builds, and active dependent services.
         """
-        from database.models import SoftwareBuild, Service
+        from database.models import SoftwareBuild, Service, Storage
+
+        storage = db_session.query(Storage).first()
+        storage_base_dir = storage.path if storage else os.path.abspath("data")
 
         engines_res = {}
         for s_type, meta in SUPPORTED_ENGINES.items():
@@ -270,6 +329,7 @@ class SoftwareManager:
                 "installed_build_id": installed_build["id"] if installed_build else None,
                 "builds": builds_list,
                 "total_builds": len(builds_list),
+                "has_custom_icon": bool(self.get_engine_icon_path(s_type, storage_base_dir)),
             }
 
         return engines_res

@@ -598,3 +598,45 @@ export const FirefoxLogoIcon: React.FC<IconProps> = ({ size = 18, className = ''
   </svg>
 );
 
+export const PowerIcon: React.FC<IconProps> = ({ size = 16, className = '', ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+    <line x1="12" y1="2" x2="12" y2="12" />
+  </svg>
+);
+
+export const PipewireLogoIcon: React.FC<IconProps> = ({ size = 16, className = '', ...props }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 100 100"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    className={`inline-block align-middle ${className}`}
+    {...props}
+  >
+    <circle cx="50" cy="50" r="45" stroke="#2563EB" strokeWidth="8" />
+    <path
+      d="M 28 50 C 28 35, 40 28, 50 28 C 60 28, 72 35, 72 50 C 72 65, 60 72, 50 72"
+      stroke="#38BDF8"
+      strokeWidth="7"
+      strokeLinecap="round"
+      fill="none"
+    />
+    <circle cx="50" cy="50" r="10" fill="#38BDF8" />
+  </svg>
+);
+
+

@@ -9,6 +9,7 @@ import re
 import json
 import copy
 import shutil
+import subprocess
 import uuid
 import socket
 import shlex
@@ -61,7 +62,7 @@ try:
 except ImportError:
     from backend.core.update_checker import get_git_metadata, check_latest_release
 from utils.gpu_sensor import GPUSensor
-from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices
+from utils.alsa_v4l2_helper import get_v4l2_devices, get_alsa_devices, get_v4l2_formats, get_alsa_playback_devices, get_alsa_devices_hierarchical
 import psutil
 import logging
 import asyncio
@@ -74,6 +75,7 @@ from database.version import __schema_version__ as schema_version
 SUPPORTED_LANGUAGES = ['en', 'es', 'ca']
 
 import time
+SERVICE_START_TIME = time.time()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -502,6 +504,7 @@ class BackupExportRequest(BaseModel):
     peer_federation: bool = True
     virtual_desktops: bool = True
     web_kiosks: bool = True
+    pipewire_hubs: bool = True
 
 class BackupImportPayload(BaseModel):
     app: str
@@ -593,6 +596,7 @@ class SettingsResponse(BaseModel):
     thermal_warning_threshold: Optional[int] = 75
     thermal_critical_threshold: Optional[int] = 85
     thermal_active_protection: Optional[bool] = False
+    discovery_beacon_enabled: Optional[bool] = True
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -639,6 +643,7 @@ class SettingsUpdate(BaseModel):
     thermal_warning_threshold: Optional[int] = None
     thermal_critical_threshold: Optional[int] = None
     thermal_active_protection: Optional[bool] = None
+    discovery_beacon_enabled: Optional[bool] = None
 
 
     @validator('brute_force_whitelist')
@@ -718,13 +723,15 @@ def verify_token(request: Request = None, db: Session = Depends(get_db)) -> str:
     if not settings or not settings.gui_password:
         return "admin"
     if request:
-        auth_header = request.headers.get("Authorization")
-        if auth_header:
-            token = auth_header.replace("Bearer ", "").strip()
-            if secrets.compare_digest(token, settings.gui_password):
-                return "admin"
-        query_token = request.query_params.get("token")
-        if query_token and secrets.compare_digest(query_token, settings.gui_password):
+        token = request.cookies.get(auth_manager.COOKIE_NAME)
+        if not token:
+            auth_header = request.headers.get("Authorization")
+            if auth_header:
+                token = auth_header.replace("Bearer ", "").strip()
+        if not token:
+            token = request.query_params.get("token")
+
+        if token and (auth_manager.validate_session(token, settings.gui_password) or secrets.compare_digest(token, settings.gui_password)):
             return "admin"
     raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -1052,6 +1059,21 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res["auto_reload_ssl_services"] = auto_reload_ssl_services
     res["notifications"] = notifications_data
     res["watchdog"] = watchdog_data
+    
+    discovery_beacon_enabled = getattr(settings, "discovery_beacon_enabled", None)
+    if discovery_beacon_enabled is None:
+        if config_path and os.path.exists(config_path):
+            try:
+                import configparser
+                cp = configparser.ConfigParser()
+                cp.read(config_path)
+                if "network" in cp and "discovery_beacon_enabled" in cp["network"]:
+                    discovery_beacon_enabled = cp["network"].getboolean("discovery_beacon_enabled", fallback=True)
+            except Exception:
+                pass
+    if discovery_beacon_enabled is None:
+        discovery_beacon_enabled = True
+    res["discovery_beacon_enabled"] = bool(discovery_beacon_enabled)
     
     return SettingsResponse(**res).model_dump()
 
@@ -1399,7 +1421,7 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     network_ssl_fields = [
         "bind_address", "http_port", "https_port", "ssl_enabled",
         "force_https_redirect", "ssl_mode", "ssl_domain", "ssl_email",
-        "ssl_challenge_type", "ssl_auto_renew"
+        "ssl_challenge_type", "ssl_auto_renew", "discovery_beacon_enabled"
     ]
     has_net_ssl_updates = any(getattr(settings_in, field) is not None for field in network_ssl_fields)
 
@@ -1441,6 +1463,8 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             config["network"]["ssl_enabled"] = str(settings_in.ssl_enabled).lower()
         if settings_in.force_https_redirect is not None:
             config["network"]["force_https_redirect"] = str(settings_in.force_https_redirect).lower()
+        if settings_in.discovery_beacon_enabled is not None:
+            config["network"]["discovery_beacon_enabled"] = str(settings_in.discovery_beacon_enabled).lower()
 
         if settings_in.ssl_mode is not None:
             config["ssl"]["mode"] = settings_in.ssl_mode
@@ -1523,10 +1547,28 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.thermal_warning_threshold is not None: settings.thermal_warning_threshold = settings_in.thermal_warning_threshold
     if settings_in.thermal_critical_threshold is not None: settings.thermal_critical_threshold = settings_in.thermal_critical_threshold
     if settings_in.thermal_active_protection is not None: settings.thermal_active_protection = settings_in.thermal_active_protection
+    if settings_in.discovery_beacon_enabled is not None: settings.discovery_beacon_enabled = settings_in.discovery_beacon_enabled
 
     db.commit()
     db.refresh(settings)
     invalidate_gui_password_cache()
+
+    global discovery_beacon_service
+    if settings.discovery_beacon_enabled:
+        if discovery_beacon_service is None or not discovery_beacon_service.is_running():
+            try:
+                from core.discovery_beacon import DiscoveryBeaconService
+                discovery_beacon_service = DiscoveryBeaconService(db_session_factory=SessionLocal)
+                discovery_beacon_service.start()
+            except Exception as e:
+                logger.warning(f"Failed to start discovery beacon: {e}")
+    else:
+        if discovery_beacon_service:
+            try:
+                discovery_beacon_service.stop()
+            except Exception:
+                pass
+            discovery_beacon_service = None
 
     from core.hardware_health import hardware_health_manager
     hardware_health_manager.configure(
@@ -1703,7 +1745,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     # 7. Services (Universal: FFmpeg, MediaMTX Hubs, Icecast)
     if req.services:
         from database.models import Service
-        procs = db.query(Service).filter(Service.service_type.notin_(["desktop", "kiosk_browser"])).all()
+        procs = db.query(Service).filter(Service.service_type.notin_(["desktop", "kiosk_browser", "pipewire_hub"])).all()
         sections["services"] = [
             {
                 "name": p.name,
@@ -1715,6 +1757,7 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "filter_config": p.filter_config,
                 "mediamtx_config": p.mediamtx_config,
                 "icecast_config": p.icecast_config,
+                "pipewire_config": p.pipewire_config,
                 "auto_start": p.auto_start,
                 "startup_order": p.startup_order,
                 "startup_delay": p.startup_delay,
@@ -1739,16 +1782,54 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             for p in procs
         ]
 
-    # 7b. Virtual Desktops
+    # 7b. PipeWire Audio Hubs
+    if getattr(req, "pipewire_hubs", True):
+        from database.models import Service
+        pw_hubs = db.query(Service).filter(Service.service_type == "pipewire_hub").all()
+        sections["pipewire_hubs"] = [
+            {
+                "name": h.name,
+                "service_type": "pipewire_hub",
+                "config": h.config or {},
+                "pipewire_config": (h.config or {}).get("pipewire_config", {}),
+                "auto_start": h.auto_start,
+                "startup_order": h.startup_order,
+                "startup_delay": h.startup_delay,
+                "watchdog_enabled": h.watchdog_enabled,
+                "watchdog_retries": h.watchdog_retries,
+                "alias": h.alias,
+                "software_type": getattr(h, "software_type", "pipewire"),
+                "software_version": getattr(h, "software_version", None),
+                "software_build_id": getattr(h, "software_build_id", None),
+                "is_shared_with_peers": getattr(h, "is_shared_with_peers", False),
+                "allow_peer_lease": getattr(h, "allow_peer_lease", False),
+                "log_storage_id": getattr(h, "log_storage_id", None),
+            }
+            for h in pw_hubs
+        ]
+
+    # 7c. Virtual Desktops
     if getattr(req, "virtual_desktops", True):
         from database.models import Service
         desktops = db.query(Service).filter(Service.service_type == "desktop").all()
-        sections["virtual_desktops"] = [
-            {
+        desktop_list = []
+        for d in desktops:
+            d_cfg = (d.config or {}).get("desktop_config", {})
+            pw_svc_id = d_cfg.get("pipewire_service_id")
+            pw_hub_name = None
+            if pw_svc_id:
+                try:
+                    pw_svc = db.get(Service, int(pw_svc_id)) if hasattr(db, "get") else db.query(Service).get(int(pw_svc_id))
+                    if pw_svc:
+                        pw_hub_name = pw_svc.name
+                except Exception:
+                    pass
+            desktop_list.append({
                 "name": d.name,
                 "service_type": "desktop",
                 "config": d.config or {},
-                "desktop_config": (d.config or {}).get("desktop_config", {}),
+                "desktop_config": d_cfg,
+                "pipewire_hub_name": pw_hub_name,
                 "auto_start": d.auto_start,
                 "startup_order": d.startup_order,
                 "startup_delay": d.startup_delay,
@@ -1757,9 +1838,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "alias": d.alias,
                 "is_shared_with_peers": getattr(d, "is_shared_with_peers", False),
                 "allow_peer_lease": getattr(d, "allow_peer_lease", False),
-            }
-            for d in desktops
-        ]
+            })
+        sections["virtual_desktops"] = desktop_list
 
     # 7c. Web Kiosks
     if getattr(req, "web_kiosks", True):
@@ -1901,6 +1981,7 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
         "logging_retention": False,
         "watchdog_grace": False,
         "services": 0,
+        "pipewire_hubs": 0,
         "virtual_desktops": 0,
         "web_kiosks": 0,
         "tasks": 0,
@@ -2109,13 +2190,57 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     proc.mediamtx_config = p_data["mediamtx_config"]
                 if "icecast_config" in p_data and p_data["icecast_config"]:
                     proc.icecast_config = p_data["icecast_config"]
+                if "pipewire_config" in p_data and p_data["pipewire_config"]:
+                    proc.pipewire_config = p_data["pipewire_config"]
                 db.add(proc)
                 if p_data.get("service_type") == "desktop":
                     imported_summary["virtual_desktops"] += 1
                 elif p_data.get("service_type") == "kiosk_browser":
                     imported_summary["web_kiosks"] += 1
+                elif p_data.get("service_type") == "pipewire_hub":
+                    imported_summary["pipewire_hubs"] += 1
                 else:
                     imported_summary["services"] += 1
+
+    # Restore PipeWire Audio Hubs
+    if "pipewire_hubs" in sections and isinstance(sections["pipewire_hubs"], list):
+        from database.models import Service
+        for pw_data in sections["pipewire_hubs"]:
+            existing = db.query(Service).filter(Service.name == pw_data.get("name")).first()
+            if not existing:
+                cfg = dict(pw_data.get("config") or {})
+                if "pipewire_config" in pw_data and pw_data["pipewire_config"]:
+                    cfg["pipewire_config"] = pw_data["pipewire_config"]
+
+                # Run migration to sanitize PTP and canonical multicast IPs on destination host
+                temp_profile = {"service_type": "pipewire_hub", "config": cfg}
+                try:
+                    temp_profile = migrate_and_validate_profile(temp_profile, db)
+                    cfg = temp_profile.get("config", cfg)
+                except Exception:
+                    pass
+
+                hub = Service(
+                    name=pw_data.get("name"),
+                    service_type="pipewire_hub",
+                    status="stopped",
+                    config=cfg,
+                    auto_start=pw_data.get("auto_start", False),
+                    startup_order=pw_data.get("startup_order", 1),
+                    startup_delay=pw_data.get("startup_delay", 0),
+                    watchdog_enabled=pw_data.get("watchdog_enabled", False),
+                    watchdog_retries=pw_data.get("watchdog_retries", 3),
+                    alias=pw_data.get("alias"),
+                    software_type=pw_data.get("software_type", "pipewire"),
+                    software_version=pw_data.get("software_version"),
+                    software_build_id=pw_data.get("software_build_id"),
+                    is_shared_with_peers=bool(pw_data.get("is_shared_with_peers", False)),
+                    allow_peer_lease=bool(pw_data.get("allow_peer_lease", False)),
+                    log_storage_id=pw_data.get("log_storage_id"),
+                )
+                db.add(hub)
+                imported_summary["pipewire_hubs"] += 1
+        db.flush()
 
     # Restore Virtual Desktops
     if "virtual_desktops" in sections and isinstance(sections["virtual_desktops"], list):
@@ -2124,8 +2249,16 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
             existing = db.query(Service).filter(Service.name == d_data.get("name")).first()
             if not existing:
                 cfg = dict(d_data.get("config") or {})
-                if "desktop_config" in d_data and d_data["desktop_config"]:
-                    cfg["desktop_config"] = d_data["desktop_config"]
+                d_cfg = dict(d_data.get("desktop_config") or cfg.get("desktop_config") or {})
+
+                # Re-link PipeWire Hub dependency by name if present
+                pw_hub_name = d_data.get("pipewire_hub_name")
+                if pw_hub_name:
+                    pw_svc = db.query(Service).filter(Service.name == pw_hub_name, Service.service_type == "pipewire_hub").first()
+                    if pw_svc:
+                        d_cfg["pipewire_service_id"] = pw_svc.id
+
+                cfg["desktop_config"] = d_cfg
                 desk = Service(
                     name=d_data.get("name"),
                     service_type="desktop",
@@ -2292,9 +2425,56 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
 @app.get("/api/auth/status")
 @app.get("/auth/status")
 def get_auth_status(request: Request, db: Session = Depends(get_db)):
-    from database.models import SystemSettings
+    from database.models import SystemSettings, Storage
     from version import __version__ as ver
     settings = db.query(SystemSettings).first()
+
+    # Dynamic storage & logging health check for pre-login alert
+    storage_warnings = []
+    if os.environ.get("LOGGING_FALLBACK_ACTIVE") == "true":
+        target = os.environ.get("LOGGING_TARGET_FILE", "/var/log/ffmpeg-gui/ffmpeg-gui.log")
+        is_rec = False
+        try:
+            tdir = os.path.dirname(target)
+            if os.path.exists(tdir) and os.access(tdir, os.W_OK):
+                is_rec = True
+        except Exception:
+            pass
+        storage_warnings.append({
+            "type": "logging_fallback",
+            "path": target,
+            "recovered": is_rec,
+            "message": f"Log target '{target}' is not writable. Running in journalctl fallback mode." if not is_rec else f"Permissions restored on '{target}'. Restart/reload service to resume file logging."
+        })
+    try:
+        for s in db.query(Storage).all():
+            if not os.path.exists(s.path):
+                try:
+                    os.makedirs(s.path, exist_ok=True)
+                except Exception:
+                    pass
+            if os.path.exists(s.path):
+                if not os.access(s.path, os.W_OK):
+                    storage_warnings.append({
+                        "type": "storage_permission",
+                        "storage_id": s.id,
+                        "storage_name": s.name,
+                        "path": s.path,
+                        "recovered": False,
+                        "message": f"Storage '{s.name}' ({s.path}) is not writable (permission denied)."
+                    })
+            else:
+                storage_warnings.append({
+                    "type": "storage_missing",
+                    "storage_id": s.id,
+                    "storage_name": s.name,
+                    "path": s.path,
+                    "recovered": False,
+                    "message": f"Storage '{s.name}' ({s.path}) directory does not exist."
+                })
+    except Exception as e:
+        logger.warning(f"Error checking storage health in get_auth_status: {e}")
+
     if not settings:
         return {
             "password_required": False,
@@ -2303,7 +2483,8 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
             "logo_path": None,
             "logo_text": "FF",
             "accent_color": "#FF6B00",
-            "version": ver
+            "version": ver,
+            "storage_warnings": storage_warnings
         }
     password_required = bool(settings.gui_password)
     is_authenticated = True
@@ -2324,7 +2505,8 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
         "logo_path": settings.logo_path,
         "logo_text": settings.logo_text or "FF",
         "accent_color": settings.accent_color or "#FF6B00",
-        "version": ver
+        "version": ver,
+        "storage_warnings": storage_warnings
     }
 
 
@@ -2895,7 +3077,12 @@ def get_system_capabilities():
             "decoders": nvenc_caps["decoders"]
         },
         "v4l2": {"available": v4l2_available, "details": v4l2_details},
-        "alsa": {"available": len(alsa_cards) > 0, "details": f"Detected {len(alsa_cards)} ALSA sound card(s)" if alsa_cards else "No physical or virtual ALSA sound cards detected", "cards": alsa_cards},
+        "alsa": {
+            "available": len(alsa_cards) > 0,
+            "details": f"Detected {len(alsa_cards)} ALSA sound card(s)" if alsa_cards else "No physical or virtual ALSA sound cards detected",
+            "cards": alsa_cards,
+            "advisor": alsa_manager.get_alsa_advisor_diagnostics().get("summary", {})
+        },
         "decklink": {"available": decklink_available, "details": decklink_details, "cards": decklink_cards},
         "magewell": {
             "available": magewell_available,
@@ -2959,9 +3146,19 @@ async def get_alsa_devices_route():
     return await get_alsa_devices()
 
 
+@app.get("/alsa/devices-hierarchical")
+async def get_alsa_devices_hierarchical_route():
+    return await get_alsa_devices_hierarchical(stream_type="capture")
+
+
 @app.get("/alsa/playback-devices")
 async def get_alsa_playback_devices_route():
     return await get_alsa_playback_devices()
+
+
+@app.get("/alsa/playback-devices-hierarchical")
+async def get_alsa_playback_devices_hierarchical_route():
+    return await get_alsa_devices_hierarchical(stream_type="playback")
 
 
 
@@ -3315,6 +3512,32 @@ async def websocket_telemetry(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+def resolve_lease_display_name(token: str, services_lookup: dict, tasks_lookup: dict) -> str:
+    """
+    Resolves an internal lease token ('service:1', 'desktop:10', 'kiosk:11', 'task:2', 'peer:xyz')
+    to its human-readable alias or process name for UI display.
+    """
+    if not token or not isinstance(token, str):
+        return str(token)
+    if ":" in token:
+        prefix, raw_id = token.split(":", 1)
+        prefix_clean = prefix.strip().lower()
+        if prefix_clean == "peer":
+            return f"Peer: {raw_id.strip()}"
+        try:
+            item_id = int(raw_id)
+            if prefix_clean in ("service", "desktop", "kiosk"):
+                if item_id in services_lookup:
+                    return services_lookup[item_id]
+                return f"{prefix.capitalize()} #{item_id}"
+            elif prefix_clean == "task":
+                if item_id in tasks_lookup:
+                    return tasks_lookup[item_id]
+                return f"Task #{item_id}"
+        except (ValueError, TypeError):
+            pass
+    return token
+
 async def telemetry_broadcast_loop():
     gpu_sensor = GPUSensor()
     psutil.cpu_percent(interval=None)
@@ -3359,13 +3582,16 @@ async def telemetry_broadcast_loop():
                 ]
 
                 processes = db.query(MediaProcess).all()
+                services_lookup = {p.id: ((getattr(p, 'alias', None) or '').strip() or p.name) for p in processes}
+                tasks_lookup = {t.id: ((getattr(t, 'alias', None) or '').strip() or t.name) for t in db.query(ScheduledTask).all()}
                 processes_data = []
                 for p in processes:
                     p_deps = list(deps_by_proc.get(p.id, []))
                     fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
                     if fed_dep:
                         p_deps.append(fed_dep)
-                    p_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+                    raw_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+                    p_leases = [resolve_lease_display_name(l, services_lookup, tasks_lookup) for l in raw_leases]
                     processes_data.append({
                         "id": p.id,
                         "name": p.name,
@@ -3397,6 +3623,7 @@ async def telemetry_broadcast_loop():
                         "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
                         "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
                         "active_leases": p_leases,
+                        "active_leases_raw": raw_leases,
                         "is_pinned": dependency_manager.is_pinned(p.id),
                         "dependencies": p_deps,
                         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
@@ -3471,17 +3698,32 @@ async def telemetry_broadcast_loop():
                 # Query all configured storages
                 storages = db.query(Storage).all()
                 for s in storages:
+                    is_writable = False
+                    write_error = None
                     try:
+                        if not os.path.exists(s.path):
+                            try:
+                                os.makedirs(s.path, exist_ok=True)
+                            except Exception:
+                                pass
                         usage = shutil.disk_usage(s.path)
                         total = usage.total
                         used = usage.used
                         free = usage.free
                         percent = round((used / total) * 100, 2) if total > 0 else 0.0
-                    except (FileNotFoundError, PermissionError):
+                        if os.path.exists(s.path):
+                            is_writable = os.access(s.path, os.W_OK)
+                            if not is_writable:
+                                write_error = "Permission denied"
+                        else:
+                            write_error = "Path does not exist"
+                    except (FileNotFoundError, PermissionError, OSError) as s_err:
                         total = 0
                         used = 0
                         free = 0
                         percent = 0.0
+                        is_writable = False
+                        write_error = str(s_err)
                     
                     if percent > 90.0:
                         if s.id not in alerted_storages:
@@ -3499,7 +3741,9 @@ async def telemetry_broadcast_loop():
                         "total_gb": round(total / (1024 ** 3), 2),
                         "used_gb": round(used / (1024 ** 3), 2),
                         "free_gb": round(free / (1024 ** 3), 2),
-                        "percent": percent
+                        "percent": percent,
+                        "is_writable": is_writable,
+                        "write_error": write_error
                     })
             
             # Gather global host system metrics (outside database session block)
@@ -3510,6 +3754,18 @@ async def telemetry_broadcast_loop():
             global lcd_manager
             git_meta = get_git_metadata()
             updates = check_latest_release(backend_version)
+
+            logging_fallback_active = os.environ.get("LOGGING_FALLBACK_ACTIVE") == "true"
+            logging_target_file = os.environ.get("LOGGING_TARGET_FILE")
+            logging_recovered = False
+            if logging_fallback_active and logging_target_file:
+                try:
+                    tdir = os.path.dirname(logging_target_file)
+                    if os.path.exists(tdir) and os.access(tdir, os.W_OK):
+                        logging_recovered = True
+                except Exception:
+                    logging_recovered = False
+
             system_data = {
                 "cpu": sys_cpu,
                 "ram_used": int(sys_ram.used / (1024 * 1024)), # MB
@@ -3527,6 +3783,15 @@ async def telemetry_broadcast_loop():
                 "lcd": {
                     "connected": lcd_manager is not None and lcd_manager._running,
                     "port": lcd_manager.port if lcd_manager else None
+                },
+                "system_uptime_seconds": int(time.time() - psutil.boot_time()),
+                "service_uptime_seconds": int(time.time() - SERVICE_START_TIME),
+                "alsa_advisor": alsa_manager.get_alsa_advisor_diagnostics().get("summary", {}),
+                "logging_status": {
+                    "fallback_active": logging_fallback_active,
+                    "target_file": logging_target_file,
+                    "fallback_error": os.environ.get("LOGGING_FALLBACK_ERROR"),
+                    "permissions_recovered": logging_recovered
                 }
             }
 
@@ -3645,6 +3910,9 @@ async def auto_start_services():
 # Global LCD Manager instance
 lcd_manager = None
 
+# Global Discovery Beacon instance
+discovery_beacon_service = None
+
 def sanitize_process_config_data(input_config: dict, filter_config: dict) -> bool:
     """
     Sanitize input_config and filter_config for non-decodable inputs.
@@ -3709,8 +3977,8 @@ def sanitize_output_config_data(output_config: dict) -> bool:
     is_dirty = False
     out_type = output_config.get("type")
 
-    # Only srt, rtmp, whip, icecast can possibly connect to auxiliary providers
-    if out_type not in ('srt', 'rtmp', 'whip', 'icecast'):
+    # Only srt, rtmp, whip, icecast, pipewire, pipewire_hub, aes67 can possibly connect to auxiliary providers
+    if out_type not in ('srt', 'rtmp', 'whip', 'icecast', 'pipewire', 'pipewire_hub', 'aes67'):
         for key in ('provider_service_id', 'mediamtx_mode', 'service_target', 'mediamtx_target_type', 'path_id', 'stream_action'):
             if key in output_config:
                 output_config.pop(key, None)
@@ -3726,6 +3994,19 @@ def sanitize_output_config_data(output_config: dict) -> bool:
             if 'provider_service_id' in output_config:
                 output_config.pop('provider_service_id', None)
                 is_dirty = True
+    elif out_type in ('pipewire', 'pipewire_hub', 'aes67'):
+        p_id = output_config.get('provider_service_id') or output_config.get('pipewire_service_id')
+        if p_id is not None:
+            try:
+                p_id_int = int(p_id)
+                if output_config.get('provider_service_id') != p_id_int:
+                    output_config['provider_service_id'] = p_id_int
+                    is_dirty = True
+                if output_config.get('pipewire_service_id') != p_id_int:
+                    output_config['pipewire_service_id'] = p_id_int
+                    is_dirty = True
+            except (ValueError, TypeError):
+                pass
 
     return is_dirty
 
@@ -3890,18 +4171,23 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start LCD manager on startup: {e}")
 
-    # Synchronize and auto-detect dependencies for all existing services and tasks
+    # Synchronize dependencies and reconcile active leases for all running services
     try:
         with SessionLocal() as db:
             from core.dependency_manager import dependency_manager
-            from database.models import Service, ScheduledTask
-            for s in db.query(Service).all():
-                dependency_manager.sync_auto_dependencies('service', s.id, s.input_config, s.output_config, db)
+            from database.models import ScheduledTask
             for t in db.query(ScheduledTask).all():
                 dependency_manager.sync_auto_dependencies('task', t.id, t.input_config, t.output_config, db)
-            logger.info("Auto-synchronized service and task dependencies on startup.")
+            dependency_manager.reconcile_active_leases(db)
+            logger.info("Auto-synchronized service/task dependencies and reconciled active leases on startup.")
     except Exception as e:
-        logger.error(f"Failed to auto-sync dependencies on startup: {e}")
+        logger.error(f"Failed to reconcile dependencies/leases on startup: {e}")
+
+    # Reconcile PipeWire matrix connections for any surviving or reattached hubs
+    try:
+        process_manager.notify_pipewire_matrix_change()
+    except Exception as e:
+        logger.warning(f"Failed to reconcile PipeWire patchbay on startup: {e}")
 
     asyncio.create_task(telemetry_broadcast_loop())
     asyncio.create_task(auto_start_services())
@@ -3941,6 +4227,34 @@ async def startup_event():
     except Exception as e:
         logger.error(f"Failed to start hardware health manager on startup: {e}")
 
+    global discovery_beacon_service
+    try:
+        from core.discovery_beacon import DiscoveryBeaconService
+        beacon_enabled = True
+        beacon_port = 59990
+        config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+        if not os.path.exists(config_path) and os.path.exists("/etc/ffmpeg-gui/ffmpeg-gui.conf"):
+            config_path = "/etc/ffmpeg-gui/ffmpeg-gui.conf"
+        if os.path.exists(config_path):
+            import configparser
+            cp = configparser.ConfigParser()
+            cp.read(config_path)
+            if "network" in cp:
+                beacon_enabled = cp["network"].getboolean("discovery_beacon_enabled", fallback=True)
+                beacon_port = cp["network"].getint("discovery_beacon_port", fallback=59990)
+        
+        with SessionLocal() as db_start:
+            from database.models import SystemSettings
+            sys_set = db_start.query(SystemSettings).first()
+            if sys_set and sys_set.discovery_beacon_enabled is not None:
+                beacon_enabled = bool(sys_set.discovery_beacon_enabled)
+                
+        if beacon_enabled:
+            discovery_beacon_service = DiscoveryBeaconService(db_session_factory=SessionLocal, port=beacon_port)
+            discovery_beacon_service.start()
+    except Exception as e:
+        logger.warning(f"Failed to start discovery beacon on startup: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     global _shutdown_initialized
@@ -3969,6 +4283,15 @@ async def shutdown_event():
     if lcd_manager:
         logger.info("Shutdown: Stopping LCD manager...")
         lcd_manager.stop()
+
+    global discovery_beacon_service
+    if discovery_beacon_service:
+        logger.info("Shutdown: Stopping discovery beacon...")
+        try:
+            discovery_beacon_service.stop()
+        except Exception:
+            pass
+        discovery_beacon_service = None
 
     if is_reload_mode:
         logger.info("Shutdown: Warm Reload mode active. Preserving child stream processes for re-attach on reload.")
@@ -4104,7 +4427,9 @@ def read_root() -> dict:
         "lcd": {
             "connected": lcd_manager is not None and lcd_manager._running,
             "port": lcd_manager.port if lcd_manager else None
-        }
+        },
+        "system_uptime_seconds": int(time.time() - psutil.boot_time()),
+        "service_uptime_seconds": int(time.time() - SERVICE_START_TIME)
     }
 
 @app.post("/api/system/check-updates")
@@ -4241,6 +4566,11 @@ async def get_nvenc_tags():
     tags = await build_manager.fetch_available_tags("nvenc")
     return {"tags": tags}
 
+@app.get("/builds/tags/pipewire")
+async def get_pipewire_tags():
+    """List available PipeWire git tags from the remote repository."""
+    return await get_software_tags("pipewire")
+
 @app.get("/builds/tags/{software_type}")
 async def get_software_tags(software_type: str):
     """List available tags for the specified software type."""
@@ -4250,6 +4580,8 @@ async def get_software_tags(software_type: str):
         tags = await build_manager.fetch_available_tags("https://github.com/bluenviron/mediamtx.git")
     elif software_type == "kiosk_cog":
         tags = await build_manager.fetch_available_tags("https://github.com/Igalia/cog.git")
+    elif software_type == "pipewire":
+        tags = await build_manager.fetch_available_tags("https://gitlab.freedesktop.org/pipewire/pipewire.git")
     elif software_type == "decklink_tools":
         tags = ["1.0.1", "1.0.0"]
     else:
@@ -4263,8 +4595,18 @@ async def get_software_tags(software_type: str):
             tags = ["v1.9.0", "v1.8.0", "v1.7.0"]
         elif software_type == "kiosk_cog":
             tags = ["v0.18.0", "v0.16.0"]
+        elif software_type == "pipewire":
+            tags = ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7", "1.0.5"]
         elif software_type == "decklink_tools":
             tags = ["1.0.1", "1.0.0"]
+    elif software_type == "pipewire":
+        # Ensure only modern PipeWire versions (>= 1.0.0) with modular rtp-sap/rtp-sink are offered
+        filtered_pw = []
+        for t in tags:
+            m = re.search(r"^v?(\d+)\.(\d+)(?:\.(\d+))?", str(t).strip())
+            if m and int(m.group(1)) >= 1:
+                filtered_pw.append(t)
+        tags = filtered_pw or ["1.6.9", "1.6.8", "1.4.2", "1.4.0", "1.2.7", "1.0.5"]
             
     return {"tags": tags}
 
@@ -4848,13 +5190,17 @@ def list_processes(db: Session = Depends(get_db)):
             "is_auto_managed": d.is_auto_managed
         })
 
+    from database.models import ScheduledTask
+    services_lookup = {p.id: ((getattr(p, 'alias', None) or '').strip() or p.name) for p in processes}
+    tasks_lookup = {t.id: ((getattr(t, 'alias', None) or '').strip() or t.name) for t in db.query(ScheduledTask).all()}
     processes_data = []
     for p in processes:
         p_deps = list(deps_by_consumer.get(('service', p.id), []))
         fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
         if fed_dep:
             p_deps.append(fed_dep)
-        p_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+        raw_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
+        p_leases = [resolve_lease_display_name(l, services_lookup, tasks_lookup) for l in raw_leases]
         processes_data.append({
             "id": p.id,
             "name": p.name,
@@ -4885,6 +5231,7 @@ def list_processes(db: Session = Depends(get_db)):
             "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
             "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
             "active_leases": p_leases,
+            "active_leases_raw": raw_leases,
             "is_pinned": dependency_manager.is_pinned(p.id),
             "dependencies": p_deps,
             "pending_changes": p.pending_changes,
@@ -5702,6 +6049,10 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
             service_type = "icecast_server"
         elif "kiosk_config" in profile or "kiosk_config" in cfg:
             service_type = "kiosk_browser"
+        elif "desktop_config" in profile or "desktop_config" in cfg:
+            service_type = "desktop"
+        elif "virtual_sinks" in cfg or "pipewire_config" in cfg or "virtual_sinks" in profile:
+            service_type = "pipewire_hub"
         else:
             service_type = "ffmpeg_stream"
     profile["service_type"] = service_type
@@ -5716,6 +6067,15 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     elif service_type in ["kiosk_browser", "kiosk_cog"]:
         if "kiosk_config" in profile and "kiosk_config" not in cfg:
             cfg["kiosk_config"] = profile["kiosk_config"]
+    elif service_type == "desktop":
+        if "desktop_config" in profile and "desktop_config" not in cfg:
+            cfg["desktop_config"] = profile["desktop_config"]
+    elif service_type == "pipewire_hub":
+        if "pipewire_config" in profile and "pipewire_config" not in cfg:
+            cfg["pipewire_config"] = profile["pipewire_config"]
+        for pw_key in ["virtual_sinks", "aes67_network", "sample_rate", "quantum", "min_quantum", "max_quantum"]:
+            if pw_key in profile and pw_key not in cfg:
+                cfg[pw_key] = profile[pw_key]
     else:
         # ffmpeg_stream
         input_cfg = profile.get("input_config", {})
@@ -5758,14 +6118,33 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
 
     # 4. Gracefully resolve missing or invalid Software / Build IDs
     from database.models import SoftwareBuild
+    expected_sw_type = profile.get("software_type") or (
+        "ffmpeg" if service_type == "ffmpeg_stream" else
+        "mediamtx" if service_type == "mediamtx_hub" else
+        "icecast2" if service_type == "icecast_server" else
+        "pipewire" if service_type == "pipewire_hub" else
+        None
+    )
     build_id = profile.get("ffmpeg_build_id") or profile.get("software_build_id")
     if build_id:
         build_exists = db.query(SoftwareBuild).filter(SoftwareBuild.id == build_id).first()
-        if not build_exists:
-            sw_type = profile.get("software_type") or ("ffmpeg" if service_type == "ffmpeg_stream" else "mediamtx" if service_type == "mediamtx_hub" else "icecast2" if service_type == "icecast_server" else None)
+        is_valid_engine = False
+        if build_exists and build_exists.status == "ready":
+            b_type = getattr(build_exists, "software_type", None) or "ffmpeg"
+            if expected_sw_type is None or b_type == expected_sw_type:
+                if expected_sw_type == "ffmpeg":
+                    cand = getattr(build_exists, "ffmpeg_binary", None)
+                    if cand and os.path.exists(cand):
+                        is_valid_engine = True
+                else:
+                    cand = getattr(build_exists, "binary_path", None)
+                    if cand and os.path.exists(cand):
+                        is_valid_engine = True
+
+        if not is_valid_engine:
             fallback_query = db.query(SoftwareBuild).filter(SoftwareBuild.status == 'ready')
-            if sw_type:
-                fallback_query = fallback_query.filter(SoftwareBuild.software_type == sw_type)
+            if expected_sw_type:
+                fallback_query = fallback_query.filter(SoftwareBuild.software_type == expected_sw_type)
             default_build = fallback_query.filter(SoftwareBuild.is_default == True).first() or fallback_query.first()
             if default_build:
                 profile["ffmpeg_build_id"] = default_build.id
@@ -5810,8 +6189,126 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
                     p_exists = db.query(Service).filter(Service.id == int(prov_id)).first()
                     if not p_exists:
                         cfg_dict.pop("provider_service_id", None)
+                    else:
+                        # Auto-sync credentials for local managed Icecast provider to prevent 401 Unauthorized
+                        if p_exists.service_type == "icecast_server":
+                            p_cfg = (p_exists.config or {}).get("icecast_config", p_exists.config or {})
+                            real_source_pass = p_cfg.get("source_password")
+                            if real_source_pass and cfg_dict.get("icecast_password") != real_source_pass:
+                                cfg_dict["icecast_password"] = real_source_pass
                 except Exception:
                     cfg_dict.pop("provider_service_id", None)
+
+    # 7. PipeWire Hub AoIP Network, Multicast & SAP Sanitization
+    if service_type == "pipewire_hub":
+        try:
+            from core.pipewire_config import PipeWireConfigGenerator
+            from core.network_inspector import get_network_interfaces
+        except ImportError:
+            from backend.core.pipewire_config import PipeWireConfigGenerator
+            from backend.core.network_inspector import get_network_interfaces
+
+        pw_cfg = cfg.get("pipewire_config") if isinstance(cfg.get("pipewire_config"), dict) else cfg
+        aes67_net = pw_cfg.get("aes67_network")
+        if not isinstance(aes67_net, dict) and "aes67_network" in cfg and isinstance(cfg["aes67_network"], dict):
+            aes67_net = cfg["aes67_network"]
+
+        if isinstance(aes67_net, dict) and aes67_net.get("enabled"):
+            try:
+                available_ifaces = get_network_interfaces()
+            except Exception:
+                available_ifaces = []
+
+            active_ipv4_ifaces = [
+                i for i in available_ifaces
+                if i.get("is_up") and not i.get("is_loopback") and i.get("ipv4_addresses")
+            ]
+            current_iface_name = aes67_net.get("interface")
+            matching_iface = next((i for i in active_ipv4_ifaces if i["name"] == current_iface_name), None)
+
+            if not matching_iface:
+                if active_ipv4_ifaces:
+                    best_iface = active_ipv4_ifaces[0]
+                    aes67_net["interface"] = best_iface["name"]
+                    aes67_net["ip"] = best_iface["ipv4_addresses"][0]["address"]
+            else:
+                # Update IP to actual local interface address
+                local_ip = matching_iface["ipv4_addresses"][0]["address"]
+                aes67_net["ip"] = local_ip
+
+            local_ip = aes67_net.get("ip", "0.0.0.0")
+            local_canonical_prefix = PipeWireConfigGenerator.get_canonical_base_multicast_prefix(local_ip)
+            imported_base_prefix = aes67_net.get("base_multicast_prefix")
+
+            # Check if imported base prefix should be updated to local canonical
+            old_prefix = imported_base_prefix
+            if not imported_base_prefix or imported_base_prefix != local_canonical_prefix:
+                aes67_net["base_multicast_prefix"] = local_canonical_prefix
+
+            # Sanitize PTP Master Clock settings on imported profiles
+            ptp_cfg = aes67_net.get("ptp")
+            if isinstance(ptp_cfg, dict) and ptp_cfg.get("enabled"):
+                # Avoid Grandmaster conflict when importing profiles between machines:
+                # Ensure auto_inhibit is active and set priority1 to at least 200 (Secondary/Backup Master)
+                ptp_cfg["auto_inhibit"] = True
+                try:
+                    cur_prio = int(ptp_cfg.get("priority1", 128))
+                except Exception:
+                    cur_prio = 128
+                if cur_prio < 200:
+                    ptp_cfg["priority1"] = 200
+                aes67_net["ptp"] = ptp_cfg
+
+            pw_cfg["aes67_network"] = aes67_net
+            cfg["aes67_network"] = aes67_net
+            if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
+                cfg["pipewire_config"]["aes67_network"] = aes67_net
+
+            try:
+                local_hostname = socket.gethostname().split(".")[0]
+            except Exception:
+                local_hostname = "host"
+
+            virtual_sinks = pw_cfg.get("virtual_sinks")
+            if not isinstance(virtual_sinks, list) and "virtual_sinks" in cfg and isinstance(cfg["virtual_sinks"], list):
+                virtual_sinks = cfg["virtual_sinks"]
+            if not isinstance(virtual_sinks, list):
+                virtual_sinks = []
+
+            for idx, sink in enumerate(virtual_sinks, start=1):
+                if sink.get("aes67_enabled"):
+                    sink_ip = sink.get("multicast_ip")
+                    # Re-seed if empty, matching old prefix, or starting with foreign 239.69.X
+                    is_foreign_ip = (
+                        not sink_ip
+                        or (old_prefix and sink_ip.startswith(f"{old_prefix}."))
+                        or (sink_ip.startswith("239.69.") and not sink_ip.startswith(f"{local_canonical_prefix}."))
+                    )
+                    if is_foreign_ip:
+                        sink["multicast_ip"] = PipeWireConfigGenerator.get_canonical_sink_multicast_ip(local_canonical_prefix, idx)
+
+                    raw_sap = sink.get("sap_name") or sink.get("name") or sink.get("id") or "sink"
+                    parts = raw_sap.split(" ", 1)
+                    if len(parts) == 2 and parts[0] != local_hostname:
+                        sink["sap_name"] = f"{local_hostname} {parts[1]}"
+                    else:
+                        sink["sap_name"] = PipeWireConfigGenerator.format_sap_name(raw_sap, local_hostname)
+
+            pw_cfg["virtual_sinks"] = virtual_sinks
+            cfg["virtual_sinks"] = virtual_sinks
+            if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
+                cfg["pipewire_config"]["virtual_sinks"] = virtual_sinks
+
+            remote_sinks = pw_cfg.get("remote_sinks")
+            if not isinstance(remote_sinks, list) and "remote_sinks" in cfg and isinstance(cfg["remote_sinks"], list):
+                remote_sinks = cfg["remote_sinks"]
+            if not isinstance(remote_sinks, list):
+                remote_sinks = []
+
+            pw_cfg["remote_sinks"] = remote_sinks
+            cfg["remote_sinks"] = remote_sinks
+            if "pipewire_config" in cfg and isinstance(cfg["pipewire_config"], dict):
+                cfg["pipewire_config"]["remote_sinks"] = remote_sinks
                     
     return profile
 
@@ -6156,6 +6653,10 @@ def create_service(svc_in: ServiceCreate, db: Session = Depends(get_db)):
     db.add(svc)
     db.commit()
     db.refresh(svc)
+    try:
+        process_manager.notify_pipewire_matrix_change()
+    except Exception:
+        pass
     return svc
 
 @app.get("/api/services/{service_id}")
@@ -6188,6 +6689,10 @@ def update_service(service_id: int, svc_in: ServiceUpdate, db: Session = Depends
         svc.allow_peer_lease = svc_in.allow_peer_lease
     db.commit()
     db.refresh(svc)
+    try:
+        process_manager.notify_pipewire_matrix_change()
+    except Exception:
+        pass
     return svc
 
 @app.delete("/api/services/{service_id}")
@@ -6199,6 +6704,10 @@ def delete_service(service_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Cannot delete a running service")
     db.delete(svc)
     db.commit()
+    try:
+        process_manager.notify_pipewire_matrix_change()
+    except Exception:
+        pass
     return {"detail": "Service deleted"}
 
 @app.post("/api/services/{service_id}/start")
@@ -6237,6 +6746,56 @@ async def get_service_preview(service_id: int, db: Session = Depends(get_db)):
         preview_manager.get_mjpeg_stream(media_proc.id, input_config, is_running),
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"
     )
+
+@app.get("/api/services/{service_id}/pipewire/nodes")
+async def get_pipewire_service_nodes(
+    service_id: int,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    svc = db.get(MediaProcess, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.service_type != "pipewire_hub":
+        raise HTTPException(status_code=400, detail="Service is not a PipeWire Hub")
+    return await process_manager.get_pipewire_telemetry(service_id)
+
+@app.get("/api/services/{service_id}/pipewire/matrix")
+async def get_pipewire_service_matrix(
+    service_id: int,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    svc = db.get(MediaProcess, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.service_type != "pipewire_hub":
+        raise HTTPException(status_code=400, detail="Service is not a PipeWire Hub")
+    sup = process_manager.get_or_create_pipewire_supervisor(service_id)
+    if not sup:
+        return {
+            "hub_id": service_id,
+            "running": False,
+            "desired_links_count": 0,
+            "active_links_count": 0,
+            "pending_links_count": 0,
+            "routes": []
+        }
+    return sup.get_matrix_status()
+
+@app.post("/api/services/{service_id}/pipewire/matrix/reconcile")
+async def trigger_pipewire_service_matrix_reconcile(
+    service_id: int,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    svc = db.get(MediaProcess, service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if svc.service_type != "pipewire_hub":
+        raise HTTPException(status_code=400, detail="Service is not a PipeWire Hub")
+    process_manager.notify_pipewire_matrix_change(service_id)
+    return {"status": "reconciling", "hub_id": service_id}
 
 @app.get("/api/services/{service_id}/dependencies")
 def list_service_dependencies(service_id: int, db: Session = Depends(get_db)):
@@ -6305,7 +6864,7 @@ def remove_service_dependency(service_id: int, provider_service_id: int, db: Ses
 def list_available_dependency_providers(db: Session = Depends(get_db)):
     """List auxiliary services that can act as stream routing or protocol hubs (MediaMTX, Icecast) or virtual desktops."""
     providers = db.query(MediaProcess).filter(
-        MediaProcess.service_type.in_(["mediamtx_hub", "icecast_server", "desktop"])
+        MediaProcess.service_type.in_(["mediamtx_hub", "icecast_server", "desktop", "pipewire_hub"])
     ).all()
     
     result = []
@@ -6313,7 +6872,7 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
     from core.builders.ffmpeg_builder import FFmpegCommandBuilder
     for p in providers:
         cfg = p.config or {}
-        prov_cfg = dict(cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg.get("desktop_config") or cfg)
+        prov_cfg = dict(cfg.get("icecast_config") or cfg.get("mediamtx_config") or cfg.get("desktop_config") or cfg.get("pipewire_config") or cfg)
         is_legacy = False
         software_version = None
         if p.service_type == "icecast_server":
@@ -6586,9 +7145,11 @@ def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
     if output_cfg:
         sanitize_output_config_data(output_cfg)
 
+    is_active_val = True if payload.schedule_type == 'manual' else (payload.is_active if payload.is_active is not None else True)
+
     db_task = ScheduledTask(
         name=payload.name,
-        is_active=payload.is_active,
+        is_active=is_active_val,
         input_config=payload.input_config,
         output_config=output_cfg,
         codec_config=payload.codec_config,
@@ -6919,7 +7480,10 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depend
         setattr(task, k, v)
         
     if sched_changed:
-        if not task.is_active:
+        if task.schedule_type == 'manual':
+            task.is_active = True
+            task.next_run = None
+        elif not task.is_active:
             task.next_run = None
         else:
             if task.schedule_type == 'recurring':
@@ -7105,7 +7669,13 @@ def get_storages(db: Session = Depends(get_db)):
     storages = db.query(Storage).all()
     results = []
     for s in storages:
+        if not os.path.exists(s.path):
+            try:
+                os.makedirs(s.path, exist_ok=True)
+            except Exception:
+                pass
         stats = get_disk_stats(s.path)
+        is_writable = os.path.exists(s.path) and os.access(s.path, os.W_OK)
         results.append({
             "id": s.id,
             "name": s.name,
@@ -7118,7 +7688,8 @@ def get_storages(db: Session = Depends(get_db)):
             "used": stats["used"],
             "free": stats["free"],
             "percent": stats["percent"],
-            "stats": stats
+            "stats": stats,
+            "is_writable": is_writable
         })
     return results
 
@@ -7388,7 +7959,18 @@ def check_pid_using_alsa_card(pid: Optional[int], card_index: int) -> Optional[b
 
 
 def analyze_alsa_process_info(cmd_str: str, config_json_str: str, pid: Optional[int] = None, card_index: Optional[int] = None) -> Dict[str, Any]:
-    # Check kernel /proc/{pid}/fd first if available
+    cmd_lower = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
+
+    # Capture vs Playout detection
+    has_input = bool(re.search(r'-f\s+alsa[^\n\r]*?-i\b', cmd_lower) or re.search(r'-i\s+(?:hw|plughw|dsnoop|dmix|alsa):', cmd_lower))
+    has_output = bool(re.search(r'-f\s+alsa\s+(?:hw|plughw|dsnoop|dmix):', cmd_lower) or re.search(r'(?:hw|plughw|dsnoop|dmix):\d+[^\s]*\s*$', cmd_lower))
+
+    direction = "both" if (has_input and has_output) else ("capture" if has_input else "playout")
+    pcm_index: Optional[int] = None
+    subdev_index: Optional[int] = None
+    device_target = ""
+
+    # 1. Check kernel /proc/{pid}/fd first if PID and card_index are provided
     if pid and card_index is not None:
         try:
             fd_dir = f"/proc/{pid}/fd"
@@ -7400,42 +7982,62 @@ def analyze_alsa_process_info(cmd_str: str, config_json_str: str, pid: Optional[
                             base = os.path.basename(target)
                             m = re.match(r"pcmC(\d+)D(\d+)([pc])", base)
                             if m and int(m.group(1)) == card_index:
-                                pcm_idx = int(m.group(2))
-                                direction = "playout" if m.group(3) == "p" else "capture"
-                                return {
-                                    "direction": direction,
-                                    "device_target": f"hw:{card_index},{pcm_idx}",
-                                    "pcm_index": pcm_idx,
-                                    "subdevice_index": None
-                                }
+                                pcm_index = int(m.group(2))
+                                dir_char = m.group(3)
+                                direction = "playout" if dir_char == "p" else "capture"
+
+                                # Check kernel /proc/asound for exact subdevice owned by this PID
+                                pcm_proc_dir = f"/proc/asound/card{card_index}/pcm{pcm_index}{dir_char}"
+                                if os.path.isdir(pcm_proc_dir):
+                                    try:
+                                        for sub_name in os.listdir(pcm_proc_dir):
+                                            if sub_name.startswith("sub"):
+                                                status_file = os.path.join(pcm_proc_dir, sub_name, "status")
+                                                try:
+                                                    with open(status_file, "r") as sf:
+                                                        status_txt = sf.read()
+                                                    if re.search(rf"\bowner_pid\s*:\s*{pid}\b", status_txt):
+                                                        m_sub = re.match(r"sub(\d+)", sub_name)
+                                                        if m_sub:
+                                                            subdev_index = int(m_sub.group(1))
+                                                            break
+                                                except Exception:
+                                                    pass
+                                    except Exception:
+                                        pass
+                                break
                     except (OSError, FileNotFoundError):
                         continue
         except Exception:
             pass
 
-    cmd_lower = (str(cmd_str or "") + " " + str(config_json_str or "")).lower()
-
-    # Capture vs Playout detection
-    has_input = bool(re.search(r'-f\s+alsa[^\n\r]*?-i\b', cmd_lower) or re.search(r'-i\s+(?:hw|plughw|dsnoop|dmix|alsa):', cmd_lower))
-    has_output = bool(re.search(r'-f\s+alsa\s+(?:hw|plughw|dsnoop|dmix):', cmd_lower) or re.search(r'(?:hw|plughw|dsnoop|dmix):\d+[^\s]*\s*$', cmd_lower))
-
-    direction = "both" if (has_input and has_output) else ("capture" if has_input else "playout")
-
+    # 2. Extract or refine device target, pcm, and subdevice from command line & JSON config
     matches = list(re.finditer(r'(?:hw|plughw|dsnoop|dmix):(?:card=)?([a-zA-Z0-9_\-]+)(?:,(\d+))?(?:,(\d+))?', cmd_lower))
-    device_target = ""
-    pcm_index = None
-    subdev_index = None
-
     for m in matches:
         card = m.group(1)
         pcm = int(m.group(2)) if m.group(2) is not None else 0
-        subdev = int(m.group(3)) if m.group(3) is not None else 0
+        subdev = int(m.group(3)) if m.group(3) is not None else None
+
         if card_index is None or card == str(card_index) or not device_target:
-            pcm_index = pcm
-            subdev_index = subdev
-            device_target = f"hw:{card},{pcm},{subdev}"
+            if pcm_index is None:
+                pcm_index = pcm
+            if subdev_index is None and subdev is not None:
+                subdev_index = subdev
             if card_index is not None and card == str(card_index):
                 break
+
+    # 3. Format authoritative device_target string
+    if card_index is not None and pcm_index is not None:
+        if subdev_index is not None:
+            device_target = f"hw:{card_index},{pcm_index},{subdev_index}"
+        else:
+            device_target = f"hw:{card_index},{pcm_index}"
+    elif matches:
+        first_m = matches[0]
+        c = first_m.group(1)
+        p = first_m.group(2) or "0"
+        s = first_m.group(3)
+        device_target = f"hw:{c},{p},{s}" if s is not None else f"hw:{c},{p}"
 
     return {
         "direction": direction,
@@ -7671,19 +8273,30 @@ def write_alsa_control(payload: AlsaControlUpdate):
     return {"status": "ok", "message": f"Control numid={payload.numid} updated successfully"}
 
 
+@app.get("/api/settings/alsa/diagnostics")
+def get_alsa_diagnostics():
+    """Returns kernel IOMMU/VT-d hazards, slot persistence, and recommended modprobe configuration."""
+    return alsa_manager.get_alsa_advisor_diagnostics()
+
+
 @app.websocket("/ws/alsa/meters/{card_index}")
 async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
     await websocket.accept()
+    alsa_manager.active_mixer_ws_count += 1
+    # Check if this card is an AudioScience adapter to throttle interval and protect the DSP mailbox
+    is_asihpi = alsa_manager.is_card_asihpi(card_index)
+    sleep_interval = 0.30 if is_asihpi else 0.05  # ~3.3 Hz for AudioScience (protects DSP mailbox), 20 Hz otherwise
     try:
         while True:
-            meters = alsa_manager.read_meters(card_index)
-            jacks = alsa_manager.read_jack_sensors(card_index)
-            await websocket.send_json({"meters": meters, "jacks": jacks})
-            await asyncio.sleep(0.033)  # ~30Hz
+            telemetry = await asyncio.to_thread(alsa_manager.read_realtime_telemetry, card_index)
+            await websocket.send_json(telemetry)
+            await asyncio.sleep(sleep_interval)
     except WebSocketDisconnect:
         logger.info(f"WebSocket client disconnected from ALSA meters card {card_index}")
     except Exception as e:
         logger.error(f"WebSocket ALSA meters error: {e}")
+    finally:
+        alsa_manager.active_mixer_ws_count = max(0, alsa_manager.active_mixer_ws_count - 1)
 
 
 @app.websocket("/ws/desktop/{service_id}/vnc")
@@ -8015,16 +8628,79 @@ async def upload_software_icon(
         raise HTTPException(status_code=500, detail=f"Error guardando icono: {e}")
 
 
+DEFAULT_ENGINE_SVGS = {
+    "chromium": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">'
+        '<circle cx="12" cy="12" r="4.5" fill="#4285F4"/>'
+        '<circle cx="12" cy="12" r="5" stroke="#FFFFFF" stroke-width="1"/>'
+        '<path d="M12 2C8.5 2 5.5 3.8 3.8 6.5L7.7 13.2A5 5 0 0 1 12 7h9.5A10 10 0 0 0 12 2z" fill="#EA4335"/>'
+        '<path d="M21.5 7H12a5 5 0 0 0-4.3 2.5L3.8 16A10 10 0 0 0 20.2 18.2L16.3 11.5A5 5 0 0 1 21.5 7z" fill="#34A853"/>'
+        '<path d="M12 22a10 10 0 0 0 8.2-3.8l-3.9-6.7A5 5 0 0 1 12 17a5 5 0 0 1-4.3-2.5L3.8 16A10 10 0 0 0 12 22z" fill="#FBBC05"/>'
+        '</svg>'
+    ),
+    "firefox": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">'
+        '<circle cx="12" cy="12" r="10" fill="#20123A"/>'
+        '<circle cx="12" cy="12" r="7" fill="#00539F" opacity="0.8"/>'
+        '<path d="M12 2C6.48 2 2 6.48 2 12c0 2.2.71 4.24 1.92 5.9C3.31 16.4 3 14.75 3 13c0-4.42 3.13-8.1 7.34-8.88C9.5 4.7 9 5.8 9 7c0 1.66 1.34 3 3 3 1.1 0 2.05-.6 2.57-1.48.55 1.1 1.43 2.03 2.53 2.63C16.4 12.1 16 13.5 16 15c0 2.21-1.79 4-4 4-.7 0-1.35-.18-1.92-.5 1.05.9 2.42 1.5 3.92 1.5 3.87 0 7-3.13 7-7 0-5.52-4.48-10-10-10z" fill="#FF7139"/>'
+        '<path d="M19 12c0 3.87-3.13 7-7 7-1.5 0-2.87-.6-3.92-1.5C9.4 17.65 10.6 18 12 18c3.31 0 6-2.69 6-6 0-1.25-.38-2.41-1.03-3.38C18.23 9.68 19 10.76 19 12z" fill="#FF9400"/>'
+        '</svg>'
+    ),
+    "ffmpeg": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">'
+        '<path d="M4 4h16v3H8v3h10v3H8v7H4V4z" fill="#00B00F"/>'
+        '<path d="M9 10h11v3H9v-3z" fill="#007808"/>'
+        '<path d="M4 4h4v7H4V4z" fill="#008000"/>'
+        '<path d="M4 14h4v7H4v-7z" fill="#006400"/>'
+        '</svg>'
+    ),
+    "mediamtx": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00B00F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>'
+        '<rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>'
+        '<line x1="6" y1="6" x2="6.01" y2="6"/>'
+        '<line x1="6" y1="18" x2="6.01" y2="18"/>'
+        '</svg>'
+    ),
+    "icecast2": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#38BDF8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>'
+        '<rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>'
+        '<line x1="6" y1="6" x2="6.01" y2="6"/>'
+        '<line x1="6" y1="18" x2="6.01" y2="18"/>'
+        '</svg>'
+    ),
+    "pipewire": (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">'
+        '<circle cx="50" cy="50" r="45" stroke="#2563EB" stroke-width="8" />'
+        '<path d="M 28 50 C 28 35, 40 28, 50 28 C 60 28, 72 35, 72 50 C 72 65, 60 72, 50 72" stroke="#38BDF8" stroke-width="7" stroke-linecap="round" fill="none" />'
+        '<circle cx="50" cy="50" r="10" fill="#38BDF8" />'
+        '</svg>'
+    ),
+    "default": (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>'
+        '<rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>'
+        '<line x1="6" y1="6" x2="6.01" y2="6"/>'
+        '<line x1="6" y1="18" x2="6.01" y2="18"/>'
+        '</svg>'
+    ),
+}
+
+
+@app.get("/api/software/icon/{software_type}")
 @app.get("/api/settings/software/{software_type}/icon")
 def get_software_icon(software_type: str, db: Session = Depends(get_db)):
-    """Sirve el icono personalizado o 404."""
+    """Sirve el icono personalizado o el SVG por defecto del motor."""
     from database.models import Storage
     storage = db.query(Storage).first()
     base_dir = storage.path if storage else os.path.abspath("data")
     icon_path = software_manager.get_engine_icon_path(software_type, base_dir)
     if icon_path and os.path.isfile(icon_path):
         return FileResponse(icon_path)
-    raise HTTPException(status_code=404, detail="Icon not found")
+    norm = software_type.lower().strip()
+    svg_content = DEFAULT_ENGINE_SVGS.get(norm, DEFAULT_ENGINE_SVGS["default"])
+    return Response(content=svg_content, media_type="image/svg+xml")
 
 
 @app.delete("/api/settings/software/{software_type}/icon")
@@ -8293,6 +8969,190 @@ def get_resource_locks_endpoint(
         remote_locks = peer_manager.get_remote_resource_locks(db, peer_node_id, service_id)
         return {"locks": remote_locks}
     return {"locks": local_locks}
+
+
+# ── PipeWire Network Audit & Multicast Collision Guard ────────────────
+class MulticastValidationRequest(BaseModel):
+    service_id: Optional[int] = None
+    sink_id: Optional[str] = None
+    multicast_ip: str
+    rtp_port: int = 5004
+
+
+@app.get("/api/pipewire/network-audit")
+def get_pipewire_network_audit(
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+) -> dict:
+    """Audita interfaces de red del host, prefijos multicast canónicos, flujos activos y capacidades PTP."""
+    try:
+        from core.pipewire_config import PipeWireConfigGenerator
+        from core.network_inspector import audit_pipewire_network_capabilities
+    except ImportError:
+        from backend.core.pipewire_config import PipeWireConfigGenerator
+        from backend.core.network_inspector import audit_pipewire_network_capabilities
+
+    audit_data = audit_pipewire_network_capabilities()
+
+    # Enriquecer interfaces con prefijo base multicast canónico según su IPv4
+    for iface in audit_data.get("interfaces", []):
+        iface["canonical_base_multicast_prefix"] = PipeWireConfigGenerator.get_canonical_base_multicast_prefix(iface.get("ip"))
+
+    try:
+        audit_data["hostname"] = socket.gethostname().split(".")[0]
+    except Exception:
+        audit_data["hostname"] = "host"
+
+    # Enumerar flujos activos multicast configurados en la BD
+    active_streams = []
+    try:
+        from database.models import Service
+        pw_services = db.query(Service).filter(Service.service_type == "pipewire_hub").all()
+        for svc in pw_services:
+            cfg = svc.config or {}
+            for s in cfg.get("virtual_sinks", []):
+                if s.get("aes67_enabled"):
+                    active_streams.append({
+                        "service_id": svc.id,
+                        "service_name": svc.name,
+                        "sink_id": s.get("id"),
+                        "sink_name": s.get("name") or s.get("id"),
+                        "multicast_ip": s.get("multicast_ip"),
+                        "rtp_port": int(s.get("rtp_port", 5004)),
+                        "sap_name": s.get("sap_name")
+                    })
+    except Exception as e:
+        logger.warning(f"Error enumerating active pipewire streams: {e}")
+
+    audit_data["active_streams"] = active_streams
+    return audit_data
+
+
+@app.get("/api/pipewire/aoip-discovery")
+async def get_aoip_discovery(
+    service_id: Optional[int] = None,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+) -> dict:
+    """
+    Returns real-time discovered SAP streams and PTP status from active AoIpDiscoverySupervisor instances.
+    """
+    if service_id is not None:
+        sup = process_manager.get_or_create_aoip_discovery_supervisor(int(service_id))
+        if sup:
+            return sup.get_discovery_status()
+
+    active_sups = list(process_manager.aoip_discovery_supervisors.values())
+    if active_sups:
+        return active_sups[0].get_discovery_status()
+
+    from database.models import Service
+    pw_services = db.query(Service).filter(Service.service_type == "pipewire_hub").all()
+    for svc in pw_services:
+        if svc.id in process_manager.processes or svc.status == "running":
+            sup = process_manager.get_or_create_aoip_discovery_supervisor(svc.id)
+            if sup:
+                return sup.get_discovery_status()
+
+    return {
+        "hub_id": service_id,
+        "running": False,
+        "interface": None,
+        "ip": None,
+        "ptp_status": {"detected": False, "source_ip": None, "local_ptp4l_role": "INACTIVE"},
+        "discovered_streams": [],
+        "remote_sinks_status": []
+    }
+
+
+@app.post("/api/pipewire/validate-multicast")
+def validate_multicast_route(
+    payload: MulticastValidationRequest,
+    user: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+) -> dict:
+    """Valida sintaxis, rango estándar AoIP/AES67 y ausencia de colisiones en la red local."""
+    ip = (payload.multicast_ip or "").strip()
+    port = int(payload.rtp_port or 5004)
+
+    # 1. Validación de formato IPv4
+    parts = ip.split(".")
+    if len(parts) != 4 or not all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+        return {
+            "valid": False,
+            "in_aes67_range": False,
+            "is_reserved": False,
+            "collision": False,
+            "message": "Invalid IPv4 address format"
+        }
+
+    octets = [int(p) for p in parts]
+    first = octets[0]
+
+    # 2. Rango multicast general (224.0.0.0 - 239.255.255.255)
+    if not (224 <= first <= 239):
+        return {
+            "valid": False,
+            "in_aes67_range": False,
+            "is_reserved": False,
+            "collision": False,
+            "message": "IP address is outside the multicast range (224.0.0.0 - 239.255.255.255)"
+        }
+
+    # 3. Rango de control reservado: 224.0.0.0/24 (SAP, PTP, IGMP, OSPF, etc.)
+    is_reserved = (octets[0] == 224 and octets[1] == 0 and octets[2] == 0)
+
+    # 4. Rango estándar AoIP / AES67 (RFC 2365 / AES67: 239.69.0.0/16)
+    in_aes67_range = (octets[0] == 239 and octets[1] == 69)
+
+    # 5. Detección de colisiones contra servicios de la base de datos
+    collision = False
+    collision_details = None
+    advisory_same_ip = False
+
+    from database.models import Service
+    pw_services = db.query(Service).filter(Service.service_type == "pipewire_hub").all()
+    for svc in pw_services:
+        cfg = svc.config or {}
+        for s in cfg.get("virtual_sinks", []):
+            if not s.get("aes67_enabled"):
+                continue
+
+            # Omitir el mismo sink del mismo servicio si se está editando
+            if payload.service_id and svc.id == payload.service_id and payload.sink_id and s.get("id") == payload.sink_id:
+                continue
+
+            s_ip = (s.get("multicast_ip") or "").strip()
+            s_port = int(s.get("rtp_port", 5004))
+
+            if s_ip == ip:
+                if s_port == port:
+                    collision = True
+                    collision_details = f"Collides with service '{svc.name}' (sink '{s.get('name') or s.get('id')}') on {ip}:{port}"
+                    break
+                else:
+                    advisory_same_ip = True
+
+        if collision:
+            break
+
+    message = "OK"
+    if is_reserved:
+        message = "Warning: 224.0.0.0/24 is reserved for local network control protocols (SAP, PTP, IGMP). Do not stream audio here."
+    elif collision:
+        message = collision_details
+    elif advisory_same_ip:
+        message = f"Notice: IP {ip} is already used with a different port. L2 IGMP snooping switches cannot filter streams by UDP port."
+
+    return {
+        "valid": not is_reserved and not collision,
+        "in_aes67_range": in_aes67_range,
+        "is_reserved": is_reserved,
+        "collision": collision,
+        "collision_details": collision_details,
+        "advisory_same_ip": advisory_same_ip,
+        "message": message
+    }
 
 
 # Mounting static files and SPA fallback

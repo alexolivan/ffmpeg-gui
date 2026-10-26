@@ -219,38 +219,124 @@ def test_mediamtx_service_status_detail_view():
     assert "PATHS:2 SRT:8890" in lines[3]
 
 
-def test_system_info_view():
-    from unittest.mock import MagicMock
-    from core.lcd.views.info import SystemInfoView
+def test_net_info_view():
+    from unittest.mock import MagicMock, patch
+    from core.lcd.views.info import NetInfoView, SystemInfoView
+    from core.lcd.views.menu import MainMenuView
     from database.models import SystemSettings
 
     manager = MagicMock()
     manager.driver.rows = 4
+    manager.driver.cols = 20
 
     db_mock = MagicMock()
     manager.db_session_factory.return_value = db_mock
 
-    settings = SystemSettings(node_name="TestNode")
+    settings = SystemSettings(node_name="BroadcastRack01", lcd_alias="STUDIO-A")
     db_mock.query.return_value.first.return_value = settings
 
-    info_view = SystemInfoView(manager)
-    lines = info_view.render()
-    assert "IP:" in lines[0]
-    assert "PORT:8000" in lines[1]
-    assert "BE:v1.29 FE:v1.26" in lines[2]
-    assert "NODE:TestNode" in lines[3]
+    with patch("core.lcd.views.info.get_primary_ip", return_value="192.168.100.150"), \
+         patch("core.lcd.views.info.get_network_settings", return_value={"http_port": 8000, "https_port": 8443, "ssl_enabled": True}):
 
-    # Test 2-row screen page cycling
-    manager.driver.rows = 2
-    info_view.current_page = 0
-    lines_p0 = info_view.render()
-    assert "IP:" in lines_p0[0]
-    assert "PORT:8000" in lines_p0[1]
+        # 4-row layout test with SSL enabled
+        view = NetInfoView(manager)
+        lines = view.render()
+        assert lines[0] == "ADDRESS:"
+        assert lines[1] == "192.168.100.150"
+        assert lines[2] == "HTTP:    HTTPS:"
+        assert lines[3] == "8000     8443"
 
-    info_view.handle_key("DOWN")
-    assert info_view.current_page == 1
-    lines_p1 = info_view.render()
-    assert "BE:v1.29 FE:v1.26" in lines_p1[0]
+        # 4-row layout test with SSL disabled
+        with patch("core.lcd.views.info.get_network_settings", return_value={"http_port": 8080, "https_port": 8443, "ssl_enabled": False}):
+            lines_nossl = view.render()
+            assert lines_nossl[0] == "ADDRESS:"
+            assert lines_nossl[1] == "192.168.100.150"
+            assert lines_nossl[2] == "HTTP:    HTTPS:"
+            assert lines_nossl[3] == "8080     -----"
+
+        # 2-row layout test and page cycling
+        manager.driver.rows = 2
+        manager.driver.cols = 16
+        view.current_page = 0
+        lines_p0 = view.render()
+        assert lines_p0[0] == "192.168.100.150"
+        assert "H:8000" in lines_p0[1]
+        assert "S:8443" in lines_p0[1]
+
+        # Cycle to Page 1
+        view.handle_key("DOWN")
+        assert view.current_page == 1
+        lines_p1 = view.render()
+        assert "STUDIO-A" in lines_p1[0]
+        assert "Press X: Return" in lines_p1[1]
+
+        # Key X returns to MainMenuView with index 4 ("5. Net Info")
+        view.handle_key("X")
+        assert manager.switch_to_view.called
+        returned_menu = manager.switch_to_view.call_args[0][0]
+        assert isinstance(returned_menu, MainMenuView)
+        assert returned_menu.selected_index == 4
+
+        # Verify backward compatibility alias SystemInfoView == NetInfoView
+        compat_view = SystemInfoView(manager)
+        assert isinstance(compat_view, NetInfoView)
+
+
+def test_version_info_view():
+    from unittest.mock import MagicMock, patch
+    from core.lcd.views.info import VersionInfoView
+    from core.lcd.views.menu import MainMenuView
+
+    manager = MagicMock()
+    manager.driver.rows = 4
+    manager.driver.cols = 20
+
+    with patch("core.lcd.views.info.get_versions", return_value={"backend": "2.50.0", "frontend": "2.50.0", "schema": "2.5.0"}):
+        v_view = VersionInfoView(manager)
+        lines = v_view.render()
+        assert lines[0] == "SYSTEM VERSIONS"
+        assert lines[1] == "BE: v2.50.0"
+        assert lines[2] == "FE: v2.50.0"
+        assert lines[3] == "SC: v2.5.0"
+
+        # 2-row layout test (20 cols)
+        manager.driver.rows = 2
+        manager.driver.cols = 20
+        v_view.current_page = 0
+        lines_2row = v_view.render()
+        assert lines_2row[0] == "FE: v2.50.0"
+        assert lines_2row[1] == "BE/SC: 2.50.0/2.5.0"
+
+        # Key X returns to MainMenuView with index 5 ("6. Versions")
+        v_view.handle_key("X")
+        assert manager.switch_to_view.called
+        returned_menu = manager.switch_to_view.call_args[0][0]
+        assert isinstance(returned_menu, MainMenuView)
+        assert returned_menu.selected_index == 5
+
+
+def test_main_menu_net_and_version_navigation():
+    from unittest.mock import MagicMock
+    from core.lcd.views.menu import MainMenuView
+    from core.lcd.views.info import NetInfoView, VersionInfoView
+
+    manager = MagicMock()
+    manager.driver.rows = 4
+    manager.driver.cols = 20
+
+    menu = MainMenuView(manager)
+    assert menu.options[4] == "5. Net Info"
+    assert menu.options[5] == "6. Versions"
+
+    # Select Net Info (index 4) and TICK
+    menu.selected_index = 4
+    menu.handle_key("TICK")
+    assert isinstance(manager.switch_to_view.call_args[0][0], NetInfoView)
+
+    # Select Versions (index 5) and TICK
+    menu.selected_index = 5
+    menu.handle_key("TICK")
+    assert isinstance(manager.switch_to_view.call_args[0][0], VersionInfoView)
 
 
 def test_cfa635_bracket_sanitization():

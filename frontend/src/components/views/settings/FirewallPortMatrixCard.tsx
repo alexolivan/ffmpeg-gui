@@ -128,9 +128,11 @@ export const FirewallPortMatrixCard: React.FC<FirewallPortMatrixCardProps> = ({ 
 
   const getServiceIcon = (type: string, category: string) => {
     if (category === 'core' || type === 'core') return '🌐';
-    if (type === 'mediamtx') return '⚡';
-    if (type === 'icecast') return '📻';
+    if (type === 'mediamtx_hub' || type === 'mediamtx') return '⚡';
+    if (type === 'icecast_server' || type === 'icecast') return '📻';
     if (type === 'vnc' || type === 'desktop') return '🖥️';
+    if (type === 'pipewire_hub' || type === 'pipewire') return '🎛️';
+    if (type === 'ffmpeg_stream' || type === 'pipeline') return '▶️';
     return '🔌';
   };
 
@@ -278,6 +280,16 @@ export const FirewallPortMatrixCard: React.FC<FirewallPortMatrixCardProps> = ({ 
                       {group.category === 'core' && (
                         <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300">
                           CORE
+                        </span>
+                      )}
+                      {group.type === 'pipewire_hub' && (
+                        <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-brand-lime/10 border border-brand-lime/30 text-brand-lime">
+                          PIPEWIRE / AOIP
+                        </span>
+                      )}
+                      {group.type === 'ffmpeg_stream' && (
+                        <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                          STREAM PIPELINE
                         </span>
                       )}
                     </div>

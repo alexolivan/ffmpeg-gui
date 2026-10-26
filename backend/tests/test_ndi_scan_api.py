@@ -22,15 +22,29 @@ class TestNDIScan(unittest.TestCase):
         version = get_ffmpeg_version("mock_ffmpeg")
         self.assertEqual(version, 5.1)
 
+        # Test n-prefixed git tag version (e.g., n7.1, n9.0.2)
+        mock_res.stdout = "ffmpeg version n7.1 Copyright (c) 2000-2024 the FFmpeg developers"
+        version = get_ffmpeg_version("mock_ffmpeg")
+        self.assertEqual(version, 7.1)
+
+        mock_res.stdout = "ffmpeg version n9.0.2 Copyright (c) 2000-2026 the FFmpeg developers"
+        version = get_ffmpeg_version("mock_ffmpeg")
+        self.assertEqual(version, 9.0)
+
+        # Test git trunk snapshot (e.g., N-118000)
+        mock_res.stdout = "ffmpeg version N-118000-gabcdef Copyright (c) 2000-2026 the FFmpeg developers"
+        version = get_ffmpeg_version("mock_ffmpeg")
+        self.assertEqual(version, 7.0)
+
         # Test legacy version
         mock_res.stdout = "ffmpeg version 4.4 Copyright (c) 2000-2021 the FFmpeg developers"
         version = get_ffmpeg_version("mock_ffmpeg")
         self.assertEqual(version, 4.4)
 
-        # Test error fallback
+        # Test error fallback (modern default 7.0)
         mock_run.side_effect = Exception("failed to run")
         version = get_ffmpeg_version("mock_ffmpeg")
-        self.assertEqual(version, 4.4)
+        self.assertEqual(version, 7.0)
 
     @patch('asyncio.create_subprocess_exec')
     def test_ndi_sources_route(self, mock_exec):

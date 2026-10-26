@@ -8,6 +8,7 @@ import {
   CheckIcon
 } from '../Icons';
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
+import { AliasField } from '../common/AliasField';
 
 interface IcecastConfigFormProps {
   initialConfig?: any;
@@ -216,6 +217,16 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (alias && alias.trim()) {
+      if (alias.trim().length > 12) {
+        alert(t('common.aliasTooLong', 'Alias cannot exceed 12 characters'));
+        return;
+      }
+      if (!/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())) {
+        alert(t('common.aliasInvalidChars', 'Only letters, numbers, spaces, hyphens (-), and underscores (_) allowed'));
+        return;
+      }
+    }
     setIsSubmitting(true);
 
     const payload = {
@@ -297,18 +308,13 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
               />
             </div>
 
-            <div>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
-                {t('services.icecast.alias', 'Alias / Indicativo')}
-              </label>
-              <input
-                type="text"
-                value={alias}
-                onChange={(e) => setAlias(e.target.value)}
-                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-brand-lime"
-                placeholder="p. ej. RadioDirecto"
-              />
-            </div>
+            <AliasField
+              value={alias}
+              onChange={setAlias}
+              label={t('services.icecast.alias', 'Alias / Indicativo')}
+              placeholder="e.g. RADIO-LIVE"
+              helperText={t('services.icecast.aliasHelp', 'Short identifier for LCD panel and compact badges (max 12 chars)')}
+            />
           </div>
 
           <div>
@@ -868,7 +874,10 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
 
         <button
           type="submit"
-          disabled={isSubmitting}
+          disabled={
+            isSubmitting ||
+            Boolean(alias && alias.trim() && (alias.trim().length > 12 || !/^[a-zA-Z0-9\s-_]+$/.test(alias.trim())))
+          }
           className="px-4 py-1.5 bg-brand-lime text-black rounded-lg text-xs font-bold uppercase tracking-wider hover:brightness-110 active:scale-95 transition-all shadow-md flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
         >
           <CheckIcon size={14} />

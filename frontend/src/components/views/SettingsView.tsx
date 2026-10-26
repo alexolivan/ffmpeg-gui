@@ -12,6 +12,7 @@ import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 import { FirewallPortMatrixCard } from './settings/FirewallPortMatrixCard';
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
+import { AliasField } from '../common/AliasField';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
 
@@ -189,6 +190,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [sslEmail, setSslEmail] = useState(settings?.ssl_email || '');
   const [sslChallengeType, setSslChallengeType] = useState(settings?.ssl_challenge_type || 'http-01');
   const [autoReloadSslServices, setAutoReloadSslServices] = useState(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
+  const [discoveryBeaconEnabled, setDiscoveryBeaconEnabled] = useState(settings?.discovery_beacon_enabled !== undefined ? !!settings?.discovery_beacon_enabled : true);
 
   const [sslStatus, setSslStatus] = useState<any>(null);
   const [isUploadingSsl, setIsUploadingSsl] = useState(false);
@@ -250,6 +252,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSslEmail(settings?.ssl_email || '');
     setSslChallengeType(settings?.ssl_challenge_type || 'http-01');
     setAutoReloadSslServices(settings?.auto_reload_ssl_services !== undefined ? !!settings?.auto_reload_ssl_services : true);
+    setDiscoveryBeaconEnabled(settings?.discovery_beacon_enabled !== undefined ? !!settings?.discovery_beacon_enabled : true);
     setBruteForceEnabled(settings?.brute_force_enabled !== undefined ? !!settings?.brute_force_enabled : true);
     setBruteForceMaxAttempts(settings?.brute_force_max_attempts ?? 5);
     setBruteForceWindowSeconds(settings?.brute_force_window_seconds ?? 300);
@@ -308,6 +311,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings?.thermal_warning_threshold,
     settings?.thermal_critical_threshold,
     settings?.thermal_active_protection,
+    settings?.discovery_beacon_enabled,
   ]);
 
   const fetchSslStatus = async () => {
@@ -770,6 +774,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(bruteForceWindowSeconds) !== Number(settings?.brute_force_window_seconds ?? 300) ||
     Number(bruteForceLockoutSeconds) !== Number(settings?.brute_force_lockout_seconds ?? 900) ||
     bruteForceWhitelist !== (settings?.brute_force_whitelist || '') ||
+    discoveryBeaconEnabled !== (settings.discovery_beacon_enabled !== undefined ? !!settings.discovery_beacon_enabled : true) ||
     newPassword !== '' ||
     confirmPassword !== '';
 
@@ -806,6 +811,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         ssl_email: sslEmail,
         ssl_challenge_type: sslChallengeType,
         auto_reload_ssl_services: autoReloadSslServices,
+        discovery_beacon_enabled: discoveryBeaconEnabled,
         lcd_enabled: lcdEnabled,
         lcd_port: lcdPort,
         lcd_model: lcdModel,
@@ -1132,9 +1138,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   {[
-                    { code: 'en', label: 'English (US)', badge: 'EN 🇺🇸' },
-                    { code: 'es', label: 'Español (ES)', badge: 'ES 🇪🇸' },
-                    { code: 'ca', label: 'Català (CA)', badge: 'CA 🏴' },
+                    { code: 'en', label: 'English (US)', badge: 'EN' },
+                    { code: 'es', label: 'Español (ES)', badge: 'ES' },
+                    { code: 'ca', label: 'Català (CA)', badge: 'CA' },
                   ].map((item) => (
                     <button
                       key={item.code}
@@ -1393,20 +1399,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       placeholder="e.g. FFG"
                     />
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.branding.nodeAlias', 'LCD / Node Alias')}</label>
-                    <input 
-                      type="text" 
-                      maxLength={12}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all font-mono"
-                      value={lcdAlias}
-                      onChange={e => {
-                        const val = e.target.value.replace(/[^a-zA-Z0-9\s-_]/g, '').slice(0, 12);
-                        setLcdAlias(val);
-                      }}
-                      placeholder="e.g. NODE-01"
-                    />
-                  </div>
+                  <AliasField
+                    value={lcdAlias}
+                    onChange={setLcdAlias}
+                    label={t('settings.branding.nodeAlias', 'LCD / Node Alias')}
+                    placeholder="e.g. NODE-01"
+                  />
                 </div>
 
                 <div className="flex flex-col items-center justify-center border-2 border-dashed border-[var(--glass-border)] rounded-xl p-4 hover:border-brand-lime transition-all relative group cursor-pointer h-full min-h-[140px] bg-[var(--input-bg)]">
@@ -1449,10 +1447,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* Card 3: Logging Configuration */}
             <div className="glass-card p-4 !rounded-2xl space-y-4 animate-in fade-in duration-300">
-              <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.logging.title', 'LOGGING CONFIGURATION')}</h4>
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+                  <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('settings.logging.title', 'LOGGING CONFIGURATION')}</h4>
+                </div>
+                {systemTelemetry?.logging_status?.fallback_active && (
+                  <span
+                    className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border flex items-center gap-1 ${
+                      systemTelemetry.logging_status.permissions_recovered
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                        : 'bg-red-500/15 text-red-400 border-red-500/30 animate-pulse'
+                    }`}
+                  >
+                    {systemTelemetry.logging_status.permissions_recovered ? '✅ ' + t('common.readyToReload', 'PERMS RESTORED') : '⚠️ ' + t('common.fallback', 'JOURNAL FALLBACK')}
+                  </span>
+                )}
               </div>
+
+              {systemTelemetry?.logging_status?.fallback_active && (
+                <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                  systemTelemetry.logging_status.permissions_recovered
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-red-500/10 border-red-500/30 text-red-400'
+                }`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-base shrink-0">{systemTelemetry.logging_status.permissions_recovered ? '✅' : '⚠️'}</span>
+                    <div className="min-w-0">
+                      <p className="font-bold">
+                        {systemTelemetry.logging_status.permissions_recovered
+                          ? t('settings.logging.permissionsRecovered', 'Log Storage Permissions Restored!')
+                          : t('settings.logging.fallbackActive', 'Log Storage Read-Only (Operating in Journalctl Fallback)')}
+                      </p>
+                      <p className="text-[11px] opacity-90 mt-0.5 break-all">
+                        {systemTelemetry.logging_status.permissions_recovered
+                          ? t('settings.logging.permissionsRecoveredHelp', 'Write access to {{path}} has been restored. Restart or reload the system service to resume writing logs to file.', { path: systemTelemetry.logging_status.target_file })
+                          : t('settings.logging.fallbackActiveHelp', 'Cannot write to {{path}}. System logs are temporarily redirected to journalctl console.', { path: systemTelemetry.logging_status.target_file })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-3">
@@ -2016,7 +2051,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                             {typeStorages.map((s, idx) => {
                               const isEditing = editingId === s.id;
                               const usedPercent = s.percent !== undefined ? s.percent : 0;
-                              const barColorClass = getProgressBarColorClass(usedPercent);
+                              const isWritable = s.is_writable !== false;
+                              const barColorClass = !isWritable ? 'bg-red-500 animate-pulse' : getProgressBarColorClass(usedPercent);
 
                               return (
                                 <div key={s.id} className={`pt-3 ${idx === 0 ? '!pt-0' : ''}`}>
@@ -2109,6 +2145,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                             {s.route_path && (
                                               <span className="text-[9px] font-mono font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 px-2 py-0.5 rounded flex items-center gap-1">
                                                 🌐 {s.route_path}
+                                              </span>
+                                            )}
+                                            {!isWritable && (
+                                              <span
+                                                className="text-[9px] font-black uppercase bg-red-500/20 text-red-500 border border-red-500/40 px-2 py-0.5 rounded tracking-wider flex items-center gap-1 animate-pulse"
+                                                title={t('settings.storage.readOnlyHelp', 'Daemon lacks write permissions to this directory')}
+                                              >
+                                                ⚠️ {t('settings.storage.readOnly', 'READ-ONLY (PERMISSION DENIED)')}
+                                              </span>
+                                            )}
+                                            {isWritable && (
+                                              <span className="text-[9px] font-black uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded tracking-wider flex items-center gap-1">
+                                                ✓ {t('settings.storage.writable', 'WRITABLE')}
                                               </span>
                                             )}
                                           </div>
@@ -2258,6 +2307,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <label htmlFor="force_https_redirect_checkbox" className={`text-xs font-bold ${(!sslEnabled || !sslStatus?.valid) ? 'opacity-40 cursor-not-allowed text-text-secondary' : 'text-[var(--text-primary)] cursor-pointer'}`}>
                     {t('settings.network.forceHttpsRedirect', 'Automatically Redirect HTTP -> HTTPS')}
                   </label>
+                </div>
+
+                <div className="pt-2 border-t border-[var(--glass-border)] space-y-1">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="discovery_beacon_enabled_checkbox"
+                      checked={discoveryBeaconEnabled}
+                      onChange={e => setDiscoveryBeaconEnabled(e.target.checked)}
+                      className="w-4 h-4 rounded accent-brand-lime cursor-pointer"
+                    />
+                    <label htmlFor="discovery_beacon_enabled_checkbox" className="text-xs font-bold text-[var(--text-primary)] cursor-pointer">
+                      📡 {t('settings.network.enableDiscoveryBeacon', 'Enable LAN Discovery Beacon (UDP Broadcast)')}
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-text-secondary pl-7">
+                    {t('settings.network.discoveryBeaconHelp', 'Broadcasts node identity across the LAN (port 59990/UDP) so companion scanners can locate and connect to this appliance automatically.')}
+                  </p>
                 </div>
               </div>
             </div>

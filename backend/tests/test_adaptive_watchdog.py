@@ -8,7 +8,7 @@ from database.models import Base, Service
 from core.process_manager import ProcessManager
 
 
-class TestAdaptiveWatchdog(unittest.TestCase):
+class TestAdaptiveWatchdog(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         self.engine = create_engine("sqlite:///:memory:")
@@ -68,6 +68,33 @@ class TestAdaptiveWatchdog(unittest.TestCase):
         svc = self.db.query(Service).get(service.id)
         is_ffmpeg_service = (getattr(svc, 'service_type', 'ffmpeg_stream') == 'ffmpeg_stream')
         self.assertTrue(is_ffmpeg_service)
+
+    async def test_safe_terminate_process_clean_exit(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+        mock_proc = MagicMock()
+        mock_proc.terminate = MagicMock()
+        mock_proc.wait = AsyncMock(return_value=0)
+        mock_proc.kill = MagicMock()
+
+        await self.pm._safe_terminate_process(proc=mock_proc, pid=1234, timeout=0.5)
+
+        mock_proc.terminate.assert_called_once()
+        mock_proc.kill.assert_not_called()
+
+    async def test_safe_terminate_process_escalates_on_timeout(self):
+        import asyncio
+        from unittest.mock import AsyncMock
+        mock_proc = MagicMock()
+        mock_proc.terminate = MagicMock()
+        # Simulate wait hanging
+        mock_proc.wait = AsyncMock(side_effect=asyncio.TimeoutError())
+        mock_proc.kill = MagicMock()
+
+        await self.pm._safe_terminate_process(proc=mock_proc, pid=1234, timeout=0.1)
+
+        mock_proc.terminate.assert_called_once()
+        mock_proc.kill.assert_called_once()
 
 
 if __name__ == '__main__':

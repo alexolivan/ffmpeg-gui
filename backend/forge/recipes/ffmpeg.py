@@ -13,7 +13,7 @@ class FfmpegRecipe(BaseRecipe):
     def get_dependencies(self) -> list[str]:
         return [
             "cmake", "git", "make", "gcc", "pkg-config", "yasm/nasm",
-            "libx264", "libx265", "libssl", "libva", "libdrm",
+            "libx264", "libx265", "libssl", "libasound2", "libpulse", "libva", "libdrm",
             "libopus", "libvpx", "libfreetype", "libharfbuzz",
             "libfontconfig", "libfribidi", "libfdk_aac"
         ]
@@ -173,6 +173,9 @@ class FfmpegRecipe(BaseRecipe):
         if dep_check.get("dependencies", {}).get("libfdk_aac", {}).get("installed"):
             config_flags.append("--enable-libfdk-aac")
             options["libfdk_aac"] = True
+        if dep_check.get("dependencies", {}).get("libpulse", {}).get("installed"):
+            config_flags.append("--enable-libpulse")
+            options["libpulse"] = True
 
         if options.get("libsrt"):
             config_flags.append("--enable-libsrt")

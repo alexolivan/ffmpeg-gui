@@ -89,9 +89,9 @@ install_debian_deps() {
                        build-essential cmake git pkg-config yasm nasm \
                        libx264-dev libx265-dev libssl-dev libva-dev libdrm-dev \
                        libfdk-aac-dev libmp3lame-dev libvorbis-dev libopus-dev libvpx-dev \
-                       libavahi-client-dev libavahi-common-dev libasound2-dev alsa-utils libasound2-plugins \
+                       libavahi-client-dev libavahi-common-dev libasound2-dev libpulse-dev alsa-utils libasound2-plugins \
                        libfreetype-dev libharfbuzz-dev libfontconfig1-dev libfribidi-dev \
-                       intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 apulse \
+                       intel-gpu-tools xvfb x11vnc x11-xserver-utils xfonts-base xdotool dbus-x11 apulse ethtool linuxptp \
                        libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
                        libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
                        libgbm1 libpango-1.0-0 libcairo2 libasound2
@@ -104,8 +104,8 @@ install_rhel_deps() {
     dnf install -y python3-devel nodejs npm cmake git pkgconfig yasm nasm \
                    x264-devel x265-devel openssl-devel libva-devel libdrm-devel \
                    fdk-aac-free-devel lame-devel libvorbis-devel opus-devel libvpx-devel \
-                   avahi-devel alsa-lib-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
-                   intel-gpu-tools xorg-x11-server-Xvfb x11vnc xorg-x11-server-utils xdotool dbus-x11 \
+                   avahi-devel alsa-lib-devel pulseaudio-libs-devel freetype-devel harfbuzz-devel fontconfig-devel fribidi-devel \
+                   intel-gpu-tools xorg-x11-server-Xvfb x11vnc xorg-x11-server-utils xdotool dbus-x11 ethtool linuxptp \
                    nss nspr atk at-spi2-atk cups-libs libdrm libxkbcommon \
                    libXcomposite libXdamage libXfixes libXrandr mesa-libgbm pango cairo alsa-lib alsa-utils
 }
@@ -116,8 +116,8 @@ install_arch_deps() {
     pacman -S --needed --noconfirm base-devel cmake git pkgconf yasm nasm \
                                  x264 x265 openssl libva libdrm \
                                  libfdk-aac lame libvorbis opus libvpx \
-                                 avahi alsa-lib freetype2 harfbuzz fontconfig fribidi \
-                                 intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool apulse \
+                                 avahi alsa-lib libpulse freetype2 harfbuzz fontconfig fribidi \
+                                 intel-gpu-tools xorg-server-xvfb x11vnc xorg-xset python nodejs npm xdotool apulse ethtool linuxptp \
                                  nss nspr atk at-spi2-atk cups libdrm libxkbcommon \
                                  libxcomposite libxdamage libxfixes libxrandr mesa pango cairo alsa-lib alsa-utils
 }
@@ -136,8 +136,27 @@ configure_alsa_loopback() {
         fi
 
         # Asignar index=-2 para evitar conflictos con tarjetas físicas primarias y fijar 8 subdispositivos
+        # Si el sysadmin ya definió slots o snd-aloop en /etc/modprobe.d/ (ej: alsa-base.conf), preservar y eliminar conflicto index=-2
         if [ -d /etc/modprobe.d ]; then
-            echo "options snd-aloop index=-2 enable=1 pcm_substreams=8" > /etc/modprobe.d/snd-aloop.conf
+            ALREADY_CONFIGURED=false
+            for f in /etc/modprobe.d/*.conf; do
+                [ -e "$f" ] || continue
+                [ "$f" = "/etc/modprobe.d/snd-aloop.conf" ] && continue
+                if grep -qE "options\s+snd\s+slots=|options\s+snd[_-]aloop" "$f" 2>/dev/null; then
+                    ALREADY_CONFIGURED=true
+                    break
+                fi
+            done
+
+            if [ "$ALREADY_CONFIGURED" = true ]; then
+                echo "    Note: ALSA slots or snd-aloop already pinned in /etc/modprobe.d/ (preserving custom settings)."
+                if [ -f /etc/modprobe.d/snd-aloop.conf ] && grep -qE "index\s*=\s*-\d+" /etc/modprobe.d/snd-aloop.conf 2>/dev/null; then
+                    echo "    Removing obsolete fallback /etc/modprobe.d/snd-aloop.conf to prevent modprobe conflict..."
+                    rm -f /etc/modprobe.d/snd-aloop.conf
+                fi
+            else
+                echo "options snd-aloop index=-2 enable=1 pcm_substreams=8" > /etc/modprobe.d/snd-aloop.conf
+            fi
         fi
     fi
 }
@@ -385,8 +404,8 @@ ExecReload=/bin/kill -HUP \$MAINPID
 Restart=always
 RestartSec=2
 KillMode=process
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_PERFMON CAP_SYS_ADMIN
-AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_PERFMON CAP_SYS_ADMIN
+AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME
 
 [Install]
 WantedBy=multi-user.target

@@ -89,6 +89,55 @@ class TestKioskBrowser(unittest.TestCase):
         self.assertEqual(profile_dir, f"/tmp/kiosk_cr_{kiosk.id}")
 
     @patch("shutil.which")
+    def test_chromium_launcher_strategy_pipewire_hub(self, mock_which):
+        mock_which.return_value = "/bin/sh"
+
+        pw_desktop = Service(
+            name="Virtual Desktop PipeWire",
+            type="service",
+            service_type="desktop",
+            status="running",
+            config={
+                "desktop_config": {
+                    "display_num": 100,
+                    "resolution": "1920x1080",
+                    "vnc_port": 6000,
+                    "audio_backend": "pipewire_hub",
+                    "pipewire_service_id": 14,
+                    "pipewire_sink_id": "kiosk_bus"
+                }
+            }
+        )
+        self.db.add(pw_desktop)
+        self.db.commit()
+
+        kiosk = Service(
+            name="Kiosk Chrome PW",
+            type="service",
+            service_type="kiosk_browser",
+            status="stopped",
+            config={
+                "kiosk_config": {
+                    "engine_id": "chromium",
+                    "desktop_service_id": pw_desktop.id,
+                    "target_source": "https://example.com/audio",
+                }
+            }
+        )
+        self.db.add(kiosk)
+        self.db.commit()
+
+        cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
+
+        self.assertEqual(display_num, 100)
+        self.assertFalse(any(isinstance(arg, str) and arg.startswith("--alsa-output-device=") for arg in cmd))
+        self.assertIn("--disable-features=Translate,TranslateUI,BlinkGenPropertyTrees,AudioServiceSandbox", cmd)
+        asound_path = os.path.join(profile_dir, "asound.conf")
+        asoundrc_path = os.path.join(profile_dir, ".asoundrc")
+        self.assertFalse(os.path.exists(asound_path))
+        self.assertFalse(os.path.exists(asoundrc_path))
+
+    @patch("shutil.which")
     def test_firefox_launcher_strategy(self, mock_which):
         real_sh = shutil.which("sh") or "/bin/sh"
         def side_which(cmd_name):
@@ -140,17 +189,20 @@ class TestKioskBrowser(unittest.TestCase):
             self.assertIn('media.autoplay.default', content)
             self.assertIn('media.cubeb.backend", "pulse"', content)
             self.assertIn('media.cubeb.sandbox", false', content)
-            self.assertIn('security.sandbox.content.level", 0', content)
+            self.assertNotIn('security.sandbox.content.level", 0', content)
             self.assertIn('security.sandbox.content.write_path_whitelist", "/dev/snd/"', content)
             self.assertIn('browser.cache.disk.enable", false', content)
             self.assertIn('layers.acceleration.force-enabled", true', content)
             self.assertIn('browser.window.width", 1920', content)
 
-        # Verify userChrome.css scrollbar collapse
+        # Verify userChrome.css notificationbox shield and scrollbar collapse
         css_path = os.path.join(profile_dir, "chrome", "userChrome.css")
         self.assertTrue(os.path.exists(css_path))
         with open(css_path, "r", encoding="utf-8") as f:
-            self.assertIn('scrollbar-width: none', f.read())
+            css_content = f.read()
+            self.assertIn('notificationbox', css_content)
+            self.assertIn('display: none !important', css_content)
+            self.assertIn('scrollbar-width: none', css_content)
 
     @patch("core.process_manager.ProcessManager._is_sound_server_available")
     @patch("shutil.which")
@@ -173,6 +225,7 @@ class TestKioskBrowser(unittest.TestCase):
                     "engine_id": "firefox",
                     "desktop_service_id": self.desktop.id,
                     "target_source": "https://example.com/audio",
+                    "hide_scrollbars": False
                 }
             }
         )
@@ -204,6 +257,7 @@ class TestKioskBrowser(unittest.TestCase):
                     "engine_id": "firefox",
                     "desktop_service_id": self.desktop.id,
                     "target_source": "https://example.com/audio",
+                    "hide_scrollbars": False
                 }
             }
         )
@@ -213,6 +267,14 @@ class TestKioskBrowser(unittest.TestCase):
         cmd, display_num, profile_dir = self.pm._build_kiosk_cmds(kiosk, self.db)
         self.assertEqual(cmd[0], real_sh)
         self.assertIn("--kiosk", cmd)
+
+        # Verify notificationbox shield is present even when hide_scrollbars is False (default)
+        css_path = os.path.join(profile_dir, "chrome", "userChrome.css")
+        self.assertTrue(os.path.exists(css_path))
+        with open(css_path, "r", encoding="utf-8") as f:
+            css_content = f.read()
+            self.assertIn('notificationbox', css_content)
+            self.assertNotIn('scrollbar-width: none', css_content)
 
     def test_missing_desktop_validation(self):
         kiosk = Service(
@@ -448,6 +510,7 @@ class TestKioskBrowser(unittest.TestCase):
                     "engine_id": "firefox",
                     "desktop_service_id": self.desktop.id,
                     "target_source": "https://example.com/audio",
+                    "hide_scrollbars": False
                 }
             }
         )
