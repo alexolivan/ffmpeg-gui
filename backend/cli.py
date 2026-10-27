@@ -11,7 +11,7 @@ import json
 import os
 import subprocess
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 # Ensure backend directory is in sys.path
 backend_dir = os.path.dirname(os.path.abspath(__file__))
@@ -173,6 +173,211 @@ def handle_unlock_ips() -> bool:
     return True
 
 
+def check_service_active() -> Tuple[bool, Optional[str]]:
+    """Checks whether ffmpeg-gui is currently active as system-wide or user service."""
+    for unit_cmd in [
+        ["systemctl", "is-active", "ffmpeg-gui.service"],
+        ["systemctl", "--user", "is-active", "ffmpeg-gui.service"],
+    ]:
+        try:
+            res = subprocess.run(unit_cmd, capture_output=True, text=True, timeout=2)
+            if res.returncode == 0 and res.stdout.strip() == "active":
+                return True, "system-wide" if "--user" not in unit_cmd else "user-service"
+        except Exception:
+            pass
+    return False, None
+
+
+def restart_service() -> bool:
+    """Restarts ffmpeg-gui service if active."""
+    is_active, s_type = check_service_active()
+    if not is_active:
+        return False
+    cmd = ["systemctl", "restart", "ffmpeg-gui.service"]
+    if s_type == "user-service":
+        cmd = ["systemctl", "--user", "restart", "ffmpeg-gui.service"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def update_config_file(
+    bind_address: Optional[str] = None,
+    port: Optional[int] = None,
+    ssl_enabled: Optional[bool] = None,
+) -> None:
+    """Synchronizes network listen and SSL settings into ffmpeg-gui.conf."""
+    config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
+    if not os.path.exists(config_path) and os.path.exists("/etc/ffmpeg-gui/ffmpeg-gui.conf"):
+        config_path = "/etc/ffmpeg-gui/ffmpeg-gui.conf"
+
+    import configparser
+    cp = configparser.ConfigParser()
+    if os.path.exists(config_path):
+        cp.read(config_path)
+
+    if "network" not in cp:
+        cp["network"] = {}
+    if "server" not in cp:
+        cp["server"] = {}
+
+    if bind_address is not None:
+        cp["network"]["bind_address"] = str(bind_address)
+    if port is not None:
+        cp["network"]["http_port"] = str(port)
+        cp["server"]["port"] = str(port)
+    if ssl_enabled is not None:
+        cp["network"]["ssl_enabled"] = str(ssl_enabled).lower()
+
+    try:
+        with open(config_path, "w") as f:
+            cp.write(f)
+    except Exception:
+        pass
+
+
+def handle_enroll_cloudhub(
+    hub_url: str,
+    token: str,
+    disable_local_ssl: Optional[bool] = None,
+    non_interactive: bool = False,
+) -> bool:
+    """Enrolls this appliance into a CloudHub orchestrator, with automated SSL conflict prevention."""
+    try:
+        from core.cloud_tunnel_client import CloudTunnelClient
+    except ImportError:
+        from backend.core.cloud_tunnel_client import CloudTunnelClient
+
+    hub_url_clean = hub_url.strip().rstrip("/")
+    token_clean = token.strip()
+
+    with SessionLocal() as db:
+        settings = db.query(SystemSettings).first()
+        if not settings:
+            settings = SystemSettings()
+            db.add(settings)
+            db.commit()
+            db.refresh(settings)
+
+        # Check for local SSL / public bind conflict
+        has_ssl = bool(settings.ssl_enabled) or (settings.ssl_mode and settings.ssl_mode != "disabled")
+        is_public = settings.bind_address not in ("127.0.0.1", "localhost", "::1")
+
+        if has_ssl or is_public:
+            if disable_local_ssl is None:
+                if non_interactive:
+                    disable_local_ssl = True
+                else:
+                    print("\n[!] Notice: This ffmpeg-gui node currently has local SSL enabled or is listening publicly.")
+                    print("    When paired with CloudHub on the same machine, disabling local SSL and binding")
+                    print("    to 127.0.0.1 avoids port 80/443 conflicts and secures backend communication.")
+                    try:
+                        ans = input("    Disable local SSL and bind to 127.0.0.1? [Y/n]: ").strip().lower()
+                        disable_local_ssl = ans in ("", "y", "yes")
+                    except (KeyboardInterrupt, EOFError):
+                        print("\nAborted.")
+                        return False
+
+            if disable_local_ssl:
+                print("[-] Disabling local SSL and moving bind address to 127.0.0.1...")
+                settings.ssl_enabled = False
+                settings.ssl_mode = "disabled"
+                settings.bind_address = "127.0.0.1"
+                db.commit()
+                update_config_file(bind_address="127.0.0.1", ssl_enabled=False)
+
+    print(f"[*] Contacting CloudHub orchestrator at {hub_url_clean}...")
+    try:
+        client = CloudTunnelClient(asgi_app=None, db_session_factory=SessionLocal)
+        enroll_res = client.enroll(hub_url_clean, token_clean)
+        node_id = enroll_res.get("node_id", "unknown")
+        print(f"✓ Success: Enrolled into CloudHub successfully as Node ID: {node_id}")
+    except Exception as e:
+        print(f"[-] Enrollment Error: {e}", file=sys.stderr)
+        return False
+
+    fix_db_permissions()
+
+    # Check systemd status
+    is_active, s_type = check_service_active()
+    if is_active:
+        print(f"[*] ffmpeg-gui service is currently running ({s_type}). Restarting service to establish tunnel...")
+        if restart_service():
+            print("✓ Service restarted. Reverse tunnel is now active.")
+        else:
+            print("[-] Note: Could not auto-restart systemd unit. Please run: sudo systemctl restart ffmpeg-gui")
+    else:
+        print("[*] ffmpeg-gui service is currently stopped.")
+        print("    Configuration saved. The tunnel will connect automatically when ffmpeg-gui starts.")
+
+    return True
+
+
+def handle_unlink_cloudhub() -> bool:
+    """Disconnects and unlinks this appliance from CloudHub."""
+    try:
+        from core.cloud_tunnel_client import CloudTunnelClient
+    except ImportError:
+        from backend.core.cloud_tunnel_client import CloudTunnelClient
+
+    client = CloudTunnelClient(asgi_app=None, db_session_factory=SessionLocal)
+    client.disconnect_hub()
+    fix_db_permissions()
+    print("✓ Success: Appliance unlinked and disconnected from CloudHub.")
+
+    is_active, s_type = check_service_active()
+    if is_active:
+        print(f"[*] ffmpeg-gui service is running ({s_type}). Restarting to terminate tunnel...")
+        if restart_service():
+            print("✓ Service restarted.")
+        else:
+            print("[-] Please run: sudo systemctl restart ffmpeg-gui")
+    return True
+
+
+def handle_set_listen(
+    bind_address: str,
+    port: Optional[int] = None,
+    disable_ssl: bool = False,
+) -> bool:
+    """Rescue command to configure listen address and port without Web UI access."""
+    with SessionLocal() as db:
+        settings = db.query(SystemSettings).first()
+        if not settings:
+            settings = SystemSettings()
+            db.add(settings)
+        settings.bind_address = bind_address
+        if port is not None:
+            settings.gui_port = port
+            settings.http_port = port
+        if disable_ssl:
+            settings.ssl_enabled = False
+            settings.ssl_mode = "disabled"
+        db.commit()
+
+    update_config_file(
+        bind_address=bind_address,
+        port=port,
+        ssl_enabled=False if disable_ssl else None,
+    )
+    fix_db_permissions()
+
+    port_str = f":{port}" if port else ""
+    ssl_str = " (SSL disabled)" if disable_ssl else ""
+    print(f"✓ Success: Listen address set to {bind_address}{port_str}{ssl_str}")
+
+    is_active, s_type = check_service_active()
+    if is_active:
+        print(f"[*] Restarting {s_type} service to apply network binding...")
+        if restart_service():
+            print("✓ Service restarted.")
+        else:
+            print("[-] Please run: sudo systemctl restart ffmpeg-gui")
+    return True
+
+
 def handle_status(as_json: bool = False) -> Dict[str, Any]:
     """Queries and displays overall system health and configuration."""
     git_info = get_git_info()
@@ -203,6 +408,9 @@ def handle_status(as_json: bool = False) -> Dict[str, Any]:
     https_port = 8443
     ssl_enabled = False
     has_password = False
+    cloudhub_enabled = False
+    cloudhub_url = None
+    cloudhub_node_id = None
 
     try:
         with SessionLocal() as db:
@@ -213,6 +421,9 @@ def handle_status(as_json: bool = False) -> Dict[str, Any]:
                 https_port = settings.https_port or 8443
                 ssl_enabled = bool(settings.ssl_enabled)
                 has_password = bool(settings.gui_password)
+                cloudhub_enabled = bool(settings.cloudhub_enabled)
+                cloudhub_url = settings.cloudhub_url
+                cloudhub_node_id = settings.cloudhub_node_id
     except Exception:
         pass
 
@@ -230,6 +441,9 @@ def handle_status(as_json: bool = False) -> Dict[str, Any]:
         "https_port": https_port,
         "ssl_enabled": ssl_enabled,
         "has_password": has_password,
+        "cloudhub_enabled": cloudhub_enabled,
+        "cloudhub_url": cloudhub_url,
+        "cloudhub_node_id": cloudhub_node_id,
     }
 
     if as_json:
@@ -250,6 +464,8 @@ def handle_status(as_json: bool = False) -> Dict[str, Any]:
         print(f" HTTPS Port       : {info['https_port']} (SSL Enabled)")
     auth_str = "ENABLED (Password Protected)" if has_password else "DISABLED (Open Access Mode)"
     print(f" Web GUI Auth     : {auth_str}")
+    ch_str = f"ENROLLED ({cloudhub_node_id} @ {cloudhub_url})" if cloudhub_enabled else "NOT ENROLLED"
+    print(f" CloudHub Tunnel  : {ch_str}")
     print("=================================================================")
 
     return info
@@ -302,6 +518,22 @@ def main():
     p_status = subparsers.add_parser("status", help="Inspect system health, versions, and ports")
     p_status.add_argument("--json", action="store_true", help="Output status in JSON format")
 
+    # enroll-cloudhub
+    p_enroll = subparsers.add_parser("enroll-cloudhub", help="Pair appliance with a central CloudHub orchestrator")
+    p_enroll.add_argument("hub_url", help="CloudHub URL (e.g. http://127.0.0.1:9000 or https://hub.example.com)")
+    p_enroll.add_argument("token", help="One-time enrollment token")
+    p_enroll.add_argument("--disable-local-ssl", action="store_true", help="Disable local SSL and bind to 127.0.0.1")
+    p_enroll.add_argument("-y", "--yes", action="store_true", help="Non-interactive mode (assume Yes to prompts)")
+
+    # unlink-cloudhub
+    subparsers.add_parser("unlink-cloudhub", help="Unlink appliance and terminate CloudHub reverse tunnel")
+
+    # set-listen
+    p_listen = subparsers.add_parser("set-listen", help="Rescue command to configure bind address and port")
+    p_listen.add_argument("address", help="Bind IP address (e.g. 127.0.0.1 or 0.0.0.0)")
+    p_listen.add_argument("port", nargs="?", type=int, default=None, help="HTTP listen port (optional)")
+    p_listen.add_argument("--disable-ssl", action="store_true", help="Disable local SSL/TLS")
+
     args = parser.parse_args()
 
     if not args.command or args.command == "status":
@@ -321,6 +553,25 @@ def main():
         print("--- Step 2: Setting Admin Password ---")
         s2 = handle_reset_password(args.password)
         sys.exit(0 if (s1 and s2) else 1)
+    elif args.command == "enroll-cloudhub":
+        disable_ssl = True if args.disable_local_ssl else None
+        success = handle_enroll_cloudhub(
+            hub_url=args.hub_url,
+            token=args.token,
+            disable_local_ssl=disable_ssl,
+            non_interactive=args.yes,
+        )
+        sys.exit(0 if success else 1)
+    elif args.command == "unlink-cloudhub":
+        success = handle_unlink_cloudhub()
+        sys.exit(0 if success else 1)
+    elif args.command == "set-listen":
+        success = handle_set_listen(
+            bind_address=args.address,
+            port=args.port,
+            disable_ssl=args.disable_ssl,
+        )
+        sys.exit(0 if success else 1)
     else:
         parser.print_help()
 
