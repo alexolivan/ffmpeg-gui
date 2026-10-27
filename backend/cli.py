@@ -18,7 +18,18 @@ backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from database.db import DB_PATH, SessionLocal
+# Early check for custom config or database before DB engine initialization
+for idx, arg in enumerate(sys.argv):
+    if arg == "--database" and idx + 1 < len(sys.argv):
+        os.environ["DATABASE_PATH"] = os.path.abspath(sys.argv[idx + 1])
+    elif arg.startswith("--database="):
+        os.environ["DATABASE_PATH"] = os.path.abspath(arg.split("=", 1)[1])
+    elif arg == "--config" and idx + 1 < len(sys.argv):
+        os.environ["CONFIG_FILE_PATH"] = os.path.abspath(sys.argv[idx + 1])
+    elif arg.startswith("--config="):
+        os.environ["CONFIG_FILE_PATH"] = os.path.abspath(arg.split("=", 1)[1])
+
+from database.db import DB_PATH, SessionLocal, init_db
 from database.models import SystemSettings
 from database.version import __schema_version__
 from version import __version__
@@ -209,9 +220,19 @@ def update_config_file(
     ssl_enabled: Optional[bool] = None,
 ) -> None:
     """Synchronizes network listen and SSL settings into ffmpeg-gui.conf."""
-    config_path = os.environ.get("CONFIG_FILE_PATH") or "ffmpeg-gui.conf"
-    if not os.path.exists(config_path) and os.path.exists("/etc/ffmpeg-gui/ffmpeg-gui.conf"):
-        config_path = "/etc/ffmpeg-gui/ffmpeg-gui.conf"
+    root_dir = os.path.abspath(os.path.join(backend_dir, ".."))
+    config_candidates = [
+        os.environ.get("CONFIG_FILE_PATH"),
+        "/etc/ffmpeg-gui/ffmpeg-gui.conf",
+        os.path.expanduser("~/.config/ffmpeg-gui/ffmpeg-gui.conf"),
+        os.path.join(root_dir, "ffmpeg-gui.conf"),
+        "ffmpeg-gui.conf",
+    ]
+    config_path = "ffmpeg-gui.conf"
+    for candidate in config_candidates:
+        if candidate and os.path.exists(candidate):
+            config_path = candidate
+            break
 
     import configparser
     cp = configparser.ConfigParser()
@@ -483,6 +504,8 @@ def main():
   ffmpeg-gui-admin reset-all
 """,
     )
+    parser.add_argument("--config", help="Explicit path to ffmpeg-gui.conf")
+    parser.add_argument("--database", help="Explicit path to ffmpeg_gui.db SQLite database")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # reset-password / reset-admin
@@ -535,6 +558,12 @@ def main():
     p_listen.add_argument("--disable-ssl", action="store_true", help="Disable local SSL/TLS")
 
     args = parser.parse_args()
+
+    # Ensure database schema is migrated and tables exist
+    try:
+        init_db()
+    except Exception:
+        pass
 
     if not args.command or args.command == "status":
         handle_status(as_json=getattr(args, "json", False))

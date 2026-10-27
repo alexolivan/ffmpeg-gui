@@ -10,7 +10,49 @@ from .version import __schema_version__
 logger = logging.getLogger("database")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(BASE_DIR, "ffmpeg_gui.db"))
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+
+
+def resolve_db_path() -> str:
+    """Resolves the SQLite database path by checking environment, config files, and standard paths."""
+    if os.environ.get("DATABASE_PATH"):
+        return os.path.abspath(os.environ["DATABASE_PATH"])
+
+    # Check known configuration files
+    config_candidates = [
+        os.environ.get("CONFIG_FILE_PATH"),
+        "/etc/ffmpeg-gui/ffmpeg-gui.conf",
+        os.path.expanduser("~/.config/ffmpeg-gui/ffmpeg-gui.conf"),
+        os.path.join(PROJECT_ROOT, "ffmpeg-gui.conf"),
+        os.path.join(BASE_DIR, "ffmpeg-gui.conf"),
+        "ffmpeg-gui.conf",
+    ]
+
+    for conf in config_candidates:
+        if conf and os.path.exists(conf):
+            try:
+                import configparser
+                cp = configparser.ConfigParser()
+                cp.read(conf)
+                if cp.has_section("server") and cp.has_option("server", "database"):
+                    db_val = cp.get("server", "database").strip()
+                    if db_val:
+                        return os.path.abspath(os.path.expanduser(db_val))
+            except Exception:
+                pass
+
+    # Check standard filesystem paths if they exist
+    for p in [
+        "/var/lib/ffmpeg-gui/ffmpeg_gui.db",
+        os.path.expanduser("~/.local/share/ffmpeg-gui/ffmpeg_gui.db"),
+    ]:
+        if os.path.exists(p):
+            return os.path.abspath(p)
+
+    return os.path.join(BASE_DIR, "ffmpeg_gui.db")
+
+
+DB_PATH = resolve_db_path()
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 PREVIEWS_DIR = os.environ.get("PREVIEWS_DIR", "/tmp/ffmpeg-gui-previews")
 

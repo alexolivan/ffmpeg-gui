@@ -164,6 +164,11 @@ class TestAdminCLI(unittest.TestCase):
         self.assertTrue(res)
         mock_disconnect.assert_called_once()
 
+    def test_resolve_db_path_prefers_config_or_filesystem(self):
+        from database.db import resolve_db_path
+        with patch.dict(os.environ, {"DATABASE_PATH": "/custom/path/ffmpeg_gui.db"}):
+            self.assertEqual(resolve_db_path(), "/custom/path/ffmpeg_gui.db")
+
 
 if __name__ == "__main__":
     unittest.main()
