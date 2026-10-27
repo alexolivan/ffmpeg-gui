@@ -501,6 +501,15 @@ class SystemSettings(Base):
     # LAN Discovery Beacon Settings
     discovery_beacon_enabled = Column(Boolean, default=True)
 
+    # CloudHub Reverse Tunnel & Bastion Settings
+    cloudhub_enabled = Column(Boolean, default=False)
+    cloudhub_url = Column(String, nullable=True)
+    cloudhub_node_id = Column(String, nullable=True)
+    cloudhub_tunnel_secret = Column(String, nullable=True)
+    cloudhub_sso_enabled = Column(Boolean, default=True)
+    cloudhub_org_name = Column(String, nullable=True)
+    cloudhub_group_name = Column(String, nullable=True)
+
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 

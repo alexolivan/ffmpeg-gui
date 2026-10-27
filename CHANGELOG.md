@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.51.0] - 2026-10-27
+
+### Added
+- **CloudHub Outbound Reverse Tunnel Client & In-Memory ASGI Bridge (`cloud_tunnel_client.py`, `CloudHubSettingsCard.tsx`, `main.py`)**:
+  - Implemented outbound persistent WebSocket reverse tunnel connecting to central CloudHub bastions (`/api/edge/tunnel`), overcoming NAT/CGNAT firewalls without inbound port forwards or VPNs.
+  - Direct in-memory ASGI 3.0 dispatch (`app(scope, receive, send)`) for proxied HTTP calls and WebSocket streams, avoiding loopback TCP port allocation and SSL redirect conflicts.
+  - Zero-knowledge ephemeral SSO assertion verification (HMAC-SHA256 with 60s timestamp window) issuing temporary local sessions without exposing appliance credentials.
+  - Interactive one-click enrollment ceremony (`POST /api/settings/cloudhub/enroll`) and disconnect endpoint (`POST /api/settings/cloudhub/disconnect`).
+  - Dedicated `CloudHubSettingsCard` in Web UI Settings under the Network tab, featuring real-time connection status badges, SSO toggles, and enrollment forms.
+  - 100% multilingual translation coverage across English (SSOT), Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+  - GitHub `/tags` fallback in `update_checker.py` ensuring update discovery when `/releases/latest` is unpopulated.
+  - Incremented database schema to `2.6.0` adding 7 `cloudhub_*` columns to `SystemSettings` with automated migrations.
+  - Comprehensive unit and end-to-end integration tests (`test_cloud_tunnel_client.py`, `test_cloudhub_e2e_handshake.py`).
+
 ## [2.50.0] - 2026-10-26
 
 ### Added

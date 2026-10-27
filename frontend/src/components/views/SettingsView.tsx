@@ -11,6 +11,7 @@ import { InboundKeysCard } from './settings/InboundKeysCard';
 import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 import { FirewallPortMatrixCard } from './settings/FirewallPortMatrixCard';
+import { CloudHubSettingsCard } from './settings/CloudHubSettingsCard';
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 import { AliasField } from '../common/AliasField';
 
@@ -2331,6 +2332,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* CARD: LIVE FIREWALL & PORT MATRIX */}
             <FirewallPortMatrixCard API={API} />
+
+            {/* CARD: CLOUDHUB REVERSE TUNNEL CONNECTOR */}
+            <CloudHubSettingsCard API={API} />
 
             {/* CARD 5: EMAIL NOTIFICATIONS & ALERTING */}
             <div className="glass-card p-5 !rounded-2xl space-y-5">

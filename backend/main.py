@@ -597,6 +597,12 @@ class SettingsResponse(BaseModel):
     thermal_critical_threshold: Optional[int] = 85
     thermal_active_protection: Optional[bool] = False
     discovery_beacon_enabled: Optional[bool] = True
+    cloudhub_enabled: Optional[bool] = False
+    cloudhub_url: Optional[str] = None
+    cloudhub_node_id: Optional[str] = None
+    cloudhub_sso_enabled: Optional[bool] = True
+    cloudhub_org_name: Optional[str] = None
+    cloudhub_group_name: Optional[str] = None
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -644,6 +650,9 @@ class SettingsUpdate(BaseModel):
     thermal_critical_threshold: Optional[int] = None
     thermal_active_protection: Optional[bool] = None
     discovery_beacon_enabled: Optional[bool] = None
+    cloudhub_enabled: Optional[bool] = None
+    cloudhub_url: Optional[str] = None
+    cloudhub_sso_enabled: Optional[bool] = None
 
 
     @validator('brute_force_whitelist')
@@ -1027,6 +1036,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res = {c.name: getattr(settings, c.name) for c in settings.__table__.columns}
     res["has_gui_password"] = bool(settings.gui_password)
     res["gui_password"] = None
+    res["cloudhub_tunnel_secret"] = None
     res["gui_port"] = gui_port
     res["restart_required"] = restart_required
     res["restart_reasons"] = restart_reasons
@@ -1548,10 +1558,21 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.thermal_critical_threshold is not None: settings.thermal_critical_threshold = settings_in.thermal_critical_threshold
     if settings_in.thermal_active_protection is not None: settings.thermal_active_protection = settings_in.thermal_active_protection
     if settings_in.discovery_beacon_enabled is not None: settings.discovery_beacon_enabled = settings_in.discovery_beacon_enabled
+    if settings_in.cloudhub_enabled is not None: settings.cloudhub_enabled = settings_in.cloudhub_enabled
+    if settings_in.cloudhub_url is not None:
+        settings.cloudhub_url = settings_in.cloudhub_url.strip().rstrip("/") if settings_in.cloudhub_url else None
+    if settings_in.cloudhub_sso_enabled is not None: settings.cloudhub_sso_enabled = settings_in.cloudhub_sso_enabled
 
     db.commit()
     db.refresh(settings)
     invalidate_gui_password_cache()
+
+    global cloud_tunnel_client
+    if cloud_tunnel_client:
+        if settings.cloudhub_enabled:
+            asyncio.create_task(cloud_tunnel_client.start())
+        else:
+            asyncio.create_task(cloud_tunnel_client.stop())
 
     global discovery_beacon_service
     if settings.discovery_beacon_enabled:
@@ -1695,6 +1716,13 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             net_dict["auto_reload_ssl_services"] = str(sys_settings.auto_reload_ssl_services).lower()
         if sys_settings and sys_settings.discovery_beacon_enabled is not None:
             net_dict["discovery_beacon_enabled"] = str(sys_settings.discovery_beacon_enabled).lower()
+        if sys_settings:
+            if sys_settings.cloudhub_url: net_dict["cloudhub_url"] = sys_settings.cloudhub_url
+            if sys_settings.cloudhub_enabled is not None: net_dict["cloudhub_enabled"] = str(sys_settings.cloudhub_enabled).lower()
+            if sys_settings.cloudhub_sso_enabled is not None: net_dict["cloudhub_sso_enabled"] = str(sys_settings.cloudhub_sso_enabled).lower()
+            if sys_settings.cloudhub_node_id: net_dict["cloudhub_node_id"] = sys_settings.cloudhub_node_id
+            if sys_settings.cloudhub_org_name: net_dict["cloudhub_org_name"] = sys_settings.cloudhub_org_name
+            if sys_settings.cloudhub_group_name: net_dict["cloudhub_group_name"] = sys_settings.cloudhub_group_name
         sections["gui_network_ssl"] = net_dict
 
     # 3. LCD Display
@@ -2078,6 +2106,20 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     except Exception:
                         pass
                     discovery_beacon_service = None
+        if "cloudhub_url" in net_sec:
+            sys_settings.cloudhub_url = str(net_sec["cloudhub_url"]) if net_sec["cloudhub_url"] else None
+        if "cloudhub_enabled" in net_sec:
+            val = net_sec["cloudhub_enabled"]
+            sys_settings.cloudhub_enabled = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
+        if "cloudhub_sso_enabled" in net_sec:
+            val = net_sec["cloudhub_sso_enabled"]
+            sys_settings.cloudhub_sso_enabled = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
+        if "cloudhub_node_id" in net_sec:
+            sys_settings.cloudhub_node_id = str(net_sec["cloudhub_node_id"]) if net_sec["cloudhub_node_id"] else None
+        if "cloudhub_org_name" in net_sec:
+            sys_settings.cloudhub_org_name = str(net_sec["cloudhub_org_name"]) if net_sec["cloudhub_org_name"] else None
+        if "cloudhub_group_name" in net_sec:
+            sys_settings.cloudhub_group_name = str(net_sec["cloudhub_group_name"]) if net_sec["cloudhub_group_name"] else None
         imported_summary["gui_network_ssl"] = True
 
     if "lcd_display" in sections and isinstance(sections["lcd_display"], dict):
@@ -2610,6 +2652,60 @@ def unblock_security_ip(req: UnblockIPRequest):
     unblocked = security_guard.unblock(cleaned_ip)
     logger.info(f"[security] IP {cleaned_ip} manually unblocked via settings GUI (was_locked={unblocked})")
     return {"success": True, "ip": cleaned_ip, "unblocked": unblocked}
+
+
+class CloudHubEnrollRequest(BaseModel):
+    hub_url: str
+    token: str
+
+
+@app.get("/api/settings/cloudhub/status")
+async def get_cloudhub_status():
+    """
+    Returns outbound CloudHub reverse tunnel connection and enrollment status.
+    Protected behind session authentication by AuthBarrierMiddleware.
+    """
+    global cloud_tunnel_client
+    if not cloud_tunnel_client:
+        from core.cloud_tunnel_client import CloudTunnelClient
+        cloud_tunnel_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
+    return cloud_tunnel_client.get_status()
+
+
+@app.post("/api/settings/cloudhub/enroll")
+async def enroll_cloudhub(req: CloudHubEnrollRequest):
+    """
+    Exchanges enrollment token with CloudHub orchestrator, stores credentials and starts tunnel.
+    """
+    global cloud_tunnel_client
+    if not cloud_tunnel_client:
+        from core.cloud_tunnel_client import CloudTunnelClient
+        cloud_tunnel_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
+    try:
+        res = await asyncio.to_thread(cloud_tunnel_client.enroll, req.hub_url, req.token)
+        await cloud_tunnel_client.start()
+        return res
+    except ConnectionError as ce:
+        raise HTTPException(status_code=400, detail=str(ce))
+    except Exception as e:
+        logger.error(f"CloudHub enrollment failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/settings/cloudhub/disconnect")
+async def disconnect_cloudhub():
+    """
+    Unlinks appliance from CloudHub and terminates active outbound tunnel.
+    """
+    global cloud_tunnel_client
+    if cloud_tunnel_client:
+        await cloud_tunnel_client.stop()
+        cloud_tunnel_client.disconnect_hub()
+    else:
+        from core.cloud_tunnel_client import CloudTunnelClient
+        temp_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
+        temp_client.disconnect_hub()
+    return {"status": "disconnected"}
 
 
 @app.post("/settings/logo")
@@ -3942,6 +4038,9 @@ lcd_manager = None
 # Global Discovery Beacon instance
 discovery_beacon_service = None
 
+# Global CloudHub Tunnel instance
+cloud_tunnel_client = None
+
 def sanitize_process_config_data(input_config: dict, filter_config: dict) -> bool:
     """
     Sanitize input_config and filter_config for non-decodable inputs.
@@ -4284,6 +4383,18 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Failed to start discovery beacon on startup: {e}")
 
+    global cloud_tunnel_client
+    try:
+        from core.cloud_tunnel_client import CloudTunnelClient
+        cloud_tunnel_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
+        with SessionLocal() as db_start:
+            from database.models import SystemSettings
+            sys_set = db_start.query(SystemSettings).first()
+            if sys_set and sys_set.cloudhub_enabled:
+                await cloud_tunnel_client.start()
+    except Exception as e:
+        logger.warning(f"Failed to initialize cloud tunnel client on startup: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     global _shutdown_initialized
@@ -4321,6 +4432,15 @@ async def shutdown_event():
         except Exception:
             pass
         discovery_beacon_service = None
+
+    global cloud_tunnel_client
+    if cloud_tunnel_client:
+        logger.info("Shutdown: Stopping cloud tunnel client...")
+        try:
+            await cloud_tunnel_client.stop()
+        except Exception:
+            pass
+        cloud_tunnel_client = None
 
     if is_reload_mode:
         logger.info("Shutdown: Warm Reload mode active. Preserving child stream processes for re-attach on reload.")
