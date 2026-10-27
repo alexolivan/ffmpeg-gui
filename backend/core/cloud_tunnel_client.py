@@ -418,6 +418,7 @@ class CloudTunnelClient:
 
         # Check and inject SSO session
         if self._verify_sso_assertion(sso_assertion, tunnel_secret, sso_enabled):
+            username = sso_assertion.split(":")[1] if sso_assertion else "cloudhub_operator"
             with self.db_session_factory() as session:
                 settings = session.query(SystemSettings).first()
                 gui_password = settings.gui_password if settings else None
@@ -434,6 +435,9 @@ class CloudTunnelClient:
             asgi_headers.append(
                 (b"authorization", f"Bearer {ephemeral_token}".encode("latin1"))
             )
+            asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
+            asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
+
 
         scope = {
             "type": "http",
@@ -517,6 +521,7 @@ class CloudTunnelClient:
             asgi_headers.append((k.lower().encode("latin1"), v.encode("latin1")))
 
         if self._verify_sso_assertion(sso_assertion, tunnel_secret, sso_enabled):
+            username = sso_assertion.split(":")[1] if sso_assertion else "cloudhub_operator"
             with self.db_session_factory() as session:
                 settings = session.query(SystemSettings).first()
                 gui_password = settings.gui_password if settings else None
@@ -530,6 +535,9 @@ class CloudTunnelClient:
             asgi_headers.append(
                 (b"authorization", f"Bearer {ephemeral_token}".encode("latin1"))
             )
+            asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
+            asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
+
 
         scope = {
             "type": "websocket",
@@ -606,3 +614,27 @@ class CloudTunnelClient:
             logger.debug("In-memory ASGI WS error: %s", err)
         finally:
             self._active_ws_streams.pop(stream_id, None)
+
+    def schedule_audit_event(self, event_data: Dict[str, Any]) -> None:
+        """Schedule sending an audit event frame over the reverse tunnel."""
+        if not self._connected or not self._ws:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.send_audit_event(event_data))
+        except RuntimeError:
+            pass
+
+    async def send_audit_event(self, event_data: Dict[str, Any]) -> None:
+        """Stream an audit event frame to CloudHub over the active WebSocket."""
+        if not self._connected or not self._ws:
+            return
+        frame = {
+            "type": "audit_event",
+            "event": event_data,
+        }
+        try:
+            await self._ws.send(json.dumps(frame))
+        except Exception as e:
+            logger.debug("Failed to send audit frame over CloudHub tunnel: %s", e)
+
