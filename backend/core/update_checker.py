@@ -44,41 +44,53 @@ def _fetch_release_worker(current_version: str):
     global _CACHE, _IS_CHECKING
     now = time.time()
     url = "https://api.github.com/repos/alexolivan/ffmpeg-gui/releases/latest"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "ffmpeg-gui-update-checker",
-            "Accept": "application/vnd.github.v3+json"
-        }
-    )
+    tags_url = "https://api.github.com/repos/alexolivan/ffmpeg-gui/tags?per_page=10"
+    headers = {
+        "User-Agent": "ffmpeg-gui-update-checker",
+        "Accept": "application/vnd.github.v3+json",
+    }
+
+    tag_name = ""
+    html_url = None
 
     try:
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req, timeout=3.0) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             tag_name = data.get("tag_name", "").strip()
             html_url = data.get("html_url")
-            latest_clean = tag_name.lstrip("v").strip()
-
-            is_newer = compare_semver(latest_clean, current_version) if latest_clean else False
-
-            _CACHE["timestamp"] = now
-            _CACHE["data"] = {
-                "update_available": is_newer,
-                "latest_release": latest_clean if latest_clean else None,
-                "release_url": html_url,
-                "checked_at": now
-            }
     except Exception as e:
-        logger.debug("Silently skipped update check: %s", e)
-        _CACHE["timestamp"] = now
-        _CACHE["data"] = {
-            "update_available": False,
-            "latest_release": None,
-            "release_url": None,
-            "checked_at": now
-        }
-    finally:
-        _IS_CHECKING = False
+        logger.debug("Silently skipped /releases/latest update check (%s), falling back to /tags", e)
+
+    # Fallback to /tags if latest release is not published or 404
+    if not tag_name:
+        try:
+            req_tags = urllib.request.Request(tags_url, headers=headers)
+            with urllib.request.urlopen(req_tags, timeout=3.0) as resp:
+                tags_data = json.loads(resp.read().decode("utf-8"))
+                if tags_data and isinstance(tags_data, list):
+                    sorted_tags = sorted(
+                        tags_data,
+                        key=lambda t: _parse_semver_tuple(t.get("name", "")),
+                        reverse=True,
+                    )
+                    if sorted_tags:
+                        tag_name = sorted_tags[0].get("name", "").strip()
+                        html_url = f"https://github.com/alexolivan/ffmpeg-gui/releases/tag/{tag_name}"
+        except Exception as err:
+            logger.debug("Silently skipped /tags update check fallback: %s", err)
+
+    latest_clean = tag_name.lstrip("v").strip()
+    is_newer = compare_semver(latest_clean, current_version) if latest_clean else False
+
+    _CACHE["timestamp"] = now
+    _CACHE["data"] = {
+        "update_available": is_newer,
+        "latest_release": latest_clean if latest_clean else None,
+        "release_url": html_url,
+        "checked_at": now,
+    }
+    _IS_CHECKING = False
 
 
 def check_latest_release(current_version: str, force: bool = False) -> Dict[str, Any]:

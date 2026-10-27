@@ -252,6 +252,20 @@ def init_db():
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN thermal_active_protection BOOLEAN DEFAULT 0"))
             if "discovery_beacon_enabled" not in settings_columns:
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN discovery_beacon_enabled BOOLEAN DEFAULT 1"))
+            if "cloudhub_enabled" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_enabled BOOLEAN DEFAULT 0"))
+            if "cloudhub_url" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_url TEXT DEFAULT NULL"))
+            if "cloudhub_node_id" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_node_id TEXT DEFAULT NULL"))
+            if "cloudhub_tunnel_secret" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_tunnel_secret TEXT DEFAULT NULL"))
+            if "cloudhub_sso_enabled" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_sso_enabled BOOLEAN DEFAULT 1"))
+            if "cloudhub_org_name" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_org_name TEXT DEFAULT NULL"))
+            if "cloudhub_group_name" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_group_name TEXT DEFAULT NULL"))
 
             # Storages table migrations
 
