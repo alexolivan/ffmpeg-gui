@@ -15,12 +15,17 @@ from urllib.parse import urlparse
 import urllib.request
 import websockets
 
-from backend.version import __version__
-from backend.database.models import SystemSettings
+try:
+    from version import __version__
+    from database.models import SystemSettings
+except ImportError:
+    from backend.version import __version__
+    from backend.database.models import SystemSettings
 try:
     from core.auth_manager import auth_manager
 except ImportError:
     from backend.core.auth_manager import auth_manager
+
 
 logger = logging.getLogger("ffmpeg_gui.cloud_tunnel")
 

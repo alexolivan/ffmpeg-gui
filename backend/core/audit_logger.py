@@ -12,8 +12,13 @@ import threading
 import logging
 from typing import Dict, Any, Optional, Tuple, List
 
-from backend.database.db import SessionLocal
-from backend.database.models import AuditLog
+try:
+    from database.db import SessionLocal
+    from database.models import AuditLog
+except ImportError:
+    from backend.database.db import SessionLocal
+    from backend.database.models import AuditLog
+
 
 logger = logging.getLogger("ffmpeg_gui.audit")
 
@@ -144,8 +149,12 @@ class AuditLogger:
             }
 
         # Local direct web request
-        from backend.main import get_real_client_ip
+        try:
+            from main import get_real_client_ip
+        except ImportError:
+            from backend.main import get_real_client_ip
         client_ip = get_real_client_ip(request) if hasattr(request, "client") else "127.0.0.1"
+
 
         return {
             "channel": "local_gui",
@@ -218,8 +227,12 @@ class AuditLogger:
 
         # 3. Stream to CloudHub reverse tunnel if connected
         try:
-            from backend.core.cloud_tunnel_client import cloud_tunnel_client
+            try:
+                from core.cloud_tunnel_client import cloud_tunnel_client
+            except ImportError:
+                from backend.core.cloud_tunnel_client import cloud_tunnel_client
             event_payload = {
+
                 "timestamp": iso_ts,
                 "channel": channel,
                 "username": username,
