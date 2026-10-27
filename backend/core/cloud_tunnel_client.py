@@ -37,6 +37,19 @@ def decode_body(data_b64: Optional[str]) -> Optional[bytes]:
     return base64.b64decode(data_b64.encode("ascii"))
 
 
+def get_loopback_ssl_context(parsed_url: Any) -> Optional[Any]:
+    """Provide unverified SSL context for loopback/localhost or when CLOUDHUB_INSECURE_SSL=1."""
+    if parsed_url.scheme in ("https", "wss"):
+        hostname = (parsed_url.hostname or "").lower()
+        if hostname in ("127.0.0.1", "localhost", "::1") or os.environ.get("CLOUDHUB_INSECURE_SSL") == "1":
+            import ssl
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            return ctx
+    return None
+
+
 class CloudTunnelClient:
     """Outbound WebSocket client connecting to CloudHub with in-memory ASGI dispatch."""
 
@@ -139,8 +152,9 @@ class CloudTunnelClient:
             method="POST",
         )
 
+        ssl_ctx = get_loopback_ssl_context(urlparse(hub_url_clean))
         try:
-            with urllib.request.urlopen(req, timeout=10.0) as resp:
+            with urllib.request.urlopen(req, timeout=10.0, context=ssl_ctx) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8")
@@ -261,8 +275,10 @@ class CloudTunnelClient:
 
             try:
                 logger.info("Connecting reverse tunnel to CloudHub: %s", ws_url)
+                ws_ssl = get_loopback_ssl_context(parsed)
                 async with websockets.connect(
                     ws_url,
+                    ssl=ws_ssl,
                     additional_headers=headers,
                     ping_interval=20,
                     ping_timeout=10,
