@@ -5,7 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.52.0] - 2026-10-27
+
+### Added
+- **Human-Only Operational Audit Log System (`backend/core/audit_logger.py`, `AuditLogCard.tsx`, `backend/main.py`)**:
+  - Implemented dedicated, lightweight audit logging exclusively capturing deliberate human-initiated actions (lifecycle start/stop/restart, create, update, delete, system settings changes, and CloudHub enrollment).
+  - Strict exclusion of high-frequency polling (`GET`), telemetry updates, and background worker loops to guarantee minimal disk/database consumption (~3 MB/year).
+  - Semantic Field-Level Delta engine computing concise, human-readable differences between entity states (`bitrate: 2500k -> 4500k`) rather than raw JSON dumps, with automated credential masking (`gui_password`, `tunnel_secret`, etc.).
+  - Dual-write persistence: single-line human-readable text file (`data/logs/audit.log`) for quick SSH inspection via `tail -f`, plus structured SQLite table (`AuditLog`).
+  - Real-time WebSocket relay to central CloudHub bastions via `CloudTunnelClient.send_audit_event()`, ensuring unforgeable central audit retention even if local appliance logs are altered or nodes rebooted.
+  - Actor and channel attribution differentiating between signed CloudHub SSO users (`cloudhub:{username}`) and direct web access (`local:admin` + client IP).
+  - Dedicated `AuditLogCard` in Settings (`activeTab === 'audit'`) featuring action/channel filters, real-time search, expandable diff inspection, pagination, and direct `audit.log` disk file download.
+  - Incremented database schema version to `2.7.0` adding `audit_logs` table.
+  - 100% multilingual translation coverage across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+  - Comprehensive unit test suite in `backend/tests/test_audit_logger.py`.
+
 ## [2.51.0] - 2026-10-27
+
 
 ### Added
 - **CloudHub Outbound Reverse Tunnel Client & In-Memory ASGI Bridge (`cloud_tunnel_client.py`, `CloudHubSettingsCard.tsx`, `main.py`)**:

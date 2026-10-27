@@ -12,6 +12,8 @@ import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 import { FirewallPortMatrixCard } from './settings/FirewallPortMatrixCard';
 import { CloudHubSettingsCard } from './settings/CloudHubSettingsCard';
+import { AuditLogCard } from './settings/AuditLogCard';
+
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 import { AliasField } from '../common/AliasField';
 
@@ -114,7 +116,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup' | 'audit'>('general');
+
 
   const [softwareEngines, setSoftwareEngines] = useState<Record<string, SoftwareEngineData>>({});
 
@@ -1098,7 +1101,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <ExportIcon size={14} />
           {t('settings.tabs.backup', 'BACKUP & RESTORE')}
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('audit')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+            activeTab === 'audit'
+              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span className="text-sm">🛡️</span>
+          {t('settings.tabs.audit', 'AUDIT LOG')}
+        </button>
       </div>
+
 
       {/* Tab content wrapper (Scrollable area) */}
       <div className="flex-1 overflow-y-auto p-5 md:p-6 min-h-0 custom-scrollbar space-y-5">
@@ -2939,7 +2955,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* TAB 8: Backup & Restore */}
         {activeTab === 'backup' && <BackupRestoreCard API={API} />}
+
+        {/* TAB 9: Operational Audit Log */}
+        {activeTab === 'audit' && <AuditLogCard API={API} />}
       </div>
+
 
       {showRestartConfirm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">

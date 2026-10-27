@@ -649,3 +649,21 @@ class PeerRemoteNode(Base):
     last_seen = Column(DateTime, nullable=True)
     last_error = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class AuditLog(Base):
+    """Immutable audit trail of human-initiated actions and state modifications."""
+    __tablename__ = 'audit_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, index=True, nullable=False)
+    channel = Column(String(50), default="local_gui", nullable=False)  # "cloudhub", "local_gui", "local_cli"
+    username = Column(String(100), default="admin", nullable=False, index=True)
+    ip_address = Column(String(64), nullable=True)
+    action = Column(String(100), nullable=False, index=True)  # SERVICE_START, SERVICE_STOP, SERVICE_UPDATE, etc.
+    target_type = Column(String(50), nullable=False)  # service, task, settings, forge, software
+    target_id = Column(String(100), nullable=True)
+    target_name = Column(String(200), nullable=True)
+    changes = Column(Text, nullable=True)  # Concise semantic delta
+    details = Column(Text, nullable=True)
+

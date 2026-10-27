@@ -519,8 +519,10 @@
       "alsa": "ALSA Audio",
       "decklink": "DeckLink",
       "magewell": "Magewell",
-      "backup": "Backup & Restore"
+      "backup": "Backup & Restore",
+      "audit": "Audit Log"
     },
+
     "alsa": {
       "title": "ALSA MIXER",
       "subtitle": "Broadcast 4-Quadrant Signal Routing & Gain Control",
@@ -861,6 +863,25 @@
       "importSuccess": "Backup restored successfully!",
       "invalidBackupFormat": "Invalid backup file format. Missing ffmpeg-gui signature."
     },
+    "audit": {
+      "title": "Operational Audit Log",
+      "subtitle": "Immutable history of human-initiated changes, operations, and configuration edits",
+      "download": "Download audit.log",
+      "download_tooltip": "Download raw audit.log from disk",
+      "all_actions": "All Actions",
+      "all_channels": "All Channels",
+      "search_placeholder": "Search target name, user, details...",
+      "no_records": "No audit entries match the current filter.",
+      "col_time": "Timestamp",
+      "col_channel": "Channel",
+      "col_user": "User",
+      "col_action": "Action",
+      "col_target": "Target",
+      "col_ip": "IP / Tunnel",
+      "col_changes": "Details & Semantic Diffs",
+      "pagination_summary": "Showing {{start}}-{{end}} of {{total}} events"
+    },
+
     "decklink": {
       "title": "BLACKMAGIC DECKLINK HARDWARE CONTROL",
       "subtitle": "Headless SDI/HDMI connector mapping, live signal telemetry, and firmware management",

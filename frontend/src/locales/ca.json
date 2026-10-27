@@ -519,8 +519,10 @@
       "alsa": "Àudio ALSA",
       "decklink": "DeckLink",
       "magewell": "Magewell",
-      "backup": "Còpia i Restauració"
+      "backup": "Còpia i Restauració",
+      "audit": "Registre d'Auditoria"
     },
+
     "alsa": {
       "title": "MESCLADOR ALSA",
       "subtitle": "Encaminament Broadcast en 4 Quadrants i Control de Guany",
@@ -861,6 +863,25 @@
       "importSuccess": "Còpia de seguretat restaurada amb èxit!",
       "invalidBackupFormat": "Format de còpia de seguretat no vàlid. Falta la signatura ffmpeg-gui."
     },
+    "audit": {
+      "title": "Registre d'Auditoria Operativa",
+      "subtitle": "Historial immutable de canvis, operacions i edicions de configuració realitzats per humans",
+      "download": "Descarregar audit.log",
+      "download_tooltip": "Descarregar fitxer audit.log brut del disc",
+      "all_actions": "Totes les accions",
+      "all_channels": "Tots els canals",
+      "search_placeholder": "Cercar objectiu, usuari, detalls...",
+      "no_records": "No hi ha registres d'auditoria que coincideixin amb el filtre actual.",
+      "col_time": "Data i Hora",
+      "col_channel": "Canal",
+      "col_user": "Usuari",
+      "col_action": "Acció",
+      "col_target": "Objectiu",
+      "col_ip": "IP / Túnel",
+      "col_changes": "Detalls i Diferències Semàntiques",
+      "pagination_summary": "Mostrant {{start}}-{{end}} de {{total}} esdeveniments"
+    },
+
     "decklink": {
       "title": "CONTROL DE MAQUINARI BLACKMAGIC DECKLINK",
       "subtitle": "Mapeig de connectors SDI/HDMI headless, telemetria de senyal en directe i gestió de microprogramari",

@@ -519,8 +519,10 @@
       "alsa": "Audio ALSA",
       "decklink": "DeckLink",
       "magewell": "Magewell",
-      "backup": "Copia y Restauración"
+      "backup": "Copia y Restauración",
+      "audit": "Registro de Auditoría"
     },
+
     "alsa": {
       "title": "MEZCLADOR ALSA",
       "subtitle": "Enrutado Broadcast en 4 Cuadrantes y Control de Ganancia",
@@ -861,6 +863,25 @@
       "importSuccess": "¡Copia de seguridad restaurada con éxito!",
       "invalidBackupFormat": "Formato de copia de seguridad no válido. Falta la firma ffmpeg-gui."
     },
+    "audit": {
+      "title": "Registro de Auditoría Operativa",
+      "subtitle": "Historial inmutable de cambios, operaciones y ediciones de configuración realizados por humanos",
+      "download": "Descargar audit.log",
+      "download_tooltip": "Descargar archivo audit.log bruto del disco",
+      "all_actions": "Todas las acciones",
+      "all_channels": "Todos los canales",
+      "search_placeholder": "Buscar objetivo, usuario, detalles...",
+      "no_records": "No hay registros de auditoría que coincidan con el filtro actual.",
+      "col_time": "Fecha y Hora",
+      "col_channel": "Canal",
+      "col_user": "Usuario",
+      "col_action": "Acción",
+      "col_target": "Objetivo",
+      "col_ip": "IP / Túnel",
+      "col_changes": "Detalles y Diferencias Semánticas",
+      "pagination_summary": "Mostrando {{start}}-{{end}} de {{total}} eventos"
+    },
+
     "decklink": {
       "title": "CONTROL DE HARDWARE BLACKMAGIC DECKLINK",
       "subtitle": "Mapeo de conectores SDI/HDMI headless, telemetría de señal en vivo y gestión de firmware",
