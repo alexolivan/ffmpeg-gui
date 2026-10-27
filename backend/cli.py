@@ -251,12 +251,86 @@ def update_config_file(
         cp["server"]["port"] = str(port)
     if ssl_enabled is not None:
         cp["network"]["ssl_enabled"] = str(ssl_enabled).lower()
+        if "ssl" in cp:
+            cp["ssl"]["enabled"] = str(ssl_enabled).lower()
+            if not ssl_enabled:
+                cp["ssl"]["mode"] = "disabled"
 
     try:
         with open(config_path, "w") as f:
             cp.write(f)
     except Exception:
         pass
+
+
+def read_network_config() -> Dict[str, Any]:
+    """Reads network and SSL configuration from ffmpeg-gui.conf."""
+    root_dir = os.path.abspath(os.path.join(backend_dir, ".."))
+    config_candidates = [
+        os.environ.get("CONFIG_FILE_PATH"),
+        "/etc/ffmpeg-gui/ffmpeg-gui.conf",
+        os.path.expanduser("~/.config/ffmpeg-gui/ffmpeg-gui.conf"),
+        os.path.join(root_dir, "ffmpeg-gui.conf"),
+        "ffmpeg-gui.conf",
+    ]
+    config_path = "ffmpeg-gui.conf"
+    for candidate in config_candidates:
+        if candidate and os.path.exists(candidate):
+            config_path = candidate
+            break
+
+    res: Dict[str, Any] = {
+        "bind_address": "0.0.0.0",
+        "gui_port": 8000,
+        "https_port": 8443,
+        "ssl_enabled": False,
+        "ssl_mode": "disabled",
+        "config_path": config_path,
+    }
+
+    if os.path.exists(config_path):
+        import configparser
+        cp = configparser.ConfigParser()
+        try:
+            cp.read(config_path)
+            if "server" in cp:
+                res["bind_address"] = cp["server"].get("host", res["bind_address"])
+                if cp["server"].get("port"):
+                    try:
+                        res["gui_port"] = cp["server"].getint("port")
+                    except ValueError:
+                        pass
+            if "network" in cp:
+                net = cp["network"]
+                res["bind_address"] = net.get("bind_address", res["bind_address"])
+                port_val = net.get("http_port") or net.get("gui_port")
+                if port_val:
+                    try:
+                        res["gui_port"] = int(port_val)
+                    except ValueError:
+                        pass
+                if net.get("https_port"):
+                    try:
+                        res["https_port"] = net.getint("https_port")
+                    except ValueError:
+                        pass
+                if net.get("ssl_enabled"):
+                    try:
+                        res["ssl_enabled"] = net.getboolean("ssl_enabled")
+                    except ValueError:
+                        pass
+            if "ssl" in cp:
+                ssl_cfg = cp["ssl"]
+                res["ssl_mode"] = ssl_cfg.get("mode", res["ssl_mode"])
+                if "enabled" in ssl_cfg:
+                    try:
+                        res["ssl_enabled"] = ssl_cfg.getboolean("enabled")
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+
+    return res
 
 
 def handle_enroll_cloudhub(
@@ -274,40 +348,29 @@ def handle_enroll_cloudhub(
     hub_url_clean = hub_url.strip().rstrip("/")
     token_clean = token.strip()
 
-    with SessionLocal() as db:
-        settings = db.query(SystemSettings).first()
-        if not settings:
-            settings = SystemSettings()
-            db.add(settings)
-            db.commit()
-            db.refresh(settings)
+    # Check for local SSL / public bind conflict using config file
+    net_cfg = read_network_config()
+    has_ssl = bool(net_cfg["ssl_enabled"]) or (net_cfg["ssl_mode"] and net_cfg["ssl_mode"] != "disabled")
+    is_public = net_cfg["bind_address"] not in ("127.0.0.1", "localhost", "::1")
 
-        # Check for local SSL / public bind conflict
-        has_ssl = bool(settings.ssl_enabled) or (settings.ssl_mode and settings.ssl_mode != "disabled")
-        is_public = settings.bind_address not in ("127.0.0.1", "localhost", "::1")
+    if has_ssl or is_public:
+        if disable_local_ssl is None:
+            if non_interactive:
+                disable_local_ssl = True
+            else:
+                print("\n[!] Notice: This ffmpeg-gui node currently has local SSL enabled or is listening publicly.")
+                print("    When paired with CloudHub on the same machine, disabling local SSL and binding")
+                print("    to 127.0.0.1 avoids port 80/443 conflicts and secures backend communication.")
+                try:
+                    ans = input("    Disable local SSL and bind to 127.0.0.1? [Y/n]: ").strip().lower()
+                    disable_local_ssl = ans in ("", "y", "yes")
+                except (KeyboardInterrupt, EOFError):
+                    print("\nAborted.")
+                    return False
 
-        if has_ssl or is_public:
-            if disable_local_ssl is None:
-                if non_interactive:
-                    disable_local_ssl = True
-                else:
-                    print("\n[!] Notice: This ffmpeg-gui node currently has local SSL enabled or is listening publicly.")
-                    print("    When paired with CloudHub on the same machine, disabling local SSL and binding")
-                    print("    to 127.0.0.1 avoids port 80/443 conflicts and secures backend communication.")
-                    try:
-                        ans = input("    Disable local SSL and bind to 127.0.0.1? [Y/n]: ").strip().lower()
-                        disable_local_ssl = ans in ("", "y", "yes")
-                    except (KeyboardInterrupt, EOFError):
-                        print("\nAborted.")
-                        return False
-
-            if disable_local_ssl:
-                print("[-] Disabling local SSL and moving bind address to 127.0.0.1...")
-                settings.ssl_enabled = False
-                settings.ssl_mode = "disabled"
-                settings.bind_address = "127.0.0.1"
-                db.commit()
-                update_config_file(bind_address="127.0.0.1", ssl_enabled=False)
+        if disable_local_ssl:
+            print("[-] Disabling local SSL and moving bind address to 127.0.0.1...")
+            update_config_file(bind_address="127.0.0.1", ssl_enabled=False)
 
     print(f"[*] Contacting CloudHub orchestrator at {hub_url_clean}...")
     try:
@@ -364,26 +427,11 @@ def handle_set_listen(
     disable_ssl: bool = False,
 ) -> bool:
     """Rescue command to configure listen address and port without Web UI access."""
-    with SessionLocal() as db:
-        settings = db.query(SystemSettings).first()
-        if not settings:
-            settings = SystemSettings()
-            db.add(settings)
-        settings.bind_address = bind_address
-        if port is not None:
-            settings.gui_port = port
-            settings.http_port = port
-        if disable_ssl:
-            settings.ssl_enabled = False
-            settings.ssl_mode = "disabled"
-        db.commit()
-
     update_config_file(
         bind_address=bind_address,
         port=port,
         ssl_enabled=False if disable_ssl else None,
     )
-    fix_db_permissions()
 
     port_str = f":{port}" if port else ""
     ssl_str = " (SSL disabled)" if disable_ssl else ""
@@ -424,10 +472,11 @@ def handle_status(as_json: bool = False) -> Dict[str, Any]:
     if os.path.exists(DB_PATH):
         db_size = os.path.getsize(DB_PATH)
 
-    bind_address = "0.0.0.0"
-    gui_port = 8000
-    https_port = 8443
-    ssl_enabled = False
+    net_cfg = read_network_config()
+    bind_address = net_cfg["bind_address"]
+    gui_port = net_cfg["gui_port"]
+    https_port = net_cfg["https_port"]
+    ssl_enabled = net_cfg["ssl_enabled"]
     has_password = False
     cloudhub_enabled = False
     cloudhub_url = None
@@ -437,10 +486,6 @@ def handle_status(as_json: bool = False) -> Dict[str, Any]:
         with SessionLocal() as db:
             settings = db.query(SystemSettings).first()
             if settings:
-                bind_address = settings.bind_address or "0.0.0.0"
-                gui_port = settings.gui_port or settings.http_port or 8000
-                https_port = settings.https_port or 8443
-                ssl_enabled = bool(settings.ssl_enabled)
                 has_password = bool(settings.gui_password)
                 cloudhub_enabled = bool(settings.cloudhub_enabled)
                 cloudhub_url = settings.cloudhub_url
