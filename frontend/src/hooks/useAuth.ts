@@ -23,6 +23,12 @@ export interface AuthStatus {
 }
 
 export function useAuth() {
+  const isCloudHubSession = typeof window !== 'undefined' && Boolean(
+    (window as any).__CLOUDHUB_PROXY__ ||
+    window.location.pathname.includes('/proxy/') ||
+    new URLSearchParams(window.location.search).has('sso_assertion')
+  );
+  const [isRemoteSessionTerminated, setIsRemoteSessionTerminated] = useState(false);
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -104,9 +110,19 @@ export function useAuth() {
     } catch (err) {
       console.error("Logout failed:", err);
     } finally {
-      setIsAuthenticated(false);
-      setLoginPass('');
-      await fetchAuthStatus();
+      if (isCloudHubSession) {
+        setIsRemoteSessionTerminated(true);
+        setIsAuthenticated(false);
+        try {
+          window.close();
+        } catch {
+          // Fallback handled by interstitial screen
+        }
+      } else {
+        setIsAuthenticated(false);
+        setLoginPass('');
+        await fetchAuthStatus();
+      }
     }
   };
 
@@ -189,5 +205,7 @@ export function useAuth() {
     handleLogoUpload,
     handleLogin,
     handleLogout,
+    isCloudHubSession,
+    isRemoteSessionTerminated,
   };
 }

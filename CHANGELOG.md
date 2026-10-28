@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.53.0] - 2026-10-28
+
+### Added
+- **CloudHub Proxy Awareness & Clean Session Exit (`useAuth.ts`, `Sidebar.tsx`, `App.tsx`)**:
+  - Implemented automatic CloudHub proxy detection (`window.location.pathname` containing `/proxy/` or SSO parameter).
+  - Adapted Sidebar exit action to display dedicated "Disconnect" badge and tooltip (`nav.exitCloudHub`) when operating behind a CloudHub bastion.
+  - Implemented clean session logout invoking `window.close()` upon disconnection, with graceful fallback to an interstitial card screen if the browser security sandbox blocks automatic tab termination.
+  - Complete i18n parity in `en.json`, `es.json`, `ca.json`.
+
 ## [2.52.0] - 2026-10-27
 
 ### Added

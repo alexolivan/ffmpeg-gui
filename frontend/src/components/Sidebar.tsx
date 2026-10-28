@@ -16,6 +16,7 @@ interface SidebarProps {
   logoPath?: string;
   accentColor?: string;
   onLogout?: () => void;
+  isCloudHubSession?: boolean;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -24,7 +25,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   logoText = 'FF', 
   logoPath, 
   accentColor = '#FF6B00',
-  onLogout
+  onLogout,
+  isCloudHubSession = false,
 }) => {
   const { t } = useTranslation();
 
@@ -67,13 +69,19 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="w-full px-4 mt-auto">
           <div 
             onClick={onLogout}
-            className="flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all text-red-400 hover:bg-red-500/10"
-            title={t('nav.logout')}
+            className={`flex items-center gap-4 p-3 rounded-2xl cursor-pointer transition-all ${
+              isCloudHubSession 
+                ? 'text-amber-400 hover:bg-amber-500/10' 
+                : 'text-red-400 hover:bg-red-500/10'
+            }`}
+            title={isCloudHubSession ? t('nav.exitCloudHub', 'Disconnect and return to CloudHub') : t('nav.logout')}
           >
             <span className="flex items-center justify-center w-6 h-6">
               <LogoutIcon size={20} />
             </span>
-            <span className="hidden lg:block font-medium">{t('nav.logout')}</span>
+            <span className="hidden lg:block font-medium">
+              {isCloudHubSession ? t('nav.disconnect', 'Disconnect') : t('nav.logout')}
+            </span>
           </div>
         </div>
       )}

@@ -74,7 +74,9 @@
     "services": "Services",
     "tasks": "Scheduled Tasks",
     "settings": "Settings",
-    "logout": "Logout"
+    "logout": "Logout",
+    "exitCloudHub": "Disconnect and return to CloudHub",
+    "disconnect": "Disconnect"
   },
   "auth": {
     "accessRestricted": "Access restricted. Enter node password.",
@@ -82,6 +84,9 @@
     "unlockNode": "Unlock Node",
     "lockNode": "Lock Node",
     "logout": "Logout",
+    "remoteSessionClosed": "Remote Session Terminated",
+    "remoteSessionClosedDesc": "You have disconnected from this appliance. You can safely close this browser tab.",
+    "closeTab": "Close Tab",
     "checkingAuth": "Verifying security credentials...",
     "permissionsRestored": "Permissions Restored",
     "storageWarning": "Storage Permission Warning"

@@ -74,7 +74,9 @@
     "services": "Serveis",
     "tasks": "Tasques Programades",
     "settings": "Configuració",
-    "logout": "Tancar Sessió"
+    "logout": "Tancar Sessió",
+    "exitCloudHub": "Desconnectar i tornar a CloudHub",
+    "disconnect": "Desconnectar"
   },
   "auth": {
     "accessRestricted": "Accés restringit. Introdueix la contrasenya del node.",
@@ -82,6 +84,9 @@
     "unlockNode": "Desbloquejar Node",
     "lockNode": "Bloquejar Node",
     "logout": "Tancar Sessió",
+    "remoteSessionClosed": "Sessió remota finalitzada",
+    "remoteSessionClosedDesc": "T'has desconnectat d'aquest appliance. Ja pots tancar aquesta pestanya del navegador.",
+    "closeTab": "Tancar pestanya",
     "checkingAuth": "Verificant credencials de seguretat...",
     "permissionsRestored": "Permisos Restaurats",
     "storageWarning": "Avís de Permisos d'Emmagatzematge"

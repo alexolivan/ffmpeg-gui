@@ -74,7 +74,9 @@
     "services": "Servicios",
     "tasks": "Tareas Programadas",
     "settings": "Ajustes",
-    "logout": "Cerrar Sesión"
+    "logout": "Cerrar Sesión",
+    "exitCloudHub": "Desconectar y volver a CloudHub",
+    "disconnect": "Desconectar"
   },
   "auth": {
     "accessRestricted": "Acceso restringido. Introduce la contraseña del nodo.",
@@ -82,6 +84,9 @@
     "unlockNode": "Desbloquear Nodo",
     "lockNode": "Bloquear Nodo",
     "logout": "Cerrar Sesión",
+    "remoteSessionClosed": "Sesión remota finalizada",
+    "remoteSessionClosedDesc": "Te has desconectado de este appliance. Ya puedes cerrar esta pestaña del navegador.",
+    "closeTab": "Cerrar pestaña",
     "checkingAuth": "Verificando credenciales de seguridad...",
     "permissionsRestored": "Permisos Restaurados",
     "storageWarning": "Aviso de Permisos de Almacenamiento"
