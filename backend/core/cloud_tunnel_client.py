@@ -142,6 +142,8 @@ class CloudTunnelClient:
                         icon_data = f"data:image/png;base64,{b64_logo}"
                 except Exception:
                     pass
+            if not icon_data and settings.logo_text:
+                icon_data = settings.logo_text.strip().upper()
 
         payload = {
             "token": enrollment_token.strip(),
@@ -341,7 +343,7 @@ class CloudTunnelClient:
 
                 # Query services workload
                 with self.db_session_factory() as session:
-                    from backend.database.models import Service, ScheduledTask
+                    from backend.database.models import Service, ScheduledTask, SystemSettings
 
                     total_services = session.query(Service).count()
                     running_services = (
@@ -352,9 +354,17 @@ class CloudTunnelClient:
                     )
                     total_tasks = session.query(ScheduledTask).count()
 
+                    sys_settings = session.query(SystemSettings).first()
+                    node_name = sys_settings.node_name if sys_settings else None
+                    logo_text = sys_settings.logo_text if sys_settings else None
+                    logo_path = sys_settings.logo_path if sys_settings else None
+
                 payload = {
                     "type": "heartbeat",
                     "current_version": __version__,
+                    "node_name": node_name,
+                    "logo_text": logo_text,
+                    "logo_path": logo_path,
                     "system": {
                         "cpu_percent": cpu,
                         "memory_percent": ram,

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.53.1] - 2026-10-29
+
+### Added
+- **Node Branding & Identity Telemetry Sync (`backend/core/cloud_tunnel_client.py`)**:
+  - Stream `node_name`, `logo_text` (monogram/abbreviation, e.g. "VS1"), and `logo_path` within periodic telemetry heartbeats to CloudHub.
+  - Extended enrollment handshake to include `logo_text` fallback if image file is absent.
+
+### Fixed
+- **Settings Panel Restart Reconnection Behind Proxy (`frontend/src/components/views/SettingsView.tsx`)**:
+  - Resolved browser reconnection failure and reload loop when triggering "Restart Panel" from within a CloudHub reverse proxy session (`/proxy/{node_id}/`).
+  - Automatically detects proxied context and polls relative endpoints without attempting cross-host/cross-port connections to unreachable local ports, reloading the tab smoothly as soon as the appliance tunnel reconnects.
+  - Replaced hardcoded port jump with intelligent relative polling when direct port has not changed.
+
 ## [2.53.0] - 2026-10-28
 
 ### Added

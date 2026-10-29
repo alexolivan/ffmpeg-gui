@@ -911,14 +911,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
   
   const pollNewPort = () => {
+    // Detect if running behind CloudHub reverse proxy or proxied subpath
+    const isProxied =
+      window.location.pathname.startsWith('/proxy/') ||
+      Boolean((window as any).__CLOUDHUB_SESSION__);
+
+    if (isProxied) {
+      // Behind CloudHub proxy: the browser path is /proxy/{node_id}/...
+      // Poll through relative proxy path until the appliance tunnel reconnects and returns 200 OK.
+      const pingUrl = `${API}/api/settings/software`;
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(pingUrl, { cache: 'no-store' });
+          if (res.ok) {
+            clearInterval(interval);
+            window.location.reload();
+          }
+        } catch {
+          // Keep polling until edge tunnel is back online
+        }
+      }, 1500);
+      return;
+    }
+
     const targetPort = settings.gui_port || 8000;
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
+    const currentPort = window.location.port || (protocol === 'https:' ? '443' : '80');
+
+    // If port has not changed, just poll relative endpoint
+    if (String(targetPort) === currentPort) {
+      const pingUrl = `${API}/settings`;
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(pingUrl, { cache: 'no-store' });
+          if (res.ok) {
+            clearInterval(interval);
+            window.location.reload();
+          }
+        } catch {
+          // Keep polling
+        }
+      }, 1500);
+      return;
+    }
+
     const url = `${protocol}//${hostname}:${targetPort}/settings`;
-    
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: 'no-store' });
         if (res.ok) {
           clearInterval(interval);
           // Redirect browser to the new port address
