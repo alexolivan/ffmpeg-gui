@@ -280,15 +280,35 @@ class CloudTunnelClient:
                 "X-Tunnel-Signature": sig,
             }
 
+            # Fallback credentials in query parameters in case proxy/CDN strips X- headers
+            ws_url = f"{ws_scheme}://{netloc}/api/edge/tunnel?node_id={node_id}&timestamp={now_ts}&signature={sig}"
+
+            connect_kwargs: Dict[str, Any] = {
+                "ping_interval": 20,
+                "ping_timeout": 10,
+            }
+            ws_ssl = get_loopback_ssl_context(parsed)
+            if ws_ssl is not None:
+                connect_kwargs["ssl"] = ws_ssl
+
+            # Support both websockets >= 14 (additional_headers) and websockets < 14 (extra_headers)
+            try:
+                import inspect
+                sig_params = inspect.signature(websockets.connect).parameters
+                if "additional_headers" in sig_params:
+                    connect_kwargs["additional_headers"] = headers
+                elif "extra_headers" in sig_params:
+                    connect_kwargs["extra_headers"] = headers
+                else:
+                    connect_kwargs["additional_headers"] = headers
+            except Exception:
+                connect_kwargs["additional_headers"] = headers
+
             try:
                 logger.info("Connecting reverse tunnel to CloudHub: %s", ws_url)
-                ws_ssl = get_loopback_ssl_context(parsed)
                 async with websockets.connect(
                     ws_url,
-                    ssl=ws_ssl,
-                    additional_headers=headers,
-                    ping_interval=20,
-                    ping_timeout=10,
+                    **connect_kwargs,
                 ) as ws:
                     self._ws = ws
                     self._connected = True
