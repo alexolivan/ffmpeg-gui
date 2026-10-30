@@ -348,29 +348,10 @@ def handle_enroll_cloudhub(
     hub_url_clean = hub_url.strip().rstrip("/")
     token_clean = token.strip()
 
-    # Check for local SSL / public bind conflict using config file
-    net_cfg = read_network_config()
-    has_ssl = bool(net_cfg["ssl_enabled"]) or (net_cfg["ssl_mode"] and net_cfg["ssl_mode"] != "disabled")
-    is_public = net_cfg["bind_address"] not in ("127.0.0.1", "localhost", "::1")
-
-    if has_ssl or is_public:
-        if disable_local_ssl is None:
-            if non_interactive:
-                disable_local_ssl = True
-            else:
-                print("\n[!] Notice: This ffmpeg-gui node currently has local SSL enabled or is listening publicly.")
-                print("    When paired with CloudHub on the same machine, disabling local SSL and binding")
-                print("    to 127.0.0.1 avoids port 80/443 conflicts and secures backend communication.")
-                try:
-                    ans = input("    Disable local SSL and bind to 127.0.0.1? [Y/n]: ").strip().lower()
-                    disable_local_ssl = ans in ("", "y", "yes")
-                except (KeyboardInterrupt, EOFError):
-                    print("\nAborted.")
-                    return False
-
-        if disable_local_ssl:
-            print("[-] Disabling local SSL and moving bind address to 127.0.0.1...")
-            update_config_file(bind_address="127.0.0.1", ssl_enabled=False)
+    # If explicitly requested via --disable-local-ssl, adjust bind and SSL settings
+    if disable_local_ssl:
+        print("[-] Disabling local SSL and moving bind address to 127.0.0.1 as requested...")
+        update_config_file(bind_address="127.0.0.1", ssl_enabled=False)
 
     print(f"[*] Contacting CloudHub orchestrator at {hub_url_clean}...")
     try:

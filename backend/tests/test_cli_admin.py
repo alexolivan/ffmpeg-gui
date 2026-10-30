@@ -110,6 +110,24 @@ class TestAdminCLI(unittest.TestCase):
         self.assertTrue(res)
         mock_cfg.assert_called_with(bind_address="127.0.0.1", port=8080, ssl_enabled=False)
 
+    @patch("cli.update_config_file")
+    @patch("cli.check_service_active")
+    @patch("core.cloud_tunnel_client.CloudTunnelClient.enroll")
+    def test_enroll_cloudhub_default_preserves_network_config(
+        self, mock_enroll, mock_svc, mock_cfg
+    ):
+        mock_svc.return_value = (False, None)
+        mock_enroll.return_value = {"node_id": "ch_node_test123"}
+
+        from cli import handle_enroll_cloudhub
+        res = handle_enroll_cloudhub(
+            hub_url="http://127.0.0.1:9000",
+            token="test_token_123",
+        )
+        self.assertTrue(res)
+        mock_cfg.assert_not_called()
+        mock_enroll.assert_called_once_with("http://127.0.0.1:9000", "test_token_123")
+
     @patch("cli.read_network_config")
     @patch("cli.update_config_file")
     @patch("cli.check_service_active")
