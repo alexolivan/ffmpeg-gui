@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.54.0] - 2026-11-02
+
+### Added
+- **Centralized Bidirectional Telemetry Subscription Hub (`backend/core/websocket_subscription_hub.py`, `backend/main.py`)**:
+  - Implemented `WebSocketSubscriptionHub` managing per-client subscriptions over the existing `/ws/telemetry` socket.
+  - Supports on-demand subscriptions for `process_logs`, `task_logs`, and `resource_locks` with initial backlog snapshots and live delta broadcasts.
+  - Integrated heartbeat ping/pong handling and automatic subscription cleanup on client disconnect.
+- **Frontend Telemetry Context & Subscription Hook (`frontend/src/context/TelemetryContext.tsx`)**:
+  - Created `<TelemetryProvider>` holding a single authenticated WebSocket connection with exponential backoff auto-reconnect.
+  - Implemented `useTelemetrySubscription(topic, targetId)` hook that automatically subscribes on mount, buffers live log lines, and unsubscribes on unmount.
+  - Added reactive system telemetry state sharing (`systemTelemetry`, `resourceLocks`, `processesData`, `taskExecutions`).
+
+### Changed
+- **Eradication of Client-Side HTTP Polling Cascades**:
+  - Converted all preview modals (`FfmpegPreviewModal`, `ProcessPreviewModal`, `DesktopPreviewModal`, `KioskPreviewModal`, `IcecastPreviewModal`, `MediaMtxPreviewModal`, `PipeWirePreviewModal`, `MediaMtxServiceModal`) to use WebSocket telemetry subscriptions for logs and progress.
+  - Converted task details and execution log tracking in `ScheduledTasks.tsx` to on-demand WebSocket subscriptions.
+  - Replaced periodic lock polling in `DestinationPanel.tsx` with reactive `useTelemetry().resourceLocks`.
+  - Replaced periodic LCD locator polling in `DashboardView.tsx` with reactive `system.lcd.locator_active` telemetry.
+  - Removed blind interval polling in `CloudHubSettingsCard`, `BruteForceProtectionCard`, `DecklinkSettingsCard`, `MagewellSettingsCard`, and `useAuth`.
+
 ## [2.53.2] - 2026-11-02
 
 ### Fixed
