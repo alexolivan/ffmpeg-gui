@@ -639,5 +639,44 @@ class TestTaskAPI(unittest.TestCase):
         # Clean up API test process
         self.client.delete(f"/processes/{api_proc_id}")
 
+    def test_process_preview_cloudhub_and_snapshot_mode(self):
+        """Verify preview endpoint returns single JPEG snapshot when requested with CloudHub channel or snapshot param."""
+        # Create a test process
+        payload = {
+            "name": "Preview Test Process",
+            "input_config": {"type": "file", "path": "/tmp/test.mp4"},
+            "output_config": {"type": "udp", "host": "127.0.0.1", "port": 1234},
+            "codec_config": {"vcodec": "copy", "acodec": "copy"}
+        }
+        res = self.client.post("/processes", json=payload)
+        self.assertEqual(res.status_code, 200)
+        proc_id = res.json()["id"]
+
+        try:
+            with patch("core.preview_manager.PreviewManager.get_snapshot", return_value=b"fake_jpeg_content"):
+                # Test with x-authenticated-channel: cloudhub header
+                res_ch = self.client.get(
+                    f"/processes/{proc_id}/preview",
+                    headers={"x-authenticated-channel": "cloudhub"}
+                )
+                self.assertEqual(res_ch.status_code, 200)
+                self.assertEqual(res_ch.headers["content-type"], "image/jpeg")
+                self.assertEqual(res_ch.content, b"fake_jpeg_content")
+
+                # Test with snapshot=1 query param
+                res_snap = self.client.get(f"/processes/{proc_id}/preview?snapshot=1")
+                self.assertEqual(res_snap.status_code, 200)
+                self.assertEqual(res_snap.headers["content-type"], "image/jpeg")
+                self.assertEqual(res_snap.content, b"fake_jpeg_content")
+
+            with patch("core.preview_manager.PreviewManager.get_snapshot", return_value=None):
+                res_ch_empty = self.client.get(
+                    f"/processes/{proc_id}/preview",
+                    headers={"x-authenticated-channel": "cloudhub"}
+                )
+                self.assertEqual(res_ch_empty.status_code, 204)
+        finally:
+            self.client.delete(f"/processes/{proc_id}")
+
 if __name__ == "__main__":
     unittest.main()

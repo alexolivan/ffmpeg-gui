@@ -160,6 +160,57 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Bearer ", body_json["auth"])
         self.assertIn("gui_session=", body_json["cookie"])
 
+    async def test_in_memory_asgi_streaming_disconnect_handling(self):
+        """Verify ASGI streaming responses terminate gracefully without raising unexpected http.request errors."""
+        async def streaming_asgi_app(scope, receive, send):
+            if scope["type"] == "http":
+                await send({
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"multipart/x-mixed-replace; boundary=ffmpeg")],
+                })
+                # Application first consumes request body
+                req_msg = await receive()
+                self.assertEqual(req_msg["type"], "http.request")
+                self.assertFalse(req_msg["more_body"])
+
+                # Simulate Starlette listening for disconnect while streaming
+                await send({
+                    "type": "http.response.body",
+                    "body": b"--ffmpeg\r\nContent-Type: image/jpeg\r\n\r\nfakejpg\r\n",
+                    "more_body": True,
+                })
+                # Check receive() behavior: should wait or get disconnect, NOT crash
+                msg = await receive()
+                self.assertEqual(msg["type"], "http.disconnect")
+                await send({
+                    "type": "http.response.body",
+                    "body": b"",
+                    "more_body": False,
+                })
+
+        client = CloudTunnelClient(asgi_app=streaming_asgi_app, db_session_factory=self.Session)
+        sent_messages = []
+        class MockWS:
+            async def send(self, msg_str):
+                sent_messages.append(json.loads(msg_str))
+
+        http_req = {
+            "type": "http_request",
+            "stream_id": "stream-1",
+            "method": "GET",
+            "path": "/processes/1/preview",
+            "query": "",
+            "headers": {},
+            "body": None,
+        }
+
+        await client._handle_asgi_http(MockWS(), http_req, "secret", sso_enabled=False)
+        self.assertEqual(len(sent_messages), 1)
+        resp = sent_messages[0]
+        self.assertEqual(resp["status_code"], 200)
+        self.assertIn(b"fakejpg", decode_body(resp["body"]))
+
     def test_disconnect_hub(self):
         """Verify disconnect_hub clears node credentials in DB."""
         self.client.disconnect_hub()

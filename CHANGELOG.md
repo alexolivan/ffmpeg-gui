@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.54.1] - 2026-11-02
+
+### Fixed
+- **CloudHub Reverse Tunnel ASGI Streaming Disconnect & MJPEG Previews (`cloud_tunnel_client.py`, `backend/main.py`)**:
+  - Complied with ASGI 3.0 specification in `_handle_asgi_http` by awaiting disconnect rather than re-yielding unexpected `http.request` events after body completion, eliminating the Starlette `Unexpected message received: http.request` 500 error.
+  - Implemented single-frame snapshot resolution via `PreviewManager.get_snapshot()` for CloudHub reverse bastion requests (`x-authenticated-channel: cloudhub`), preventing infinite stream buffering on HTTP request/response frames.
+  - Added periodic snapshot key refresh in `FfmpegPreviewModal`, `ProcessPreviewModal`, and `ScheduledTasks` when running behind a CloudHub proxy.
+
 ## [2.54.0] - 2026-11-02
 
 ### Added

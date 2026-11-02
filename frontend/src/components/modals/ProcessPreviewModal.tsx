@@ -61,6 +61,17 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
   const [progressData, setProgressData] = useState<any>(null);
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
+  const isCloudHub = typeof window !== 'undefined' && window.location.pathname.includes('/proxy/');
+  const [snapshotKey, setSnapshotKey] = useState<number>(Date.now());
+
+  // Periodically refresh preview snapshot when viewing behind CloudHub reverse bastion
+  useEffect(() => {
+    if (!isCloudHub || !showPreview) return;
+    const interval = setInterval(() => {
+      setSnapshotKey(Date.now());
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [isCloudHub, showPreview]);
 
   const mtxCfg = currentProcess.config?.mediamtx_config || currentProcess.config || {};
 
@@ -430,7 +441,7 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
                   <div className="flex flex-col justify-center">
                     <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
                       <img
-                        src={`${API}/processes/${currentProcess.id}/preview`}
+                        src={`${API}/processes/${currentProcess.id}/preview${isCloudHub ? `?t=${snapshotKey}` : ''}`}
                         alt="Live Preview"
                         className="max-h-full max-w-full object-contain"
                       />

@@ -549,6 +549,7 @@ class CloudTunnelClient:
 
         # Body stream
         body_sent = False
+        disconnect_event = asyncio.Event()
 
         async def receive():
             nonlocal body_sent
@@ -559,7 +560,9 @@ class CloudTunnelClient:
                     "body": body_bytes,
                     "more_body": False,
                 }
-            return {"type": "http.request", "body": b"", "more_body": False}
+            # Per ASGI 3.0 spec, wait for disconnect once request body has finished
+            await disconnect_event.wait()
+            return {"type": "http.disconnect"}
 
         resp_status = 500
         resp_headers = []
@@ -578,6 +581,11 @@ class CloudTunnelClient:
                 chunk = message.get("body", b"")
                 if chunk:
                     resp_body_chunks.append(chunk)
+                # If streaming response (e.g. MJPEG multipart), terminate after first frame to avoid infinite hang
+                for hk, hv in resp_headers:
+                    if hk.lower() == "content-type" and "multipart/x-mixed-replace" in hv.lower():
+                        disconnect_event.set()
+                        break
 
         try:
             await self.app(scope, receive, send)
@@ -600,6 +608,8 @@ class CloudTunnelClient:
                 "body": encode_body(json.dumps({"detail": str(err)}).encode("utf-8")),
             }
             await ws.send(json.dumps(err_frame))
+        finally:
+            disconnect_event.set()
 
     async def _handle_asgi_ws_open(
         self, ws: Any, frame: Dict[str, Any], tunnel_secret: str, sso_enabled: bool

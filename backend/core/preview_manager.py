@@ -7,6 +7,22 @@ class PreviewManager:
     def __init__(self):
         self.logger = logging.getLogger("PreviewManager")
 
+    def get_snapshot(self, process_id: int, is_task: bool = False):
+        """Retrieve the latest single JPEG frame from disk for snapshots/proxies."""
+        try:
+            from database.db import PREVIEWS_DIR
+        except ImportError:
+            from backend.database.db import PREVIEWS_DIR
+        prefix = "preview_task" if is_task else "preview"
+        preview_path = os.path.join(PREVIEWS_DIR, f"{prefix}_{process_id}.jpg")
+        if os.path.exists(preview_path):
+            try:
+                with open(preview_path, 'rb') as f:
+                    return f.read()
+            except Exception as e:
+                self.logger.error(f"Error reading preview file: {e}")
+        return None
+
     async def get_mjpeg_stream(self, process_id: int, input_config: dict, is_running: bool, is_task: bool = False):
         if is_running:
             # Stream the generated JPEG thumbnail from disk

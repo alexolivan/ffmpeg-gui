@@ -6821,12 +6821,20 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
 
 
 @app.get("/processes/{process_id}/preview")
-async def get_preview(process_id: int, db: Session = Depends(get_db)):
+async def get_preview(process_id: int, request: Request, db: Session = Depends(get_db)):
     media_proc = db.query(MediaProcess).get(process_id)
     if not media_proc:
         raise HTTPException(status_code=404, detail="Process not found")
 
     is_running = media_proc.status == 'running'
+
+    # Single snapshot fallback for CloudHub proxy or explicit snapshot queries
+    if request.headers.get("x-authenticated-channel") == "cloudhub" or request.query_params.get("snapshot"):
+        img = preview_manager.get_snapshot(media_proc.id, is_task=False)
+        if img:
+            return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return Response(status_code=204)
+
     return StreamingResponse(
         preview_manager.get_mjpeg_stream(media_proc.id, media_proc.input_config, is_running),
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"
@@ -7157,12 +7165,20 @@ def download_audit_logs():
 
 
 @app.get("/api/services/{service_id}/preview")
-async def get_service_preview(service_id: int, db: Session = Depends(get_db)):
+async def get_service_preview(service_id: int, request: Request, db: Session = Depends(get_db)):
     media_proc = db.query(MediaProcess).get(service_id)
     if not media_proc:
         raise HTTPException(status_code=404, detail="Service not found")
     is_running = media_proc.status == 'running'
     input_config = media_proc.config.get("input_config", {}) if media_proc.config else {}
+
+    # Single snapshot fallback for CloudHub proxy or explicit snapshot queries
+    if request.headers.get("x-authenticated-channel") == "cloudhub" or request.query_params.get("snapshot"):
+        img = preview_manager.get_snapshot(media_proc.id, is_task=False)
+        if img:
+            return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return Response(status_code=204)
+
     return StreamingResponse(
         preview_manager.get_mjpeg_stream(media_proc.id, input_config, is_running),
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"
@@ -7332,13 +7348,21 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
 
 
 @app.get("/tasks/executions/{execution_id}/preview")
-async def get_task_preview(execution_id: int, db: Session = Depends(get_db)):
+async def get_task_preview(execution_id: int, request: Request, db: Session = Depends(get_db)):
     execution = db.query(TaskExecution).get(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
 
     is_running = execution.status == 'running'
     input_config = execution.task.input_config if execution.task else {}
+
+    # Single snapshot fallback for CloudHub proxy or explicit snapshot queries
+    if request.headers.get("x-authenticated-channel") == "cloudhub" or request.query_params.get("snapshot"):
+        img = preview_manager.get_snapshot(execution.id, is_task=True)
+        if img:
+            return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return Response(status_code=204)
+
     return StreamingResponse(
         preview_manager.get_mjpeg_stream(execution.id, input_config, is_running, is_task=True),
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"

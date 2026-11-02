@@ -78,6 +78,17 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const [copySuccess, setCopySuccess] = useState(false);
   const [copyHlsSuccess, setCopyHlsSuccess] = useState(false);
   const [showDiagnosticLogs, setShowDiagnosticLogs] = useState<boolean>(false);
+  const isCloudHub = typeof window !== 'undefined' && window.location.pathname.includes('/proxy/');
+  const [snapshotKey, setSnapshotKey] = useState<number>(Date.now());
+
+  // Periodically refresh preview snapshot when viewing behind CloudHub reverse bastion
+  useEffect(() => {
+    if (!isCloudHub || !previewEnabled || !isRunning) return;
+    const interval = setInterval(() => {
+      setSnapshotKey(Date.now());
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [isCloudHub, previewEnabled, isRunning]);
 
   // Automatically expand diagnostic logs if the process is in an error or restarting state
   useEffect(() => {
@@ -355,7 +366,7 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 ) : previewEnabled ? (
                   <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
                     <img
-                      src={`${API}/processes/${currentProcess.id}/preview`}
+                      src={`${API}/processes/${currentProcess.id}/preview${isCloudHub ? `?t=${snapshotKey}` : ''}`}
                       alt="Live Preview"
                       className="max-h-full max-w-full object-contain"
                     />
