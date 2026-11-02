@@ -3676,12 +3676,20 @@ async def websocket_telemetry(websocket: WebSocket):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
+    from core.websocket_subscription_hub import subscription_hub
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            raw_msg = await websocket.receive_text()
+            await subscription_hub.handle_client_message(
+                websocket, raw_msg, process_manager=process_manager, db_session_factory=SessionLocal
+            )
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        subscription_hub.unregister_client(websocket)
+    except Exception:
+        manager.disconnect(websocket)
+        subscription_hub.unregister_client(websocket)
 
 def resolve_lease_display_name(token: str, services_lookup: dict, tasks_lookup: dict) -> str:
     """
@@ -3953,7 +3961,8 @@ async def telemetry_broadcast_loop():
                 "release_url": updates.get("release_url"),
                 "lcd": {
                     "connected": lcd_manager is not None and lcd_manager._running,
-                    "port": lcd_manager.port if lcd_manager else None
+                    "port": lcd_manager.port if lcd_manager else None,
+                    "locator_active": bool(lcd_manager.locator_active if (lcd_manager and lcd_manager._running) else False)
                 },
                 "system_uptime_seconds": int(time.time() - psutil.boot_time()),
                 "service_uptime_seconds": int(time.time() - SERVICE_START_TIME),
@@ -3989,6 +3998,11 @@ async def telemetry_broadcast_loop():
                 "resource_locks": active_resource_locks,
                 "hardware_health": hardware_health_data,
             })
+
+            from core.websocket_subscription_hub import subscription_hub
+            await subscription_hub.broadcast_deltas(
+                process_manager=process_manager, db_session_factory=SessionLocal
+            )
 
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
