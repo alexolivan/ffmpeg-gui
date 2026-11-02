@@ -127,18 +127,10 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
     isMountedRef.current = true;
     fetchStatus();
 
-    // Live telemetry polling interval (every 3 seconds, paused when modal is open)
-    const interval = setInterval(() => {
-      if (!configuringDevice) {
-        fetchStatus();
-      }
-    }, 3000);
-
     return () => {
       isMountedRef.current = false;
-      clearInterval(interval);
     };
-  }, [fetchStatus, configuringDevice]);
+  }, [fetchStatus]);
 
   const handleCloseConfig = () => {
     setConfiguringDevice(null);

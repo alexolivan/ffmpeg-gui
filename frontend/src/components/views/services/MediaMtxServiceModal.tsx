@@ -2,19 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ServerIcon, ClipboardIcon } from '../../Icons';
 import { copyToClipboard } from '../../../utils/clipboard';
+import { useTelemetry } from '../../../context/TelemetryContext';
 
 interface MediaMtxServiceModalProps {
   service: any;
   isOpen: boolean;
   onClose: () => void;
-  API: string;
+  API?: string;
 }
 
 export const MediaMtxServiceModal: React.FC<MediaMtxServiceModalProps> = ({
   service,
   isOpen,
   onClose,
-  API,
 }) => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'endpoints' | 'logs'>('endpoints');
@@ -70,32 +70,28 @@ export const MediaMtxServiceModal: React.FC<MediaMtxServiceModalProps> = ({
     },
   ];
 
-  // Poll logs when modal and logs tab are active
+  const { subscribe } = useTelemetry();
+
+  // Subscribe to logs via WebSocket on-demand (Zero HTTP polling)
   useEffect(() => {
-    if (!isOpen || activeTab !== 'logs' || !service?.id) return;
+    if (!isOpen || activeTab !== 'logs' || !service?.id) {
+      setLogs([]);
+      return;
+    }
 
-    let isSubscribed = true;
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/api/processes/${service.id}/logs`);
-        if (res.ok && isSubscribed) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setLogs(data.map((l: any) => (typeof l === 'string' ? l : l.message || JSON.stringify(l))));
-          }
-        }
-      } catch (err) {
-        console.error(err);
+    const unsub = subscribe('process_logs', service.id, (msg: any) => {
+      if (msg.reset) {
+        setLogs((msg.lines || []).map((l: any) => (typeof l === 'string' ? l : l.message || JSON.stringify(l))));
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setLogs((prev) => [
+          ...prev,
+          ...msg.lines.map((l: any) => (typeof l === 'string' ? l : l.message || JSON.stringify(l))),
+        ]);
       }
-    };
+    });
 
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => {
-      isSubscribed = false;
-      clearInterval(interval);
-    };
-  }, [isOpen, activeTab, service?.id, API]);
+    return () => unsub();
+  }, [isOpen, activeTab, service?.id, subscribe]);
 
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {

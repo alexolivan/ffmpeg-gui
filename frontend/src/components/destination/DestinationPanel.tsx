@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { SystemCapabilities } from '../codec/codecRegistry';
 import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
 import { ShieldIcon } from '../Icons';
+import { useTelemetry } from '../../context/TelemetryContext';
 
 export interface OutputConfig {
   type: string;
@@ -390,35 +391,36 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   }, []);
 
   // Resource collision locks tracking
-  const [resourceLocks, setResourceLocks] = React.useState<any[]>([]);
+  const { resourceLocks: localResourceLocks } = useTelemetry();
+  const [remoteResourceLocks, setRemoteResourceLocks] = React.useState<any[]>([]);
 
   React.useEffect(() => {
+    if (!config.peer_node_id) {
+      setRemoteResourceLocks([]);
+      return;
+    }
     let active = true;
-    const fetchLocks = () => {
-      const params = new URLSearchParams();
-      if (config.peer_node_id) {
-        params.set('peer_node_id', String(config.peer_node_id));
-        if (config.peer_service_id) {
-          params.set('service_id', String(config.peer_service_id));
-        }
-      }
-      const qs = params.toString() ? `?${params.toString()}` : '';
-      fetch(`/api/resources/locks${qs}`)
-        .then(res => res.ok ? res.json() : { locks: [] })
-        .then(data => {
-          if (active) setResourceLocks(data.locks || []);
-        })
-        .catch(() => {
-          if (active) setResourceLocks([]);
-        });
-    };
-    fetchLocks();
-    const timer = setInterval(fetchLocks, 5000);
+    const params = new URLSearchParams();
+    params.set('peer_node_id', String(config.peer_node_id));
+    if (config.peer_service_id) {
+      params.set('service_id', String(config.peer_service_id));
+    }
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    fetch(`/api/resources/locks${qs}`)
+      .then(res => (res.ok ? res.json() : { locks: [] }))
+      .then(data => {
+        if (active) setRemoteResourceLocks(data.locks || []);
+      })
+      .catch(() => {
+        if (active) setRemoteResourceLocks([]);
+      });
+
     return () => {
       active = false;
-      clearInterval(timer);
     };
   }, [config.peer_node_id, config.peer_service_id]);
+
+  const resourceLocks = config.peer_node_id ? remoteResourceLocks : localResourceLocks;
 
   const getResourceLock = (serviceType: 'icecast' | 'mediamtx', pathOrMount: string) => {
     if (!pathOrMount) return null;

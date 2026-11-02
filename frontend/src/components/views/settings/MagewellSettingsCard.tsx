@@ -129,18 +129,10 @@ export const MagewellSettingsCard: React.FC<{ API?: string }> = ({ API = '' }) =
     isMountedRef.current = true;
     fetchStatus();
 
-    // Live telemetry polling (every 3 seconds, paused during modal interaction)
-    const interval = setInterval(() => {
-      if (!configuringChannel) {
-        fetchStatus();
-      }
-    }, 3000);
-
     return () => {
       isMountedRef.current = false;
-      clearInterval(interval);
     };
-  }, [fetchStatus, configuringChannel]);
+  }, [fetchStatus]);
 
   const handleCloseConfig = () => {
     setConfiguringChannel(null);

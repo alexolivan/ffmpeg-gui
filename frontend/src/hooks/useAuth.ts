@@ -168,10 +168,6 @@ export function useAuth() {
 
   useEffect(() => {
     fetchAuthStatus();
-    if (!isAuthenticated) {
-      const interval = setInterval(fetchAuthStatus, 4000);
-      return () => clearInterval(interval);
-    }
   }, [isAuthenticated]);
 
   useEffect(() => {

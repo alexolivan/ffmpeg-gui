@@ -100,19 +100,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const activeHardwareHealth = systemTelemetry?.hardware_health || hardwareHealth;
 
   useEffect(() => {
-    let interval: any;
-    if (systemTelemetry.lcd && systemTelemetry.lcd.connected) {
-      const checkStatus = () => {
-        fetch('/api/lcd/locator')
-          .then(res => res.json())
-          .then(data => setLocatorActive(!!data.active))
-          .catch(err => console.error(err));
-      };
-      checkStatus();
-      interval = setInterval(checkStatus, 2000);
+    if (systemTelemetry?.lcd?.locator_active !== undefined) {
+      setLocatorActive(Boolean(systemTelemetry.lcd.locator_active));
     }
-    return () => clearInterval(interval);
-  }, [systemTelemetry.lcd?.connected]);
+  }, [systemTelemetry?.lcd?.locator_active]);
 
   const toggleLocator = async () => {
     try {

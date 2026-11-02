@@ -99,8 +99,6 @@ export const BruteForceProtectionCard: React.FC<BruteForceProtectionCardProps> =
 
   useEffect(() => {
     fetchSecurityStatus();
-    const interval = setInterval(fetchSecurityStatus, 10000);
-    return () => clearInterval(interval);
   }, [API]);
 
   const handleUnblock = async (ip: string) => {
