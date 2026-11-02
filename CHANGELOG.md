@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.53.2] - 2026-11-02
+
+### Fixed
+- **WSS Reverse Tunnel Resilience (`backend/core/cloud_tunnel_client.py`)**:
+  - Omitted explicit `ssl=None` on secure `wss://` WebSocket handshakes, allowing Python's default SSL context to authenticate certificates properly.
+  - Added compatibility fallback for `extra_headers` vs `additional_headers` across older and modern `websockets` library versions.
+- **CLI CloudHub Enrollment Non-Disruptive Flow (`backend/cli.py`)**:
+  - Preserved existing network listener interface and local SSL settings during `enroll-cloudhub` without prompting or forcing loopback binding.
+  - Ensured network and SSL configuration are read directly from and written to `config/config.json` rather than volatile runtime state.
+- **Database Path Auto-Resolution in Admin CLI (`backend/cli.py`)**:
+  - Automatically resolves database location and guarantees schema initialization in CLI operations before executing admin commands.
+
 ## [2.53.1] - 2026-10-29
 
 ### Added
