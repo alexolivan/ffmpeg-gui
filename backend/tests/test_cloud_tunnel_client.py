@@ -194,6 +194,37 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["latest_release"], "2.52.0")
         self.assertIn("v2.52.0", res["release_url"])
 
+    async def test_revoke_frame_handling(self):
+        """Verify receiving revoke frame automatically clears credentials and stops tunnel."""
+        mock_ws = MagicMock()
+        mock_ws.close = MagicMock(return_value=asyncio.sleep(0))
+
+        with self.Session() as session:
+            settings = session.query(SystemSettings).first()
+            settings.cloudhub_enabled = True
+            session.commit()
+
+        revoke_msg = json.dumps({"type": "revoke", "reason": "unlinked_by_superadmin"})
+        await self.client._dispatch_tunnel_frame(mock_ws, revoke_msg, "secret", True)
+
+        self.assertTrue(self.client._revoked)
+        with self.Session() as session:
+            settings = session.query(SystemSettings).first()
+            self.assertFalse(settings.cloudhub_enabled)
+            self.assertIsNone(settings.cloudhub_node_id)
+
+    async def test_send_unlink_notify(self):
+        """Verify sending unlink_notify sends control frame to CloudHub."""
+        mock_ws = MagicMock()
+        mock_ws.send = MagicMock(return_value=asyncio.sleep(0))
+        self.client._ws = mock_ws
+        self.client._connected = True
+
+        await self.client.send_unlink_notify()
+        mock_ws.send.assert_called_once()
+        sent_data = json.loads(mock_ws.send.call_args[0][0])
+        self.assertEqual(sent_data["type"], "unlink_notify")
+
 
 if __name__ == "__main__":
     unittest.main()

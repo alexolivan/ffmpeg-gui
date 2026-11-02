@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensured network and SSL configuration are read directly from and written to `config/config.json` rather than volatile runtime state.
 - **Database Path Auto-Resolution in Admin CLI (`backend/cli.py`)**:
   - Automatically resolves database location and guarantees schema initialization in CLI operations before executing admin commands.
+- **Symmetric Node Revocation & Voluntary Unlink Protocol (`cloud_tunnel_client.py`, `backend/main.py`)**:
+  - Immediately halts the tunnel reconnection loop upon receiving a `revoke` frame or close code `4004` from CloudHub, clearing local credentials and persisting a `CLOUDHUB_REVOKED` audit log entry.
+  - Actively emits an `unlink_notify` control frame to CloudHub when unlinked voluntarily by the appliance hardware owner before tearing down the outbound WebSocket.
 
 ## [2.53.1] - 2026-10-29
 
