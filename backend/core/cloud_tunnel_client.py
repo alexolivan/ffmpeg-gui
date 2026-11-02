@@ -65,6 +65,7 @@ class CloudTunnelClient:
         self._task: Optional[asyncio.Task] = None
         self._ws: Optional[Any] = None
         self._connected = False
+        self._revoked = False
         self._last_connected_at: Optional[float] = None
         self._last_error: Optional[str] = None
         self._active_ws_streams: Dict[str, asyncio.Queue] = {}
@@ -191,6 +192,38 @@ class CloudTunnelClient:
             data["node_id"],
         )
         return data
+
+    async def send_unlink_notify(self) -> None:
+        """Send voluntary unlink notification frame to CloudHub before closing."""
+        if self._ws and self._connected:
+            try:
+                frame = {
+                    "type": "unlink_notify",
+                    "reason": "unlinked_by_owner",
+                }
+                await self._ws.send(json.dumps(frame))
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.debug("Failed to send unlink_notify frame: %s", e)
+
+    def _record_revocation_audit(self, reason: str) -> None:
+        """Record audit event when CloudHub revokes node enrollment."""
+        try:
+            try:
+                from core.audit_logger import audit_logger
+            except ImportError:
+                from backend.core.audit_logger import audit_logger
+            audit_logger.log(
+                action="CLOUDHUB_REVOKED",
+                target_type="settings",
+                target_id="cloudhub",
+                target_name="CloudHub",
+                channel="cloudhub",
+                username="cloudhub_admin",
+                details=f"Appliance enrollment revoked by CloudHub: {reason}",
+            )
+        except Exception as exc:
+            logger.debug("Failed to write audit log for cloudhub revocation: %s", exc)
 
     def disconnect_hub(self) -> None:
         """Clear enrollment credentials and disable tunnel."""
@@ -324,6 +357,8 @@ class CloudTunnelClient:
 
                     try:
                         async for message in ws:
+                            if self._revoked:
+                                break
                             asyncio.create_task(
                                 self._dispatch_tunnel_frame(
                                     ws, message, tunnel_secret, sso_enabled
@@ -339,6 +374,16 @@ class CloudTunnelClient:
             except Exception as err:
                 self._connected = False
                 self._last_error = str(err)
+                err_code = getattr(err, "code", None)
+                is_revoked = self._revoked or err_code == 4004 or "4004" in str(err)
+                if is_revoked:
+                    logger.warning(
+                        "[!] CloudHub node enrollment is revoked or rejected (4004). Stopping tunnel permanently."
+                    )
+                    self.disconnect_hub()
+                    self._record_revocation_audit("Enrollment revoked or not found in CloudHub (4004)")
+                    break
+
                 logger.warning(
                     "CloudHub tunnel disconnected (%s). Reconnecting in %.1fs...",
                     err,
@@ -415,7 +460,22 @@ class CloudTunnelClient:
             msg_type = msg.get("type")
             stream_id = msg.get("stream_id")
 
-            if msg_type == "http_req":
+            if msg_type == "revoke":
+                reason = msg.get("reason", "Revoked by CloudHub administrator")
+                logger.warning(
+                    "[!] CloudHub revoked this appliance enrollment (%s). Clearing local credentials and stopping tunnel.",
+                    reason,
+                )
+                self._revoked = True
+                self.disconnect_hub()
+                self._record_revocation_audit(reason)
+                try:
+                    await ws.close(code=1000, reason="Acknowledged Revocation")
+                except Exception:
+                    pass
+                return
+
+            elif msg_type == "http_req":
                 await self._handle_asgi_http(ws, msg, tunnel_secret, sso_enabled)
 
             elif msg_type == "ws_open":

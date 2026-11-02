@@ -2727,6 +2727,7 @@ async def disconnect_cloudhub(request: Request):
     """
     global cloud_tunnel_client
     if cloud_tunnel_client:
+        await cloud_tunnel_client.send_unlink_notify()
         await cloud_tunnel_client.stop()
         cloud_tunnel_client.disconnect_hub()
     else:
