@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from './hooks/useAuth';
 import { AuthenticatedDashboard } from './components/AuthenticatedDashboard';
+import { TelemetryProvider } from './context/TelemetryContext';
 
 const API = '';
 
@@ -191,21 +192,23 @@ function App() {
 
   // ── Render Authenticated Dashboard ──────────────────────────────
   return (
-    <AuthenticatedDashboard
-      settings={settings}
-      onUpdateSettings={handleUpdateSettings}
-      handleLogoUpload={handleLogoUpload}
-      onLogout={handleLogout}
-      isCloudHubSession={isCloudHubSession}
-      newPassword={newPassword}
-      setNewPassword={setNewPassword}
-      confirmPassword={confirmPassword}
-      setConfirmPassword={setConfirmPassword}
-      passwordError={passwordError}
-      setPasswordError={setPasswordError}
-      passwordSuccess={passwordSuccess}
-      setPasswordSuccess={setPasswordSuccess}
-    />
+    <TelemetryProvider>
+      <AuthenticatedDashboard
+        settings={settings}
+        onUpdateSettings={handleUpdateSettings}
+        handleLogoUpload={handleLogoUpload}
+        onLogout={handleLogout}
+        isCloudHubSession={isCloudHubSession}
+        newPassword={newPassword}
+        setNewPassword={setNewPassword}
+        confirmPassword={confirmPassword}
+        setConfirmPassword={setConfirmPassword}
+        passwordError={passwordError}
+        setPasswordError={setPasswordError}
+        passwordSuccess={passwordSuccess}
+        setPasswordSuccess={setPasswordSuccess}
+      />
+    </TelemetryProvider>
   );
 }
 
