@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
 import { RefreshIcon, ClipboardIcon, CheckIcon } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
+import { useTelemetry } from '../../context/TelemetryContext';
 
 interface PipeWirePreviewModalProps {
   selectedProcess: any;
@@ -189,32 +190,27 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
   useEffect(() => {
     fetchGraphTelemetry();
-    if (!autoRefresh || !isRunning) return;
-    const interval = setInterval(() => fetchGraphTelemetry(false), 3000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, isRunning, autoRefresh]);
+  }, [currentProcess.id, isRunning]);
 
-  // Poll daemon execution logs only when console tab is active
+  const { subscribe } = useTelemetry();
+
+  // Subscribe to daemon execution logs via WebSocket on-demand only when console tab is active (Zero HTTP polling)
   useEffect(() => {
-    if (activeTab !== 'console' || !isRunning) return;
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/api/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setDaemonLogs(data);
-          }
-        }
-      } catch {
-        // ignore polling network errors
-      }
-    };
+    if (activeTab !== 'console' || !isRunning) {
+      setDaemonLogs([]);
+      return;
+    }
 
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, API, activeTab, isRunning]);
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, activeTab, isRunning, subscribe]);
 
   // Auto-scroll virtual terminal
   useEffect(() => {

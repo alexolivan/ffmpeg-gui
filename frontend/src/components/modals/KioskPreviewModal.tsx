@@ -11,6 +11,7 @@ import {
   TrashIcon,
 } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
+import { useTelemetry } from '../../context/TelemetryContext';
 
 interface KioskPreviewModalProps {
   selectedProcess: any;
@@ -103,26 +104,20 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
   const ram = currentProcess.ram_usage ?? currentProcess.ram ?? 0;
   const pid = currentProcess.pid;
 
-  // Poll daemon logs
+  const { subscribe } = useTelemetry();
+
+  // Subscribe to daemon logs via WebSocket on-demand (Zero HTTP polling)
   useEffect(() => {
-    let interval: any = null;
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          setDaemonLogs(Array.isArray(data) ? data : []);
-        }
-      } catch {
-        // ignore log fetch failure
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
       }
-    };
-    fetchLogs();
-    interval = setInterval(fetchLogs, 2000);
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [API, currentProcess.id]);
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, subscribe]);
 
   // Auto-scroll logs
   useEffect(() => {

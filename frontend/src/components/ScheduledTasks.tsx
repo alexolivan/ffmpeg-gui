@@ -15,6 +15,7 @@ import {
   ServerIcon
 } from './Icons';
 import { EngineLogo } from './common/EngineLogo';
+import { useTelemetry } from '../context/TelemetryContext';
 
 interface ScheduledTasksProps {
   API: string;
@@ -62,29 +63,29 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     }
   };
 
+  const { subscribe } = useTelemetry();
+
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(() => {
-      fetchTasks(true);
-    }, 3000);
-    return () => clearInterval(interval);
   }, []);
 
-  // Poll logs when viewing logs modal
+  // Subscribe to task logs via WebSocket on-demand (Zero HTTP polling)
   useEffect(() => {
-    if (viewingLogsExecutionId === null) return;
-    const fetchLogs = async () => {
-      try {
-        const r = await fetch(`${API}/tasks/executions/${viewingLogsExecutionId}/logs`);
-        if (r.ok) {
-          setLogs(await r.json());
-        }
-      } catch {}
-    };
-    fetchLogs();
-    const timer = setInterval(fetchLogs, 2000);
-    return () => clearInterval(timer);
-  }, [viewingLogsExecutionId]);
+    if (viewingLogsExecutionId === null) {
+      setLogs([]);
+      return;
+    }
+
+    const unsub = subscribe('task_logs', viewingLogsExecutionId, (msg: any) => {
+      if (msg.reset) {
+        setLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [viewingLogsExecutionId, subscribe]);
 
   // Autoscroll logs
   useEffect(() => {
@@ -115,15 +116,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       }
     } catch {}
   };
-
-  // Poll task details if open (to get updated execution list)
-  useEffect(() => {
-    if (!selectedTaskDetails) return;
-    const timer = setInterval(() => {
-      viewTaskDetails(selectedTaskDetails.task.id);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [selectedTaskDetails]);
 
   // Handle Save (Create / Update)
   const handleSaveTask = async (payload: any) => {

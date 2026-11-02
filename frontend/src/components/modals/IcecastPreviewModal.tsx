@@ -11,6 +11,7 @@ import {
   ExportIcon,
 } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
+import { useTelemetry } from '../../context/TelemetryContext';
 
 interface IcecastPreviewModalProps {
   selectedProcess: any;
@@ -121,8 +122,6 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
     };
 
     fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
-    return () => clearInterval(interval);
   }, [isRunning, currentProcess.id, API]);
 
   // Periodic background refresh of the preview iframe every 6 seconds
@@ -146,26 +145,20 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
     prevMountsSignatureRef.current = currentSignature;
   }, [liveStats]);
 
-  // Poll server daemon logs (stdout / stderr / error.log)
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setDaemonLogs(data);
-          }
-        }
-      } catch {
-        // Silent catch
-      }
-    };
+  const { subscribe } = useTelemetry();
 
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, API]);
+  // Subscribe to server daemon logs via WebSocket on-demand (Zero HTTP polling)
+  useEffect(() => {
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, subscribe]);
 
   const activeLogs = daemonLogs.length > 0 ? daemonLogs : externalLogs;
 

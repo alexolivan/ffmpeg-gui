@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
 import { ClipboardIcon, CheckIcon, ShieldIcon } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
+import { useTelemetry } from '../../context/TelemetryContext';
 
 interface MediaMtxPreviewModalProps {
   selectedProcess: any;
@@ -246,30 +247,22 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
     };
 
     fetchLivePaths();
-    const interval = setInterval(fetchLivePaths, 5000);
-    return () => clearInterval(interval);
   }, [isRunning, mtxCfg.api_enabled, currentProcess.id, API]);
 
-  // Poll logs for MediaMTX daemon
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setDaemonLogs(data);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch daemon logs', err);
-      }
-    };
+  const { subscribe } = useTelemetry();
 
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, API]);
+  // Subscribe to logs via WebSocket on-demand (Zero HTTP polling)
+  useEffect(() => {
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, subscribe]);
 
   const activeLogs = daemonLogs.length > 0 ? daemonLogs : externalLogs;
 

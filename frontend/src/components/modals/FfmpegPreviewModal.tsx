@@ -5,6 +5,7 @@ import { EngineLogo } from '../common/EngineLogo';
 import { HlsPlayer } from '../common/HlsPlayer';
 import { copyToClipboard } from '../../utils/clipboard';
 import { PlayIcon, PowerIcon } from '../Icons';
+import { useTelemetry } from '../../context/TelemetryContext';
 
 interface FfmpegPreviewModalProps {
   selectedProcess: any;
@@ -92,52 +93,48 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const showDups = progressData?.dup_frames !== undefined && progressData?.dup_frames !== null && progressData?.dup_frames !== '0' && progressData?.dup_frames !== 0;
   const showDrops = progressData?.drop_frames !== undefined && progressData?.drop_frames !== null && progressData?.drop_frames !== '0' && progressData?.drop_frames !== 0;
 
-  // Poll progress data for FFmpeg services (only when not in debug mode)
+  const { subscribe } = useTelemetry();
+
+  // Read progress metrics reactively from currentProcess updated by WebSocket (Zero HTTP polling)
   useEffect(() => {
     if (!isRunning || currentProcess.debug_mode) {
       setProgressData(null);
       return;
     }
+    setProgressData({
+      fps: currentProcess.fps,
+      bitrate: currentProcess.bitrate,
+      speed: currentProcess.speed,
+      cpu: currentProcess.cpu,
+      ram: currentProcess.ram,
+    });
+  }, [
+    isRunning,
+    currentProcess.debug_mode,
+    currentProcess.fps,
+    currentProcess.bitrate,
+    currentProcess.speed,
+    currentProcess.cpu,
+    currentProcess.ram
+  ]);
 
-    const fetchProgress = async () => {
-      try {
-        const res = await fetch(`${API}/api/processes/${currentProcess.id}/progress`);
-        if (res.ok) {
-          const data = await res.json();
-          setProgressData(data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch process progress telemetry', err);
-      }
-    };
-
-    fetchProgress();
-    const interval = setInterval(fetchProgress, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, isRunning, currentProcess.debug_mode, API]);
-
-  // Poll logs for FFmpeg process when in debug mode OR when diagnostic log view is enabled
+  // Subscribe to logs via WebSocket when in debug mode OR when diagnostic log view is enabled (Zero HTTP polling)
   useEffect(() => {
-    if (!currentProcess.debug_mode && !showDiagnosticLogs) return;
+    if (!currentProcess.debug_mode && !showDiagnosticLogs) {
+      setDaemonLogs([]);
+      return;
+    }
 
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setDaemonLogs(data);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch ffmpeg logs', err);
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
       }
-    };
+    });
 
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2500);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, currentProcess.debug_mode, showDiagnosticLogs, API]);
+    return () => unsub();
+  }, [currentProcess.id, currentProcess.debug_mode, showDiagnosticLogs, subscribe]);
 
   const activeLogs = daemonLogs.length > 0 ? daemonLogs : externalLogs;
 
