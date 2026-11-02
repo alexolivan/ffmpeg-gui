@@ -94,6 +94,7 @@
   --color-brand-lime: var(--accent-lime);
   --color-brand-orange: var(--accent-orange);
   --color-brand-blue: var(--accent-blue);
+  --color-brand-cyan: #06b6d4;
   --color-card-bg: var(--bg-card);
 }
 

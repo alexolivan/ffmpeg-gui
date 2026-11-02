@@ -49,9 +49,12 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
+  const isEnrolled = Boolean(status?.node_id);
+  const canSubmit = Boolean(hubUrlInput.trim() && tokenInput.trim() && !isSubmitting && !isEnrolled);
+
   const handleEnroll = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hubUrlInput.trim() || !tokenInput.trim()) return;
+    if (!canSubmit) return;
 
     let cleanUrl = hubUrlInput.trim();
     if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
@@ -172,8 +175,6 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
       // Ignored
     }
   };
-
-  const isEnrolled = Boolean(status?.node_id);
 
   return (
     <div className="glass-card p-5 !rounded-2xl space-y-4">
@@ -360,34 +361,28 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-1">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
             <span className="text-[11px] text-[var(--text-secondary)]">
               {t('settings.cloudhub.tokenHelp', 'Obtain this one-time token from your CloudHub organization administrator.')}
             </span>
             <button
               type="submit"
-              disabled={isSubmitting || !hubUrlInput.trim() || !tokenInput.trim()}
-              className="px-4 py-2 rounded-lg text-xs font-bold text-black bg-brand-cyan hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              disabled={!canSubmit}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                canSubmit
+                  ? 'bg-brand-lime text-black hover:opacity-90 cursor-pointer shadow-md'
+                  : 'bg-white/5 border border-[var(--glass-border)] text-[var(--text-secondary)] opacity-50 cursor-not-allowed'
+              }`}
             >
               {isSubmitting ? (
                 <>
-                  <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
                   <span>{t('settings.cloudhub.enrolling', 'Enrolling...')}</span>
                 </>
               ) : (
                 <span>{t('settings.cloudhub.enrollButton', 'Enroll Appliance')}</span>
               )}
             </button>
-          </div>
-
-          {/* CLI Alternative Snippet */}
-          <div className="pt-3 border-t border-[var(--glass-border)] space-y-1">
-            <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider block">
-              💻 {t('settings.cloudhub.cliAlternative', 'Prefer terminal? Run this command on the appliance:')}
-            </span>
-            <div className="p-2.5 rounded-lg bg-black/40 border border-[var(--glass-border)] font-mono text-[11px] text-brand-cyan select-all break-all">
-              ./bin/ffmpeg-gui-admin enroll-cloudhub {hubUrlInput.trim() || 'https://hub.example.com'} {tokenInput.trim() || '<TOKEN>'}
-            </div>
           </div>
         </form>
       )}
