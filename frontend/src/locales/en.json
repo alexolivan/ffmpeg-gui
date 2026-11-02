@@ -699,6 +699,8 @@
       "tokenLabel": "Enrollment Token",
       "tokenHelp": "Obtain this one-time token from your CloudHub organization administrator.",
       "enrollButton": "Enroll Appliance",
+      "enrolling": "Enrolling...",
+      "cliAlternative": "Prefer terminal? Run this command on the appliance:",
       "enrollSuccess": "Appliance successfully enrolled to CloudHub",
       "enrollFailed": "Enrollment failed"
     },

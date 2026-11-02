@@ -53,6 +53,12 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
     e.preventDefault();
     if (!hubUrlInput.trim() || !tokenInput.trim()) return;
 
+    let cleanUrl = hubUrlInput.trim();
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      cleanUrl = 'https://' + cleanUrl;
+    }
+    cleanUrl = cleanUrl.replace(/\/+$/, '');
+
     setIsSubmitting(true);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -63,7 +69,7 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          hub_url: hubUrlInput.trim(),
+          hub_url: cleanUrl,
           token: tokenInput.trim(),
         }),
       });
@@ -83,6 +89,18 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSmartPaste = (raw: string) => {
+    const text = raw.trim();
+    // Check if user pasted the full command: ./bin/ffmpeg-gui-admin enroll-cloudhub <url> <token>
+    const match = text.match(/(?:enroll-cloudhub\s+)?(https?:\/\/[^\s]+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?::\d+)?)\s+(ch_enr_[a-zA-Z0-9_-]+|[a-zA-Z0-9_-]{20,})/);
+    if (match) {
+      setHubUrlInput(match[1]);
+      setTokenInput(match[2]);
+      return true;
+    }
+    return false;
   };
 
   const handleDisconnect = async () => {
@@ -234,28 +252,6 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
                 {status?.node_id || '—'}
               </span>
             </div>
-
-            {status?.org_name && (
-              <div>
-                <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider block">
-                  {t('settings.cloudhub.organization', 'Organization')}
-                </span>
-                <span className="text-xs text-[var(--text-primary)]">
-                  {status.org_name}
-                </span>
-              </div>
-            )}
-
-            {status?.group_name && (
-              <div>
-                <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider block">
-                  {t('settings.cloudhub.nodeGroup', 'Node Group')}
-                </span>
-                <span className="text-xs text-[var(--text-primary)]">
-                  {status.group_name}
-                </span>
-              </div>
-            )}
           </div>
 
           {/* Toggles */}
@@ -332,11 +328,15 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
                 {t('settings.cloudhub.hubUrlLabel', 'CloudHub Orchestrator URL')}
               </label>
               <input
-                type="url"
+                type="text"
                 required
                 placeholder="https://hub.example.com"
                 value={hubUrlInput}
-                onChange={(e) => setHubUrlInput(e.target.value)}
+                onChange={(e) => {
+                  if (!handleSmartPaste(e.target.value)) {
+                    setHubUrlInput(e.target.value);
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-cyan/60"
               />
             </div>
@@ -348,25 +348,46 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
               <input
                 type="text"
                 required
-                placeholder="chub_enr_..."
+                placeholder="ch_enr_..."
                 value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
+                onChange={(e) => {
+                  if (!handleSmartPaste(e.target.value)) {
+                    setTokenInput(e.target.value.trim());
+                  }
+                }}
                 className="w-full px-3 py-2 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-brand-cyan/60"
               />
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex items-center justify-between pt-1">
             <span className="text-[11px] text-[var(--text-secondary)]">
               {t('settings.cloudhub.tokenHelp', 'Obtain this one-time token from your CloudHub organization administrator.')}
             </span>
             <button
               type="submit"
               disabled={isSubmitting || !hubUrlInput.trim() || !tokenInput.trim()}
-              className="px-4 py-2 rounded-lg text-xs font-bold text-black bg-brand-cyan hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 rounded-lg text-xs font-bold text-black bg-brand-cyan hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
             >
-              {isSubmitting ? '...' : t('settings.cloudhub.enrollButton', 'Enroll Appliance')}
+              {isSubmitting ? (
+                <>
+                  <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  <span>{t('settings.cloudhub.enrolling', 'Enrolling...')}</span>
+                </>
+              ) : (
+                <span>{t('settings.cloudhub.enrollButton', 'Enroll Appliance')}</span>
+              )}
             </button>
+          </div>
+
+          {/* CLI Alternative Snippet */}
+          <div className="pt-3 border-t border-[var(--glass-border)] space-y-1">
+            <span className="text-[10px] uppercase font-bold text-[var(--text-secondary)] tracking-wider block">
+              💻 {t('settings.cloudhub.cliAlternative', 'Prefer terminal? Run this command on the appliance:')}
+            </span>
+            <div className="p-2.5 rounded-lg bg-black/40 border border-[var(--glass-border)] font-mono text-[11px] text-brand-cyan select-all break-all">
+              ./bin/ffmpeg-gui-admin enroll-cloudhub {hubUrlInput.trim() || 'https://hub.example.com'} {tokenInput.trim() || '<TOKEN>'}
+            </div>
           </div>
         </form>
       )}

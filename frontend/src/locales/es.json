@@ -699,6 +699,8 @@
       "tokenLabel": "Token de Enrolamiento",
       "tokenHelp": "Solicita este token de un solo uso al administrador de tu organización en CloudHub.",
       "enrollButton": "Enrolar Dispositivo",
+      "enrolling": "Enrolando...",
+      "cliAlternative": "¿Prefieres la terminal? Ejecuta este comando en el appliance:",
       "enrollSuccess": "Dispositivo enrolado en CloudHub correctamente",
       "enrollFailed": "Error durante el enrolamiento"
     },

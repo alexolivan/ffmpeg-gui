@@ -699,6 +699,8 @@
       "tokenLabel": "Token d'Enrolament",
       "tokenHelp": "Sol·liciteu aquest token d'un sol ús a l'administrador de la vostra organització a CloudHub.",
       "enrollButton": "Enrolar Dispositiu",
+      "enrolling": "Enrolant...",
+      "cliAlternative": "Prefereixes el terminal? Executa aquesta ordre a l'appliance:",
       "enrollSuccess": "Dispositiu enrolat a CloudHub correctament",
       "enrollFailed": "Error durant l'enrolament"
     },

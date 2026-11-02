@@ -2699,7 +2699,12 @@ async def enroll_cloudhub(req: CloudHubEnrollRequest, request: Request):
         from core.cloud_tunnel_client import CloudTunnelClient
         cloud_tunnel_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
     try:
-        res = await asyncio.to_thread(cloud_tunnel_client.enroll, req.hub_url, req.token)
+        hub_url = req.hub_url.strip()
+        if not hub_url.startswith("http://") and not hub_url.startswith("https://"):
+            hub_url = "https://" + hub_url
+        hub_url = hub_url.rstrip("/")
+
+        res = await asyncio.to_thread(cloud_tunnel_client.enroll, hub_url, req.token.strip())
         await cloud_tunnel_client.start()
         actor_info = audit_logger.extract_actor_info(request)
         audit_logger.log(

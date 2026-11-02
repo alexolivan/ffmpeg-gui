@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Symmetric Node Revocation & Voluntary Unlink Protocol (`cloud_tunnel_client.py`, `backend/main.py`)**:
   - Immediately halts the tunnel reconnection loop upon receiving a `revoke` frame or close code `4004` from CloudHub, clearing local credentials and persisting a `CLOUDHUB_REVOKED` audit log entry.
   - Actively emits an `unlink_notify` control frame to CloudHub when unlinked voluntarily by the appliance hardware owner before tearing down the outbound WebSocket.
+- **CloudHub Connector Settings UI/UX Polishing (`CloudHubSettingsCard.tsx`, `backend/main.py`)**:
+  - Removed internal CloudHub organizational hierarchy fields (tenant, group IDs) from the appliance settings card, keeping the edge UI clean and focused on local appliance identity.
+  - Implemented interactive, non-blocking enrollment form with automatic `https://` protocol normalization, smart CLI command paste detection, and animated submission feedback.
+  - Added dedicated CLI alternative snippet enabling seamless terminal-based enrollment.
 
 ## [2.53.1] - 2026-10-29
 
