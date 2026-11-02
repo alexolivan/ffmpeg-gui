@@ -28,6 +28,8 @@ function App() {
     handleLogoUpload,
     handleLogin,
     handleLogout,
+    isCloudHubSession,
+    isRemoteSessionTerminated,
   } = useAuth();
 
   useEffect(() => {
@@ -160,6 +162,33 @@ function App() {
     );
   }
 
+  // ── Render Remote Session Terminated Screen (CloudHub) ───────────
+  if (isRemoteSessionTerminated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-dark)] p-4">
+        <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-2xl p-8 max-w-md w-full text-center shadow-2xl animate-fade-in">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-brand-lime/10 border border-brand-lime/30 flex items-center justify-center text-brand-lime">
+            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-[var(--text-primary)] mb-2">
+            {t('auth.remoteSessionClosed')}
+          </h2>
+          <p className="text-xs text-[var(--text-secondary)] mb-6 leading-relaxed">
+            {t('auth.remoteSessionClosedDesc')}
+          </p>
+          <button
+            onClick={() => window.close()}
+            className="w-full py-3 px-4 bg-brand-lime text-black font-bold rounded-xl text-xs hover:bg-brand-lime/90 transition-all shadow-lg cursor-pointer"
+          >
+            {t('auth.closeTab')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Render Authenticated Dashboard ──────────────────────────────
   return (
     <AuthenticatedDashboard
@@ -167,6 +196,7 @@ function App() {
       onUpdateSettings={handleUpdateSettings}
       handleLogoUpload={handleLogoUpload}
       onLogout={handleLogout}
+      isCloudHubSession={isCloudHubSession}
       newPassword={newPassword}
       setNewPassword={setNewPassword}
       confirmPassword={confirmPassword}

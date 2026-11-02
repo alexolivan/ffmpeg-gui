@@ -101,6 +101,77 @@ class TestAdminCLI(unittest.TestCase):
                 self.assertEqual(e.code, 0)
             mock_clear.assert_called_once()
 
+    @patch("cli.update_config_file")
+    @patch("cli.check_service_active")
+    def test_set_listen(self, mock_svc, mock_cfg):
+        mock_svc.return_value = (False, None)
+        from cli import handle_set_listen
+        res = handle_set_listen("127.0.0.1", port=8080, disable_ssl=True)
+        self.assertTrue(res)
+        mock_cfg.assert_called_with(bind_address="127.0.0.1", port=8080, ssl_enabled=False)
+
+    @patch("cli.update_config_file")
+    @patch("cli.check_service_active")
+    @patch("core.cloud_tunnel_client.CloudTunnelClient.enroll")
+    def test_enroll_cloudhub_default_preserves_network_config(
+        self, mock_enroll, mock_svc, mock_cfg
+    ):
+        mock_svc.return_value = (False, None)
+        mock_enroll.return_value = {"node_id": "ch_node_test123"}
+
+        from cli import handle_enroll_cloudhub
+        res = handle_enroll_cloudhub(
+            hub_url="http://127.0.0.1:9000",
+            token="test_token_123",
+        )
+        self.assertTrue(res)
+        mock_cfg.assert_not_called()
+        mock_enroll.assert_called_once_with("http://127.0.0.1:9000", "test_token_123")
+
+    @patch("cli.read_network_config")
+    @patch("cli.update_config_file")
+    @patch("cli.check_service_active")
+    @patch("core.cloud_tunnel_client.CloudTunnelClient.enroll")
+    def test_enroll_cloudhub_disables_ssl_if_requested(
+        self, mock_enroll, mock_svc, mock_cfg, mock_net_cfg
+    ):
+        mock_svc.return_value = (False, None)
+        mock_enroll.return_value = {"node_id": "ch_node_test123"}
+        mock_net_cfg.return_value = {
+            "ssl_enabled": True,
+            "ssl_mode": "acme",
+            "bind_address": "0.0.0.0",
+        }
+
+        from cli import handle_enroll_cloudhub
+        res = handle_enroll_cloudhub(
+            hub_url="http://127.0.0.1:9000",
+            token="test_token_123",
+            disable_local_ssl=True,
+            non_interactive=True,
+        )
+        self.assertTrue(res)
+        mock_cfg.assert_called_with(bind_address="127.0.0.1", ssl_enabled=False)
+        mock_enroll.assert_called_once_with("http://127.0.0.1:9000", "test_token_123")
+
+    @patch("cli.SessionLocal")
+    @patch("cli.check_service_active")
+    @patch("core.cloud_tunnel_client.CloudTunnelClient.disconnect_hub")
+    def test_unlink_cloudhub(self, mock_disconnect, mock_svc, mock_session_factory):
+        mock_svc.return_value = (False, None)
+        mock_session = MagicMock()
+        mock_session_factory.return_value.__enter__.return_value = mock_session
+
+        from cli import handle_unlink_cloudhub
+        res = handle_unlink_cloudhub()
+        self.assertTrue(res)
+        mock_disconnect.assert_called_once()
+
+    def test_resolve_db_path_prefers_config_or_filesystem(self):
+        from database.db import resolve_db_path
+        with patch.dict(os.environ, {"DATABASE_PATH": "/custom/path/ffmpeg_gui.db"}):
+            self.assertEqual(resolve_db_path(), "/custom/path/ffmpeg_gui.db")
+
 
 if __name__ == "__main__":
     unittest.main()

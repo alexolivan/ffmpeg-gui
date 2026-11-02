@@ -29,6 +29,7 @@ interface AuthenticatedDashboardProps {
   onUpdateSettings: (newSettings: any) => Promise<void>;
   handleLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onLogout?: () => void;
+  isCloudHubSession?: boolean;
   newPassword: string;
   setNewPassword: (v: string) => void;
   confirmPassword: string;
@@ -44,6 +45,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
   onUpdateSettings,
   handleLogoUpload,
   onLogout,
+  isCloudHubSession = false,
   newPassword,
   setNewPassword,
   confirmPassword,
@@ -123,7 +125,8 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
         logoText={settings.logo_text}
         logoPath={settings.logo_path ? `${API}${settings.logo_path}` : undefined}
         accentColor={settings.accent_color}
-        onLogout={(settings.has_gui_password || settings.gui_password) ? onLogout : undefined}
+        onLogout={(settings.has_gui_password || settings.gui_password || isCloudHubSession) ? onLogout : undefined}
+        isCloudHubSession={isCloudHubSession}
       />
 
       <main className="flex-1 overflow-y-auto p-8 lg:p-12">

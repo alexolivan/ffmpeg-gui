@@ -22,7 +22,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
 from typing import List, Optional, Dict, Any
 from database.db import init_db, get_db, SessionLocal
-from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage, PeerInboundKey, PeerRemoteNode, SystemSettings
+from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage, PeerInboundKey, PeerRemoteNode, SystemSettings, AuditLog
+from core.audit_logger import audit_logger, calculate_dict_delta
 from core.peer_manager import peer_manager
 from core.peer_crypto import PeerCrypto
 from core.process_manager import ProcessManager
@@ -597,6 +598,12 @@ class SettingsResponse(BaseModel):
     thermal_critical_threshold: Optional[int] = 85
     thermal_active_protection: Optional[bool] = False
     discovery_beacon_enabled: Optional[bool] = True
+    cloudhub_enabled: Optional[bool] = False
+    cloudhub_url: Optional[str] = None
+    cloudhub_node_id: Optional[str] = None
+    cloudhub_sso_enabled: Optional[bool] = True
+    cloudhub_org_name: Optional[str] = None
+    cloudhub_group_name: Optional[str] = None
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -644,6 +651,9 @@ class SettingsUpdate(BaseModel):
     thermal_critical_threshold: Optional[int] = None
     thermal_active_protection: Optional[bool] = None
     discovery_beacon_enabled: Optional[bool] = None
+    cloudhub_enabled: Optional[bool] = None
+    cloudhub_url: Optional[str] = None
+    cloudhub_sso_enabled: Optional[bool] = None
 
 
     @validator('brute_force_whitelist')
@@ -1027,6 +1037,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     res = {c.name: getattr(settings, c.name) for c in settings.__table__.columns}
     res["has_gui_password"] = bool(settings.gui_password)
     res["gui_password"] = None
+    res["cloudhub_tunnel_secret"] = None
     res["gui_port"] = gui_port
     res["restart_required"] = restart_required
     res["restart_reasons"] = restart_reasons
@@ -1126,6 +1137,8 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
     return make_settings_response(settings)
 
 
+
+
 def is_port_in_use_by_os(port: int, host: str = "0.0.0.0") -> bool:
     import socket
     active_port = int(os.environ.get("ACTIVE_PORT", 8000))
@@ -1218,7 +1231,7 @@ def check_media_process_port_conflicts(input_config: dict, output_config: list, 
 
 @app.post("/settings")
 @app.post("/api/settings")
-def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
+def update_settings(settings_in: SettingsUpdate, request: Request, db: Session = Depends(get_db)):
     if settings_in.language is not None:
         if settings_in.language not in SUPPORTED_LANGUAGES:
             raise HTTPException(status_code=400, detail="Invalid language code")
@@ -1548,10 +1561,21 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
     if settings_in.thermal_critical_threshold is not None: settings.thermal_critical_threshold = settings_in.thermal_critical_threshold
     if settings_in.thermal_active_protection is not None: settings.thermal_active_protection = settings_in.thermal_active_protection
     if settings_in.discovery_beacon_enabled is not None: settings.discovery_beacon_enabled = settings_in.discovery_beacon_enabled
+    if settings_in.cloudhub_enabled is not None: settings.cloudhub_enabled = settings_in.cloudhub_enabled
+    if settings_in.cloudhub_url is not None:
+        settings.cloudhub_url = settings_in.cloudhub_url.strip().rstrip("/") if settings_in.cloudhub_url else None
+    if settings_in.cloudhub_sso_enabled is not None: settings.cloudhub_sso_enabled = settings_in.cloudhub_sso_enabled
 
     db.commit()
     db.refresh(settings)
     invalidate_gui_password_cache()
+
+    global cloud_tunnel_client
+    if cloud_tunnel_client:
+        if settings.cloudhub_enabled:
+            asyncio.create_task(cloud_tunnel_client.start())
+        else:
+            asyncio.create_task(cloud_tunnel_client.stop())
 
     global discovery_beacon_service
     if settings.discovery_beacon_enabled:
@@ -1628,7 +1652,21 @@ def update_settings(settings_in: SettingsUpdate, db: Session = Depends(get_db)):
             if settings_in.lcd_led3_profile is not None:
                 lcd_manager.lcd_led3_profile = settings_in.lcd_led3_profile
 
+    actor_info = audit_logger.extract_actor_info(request)
+    updated_fields = [k for k, v in settings_in.dict(exclude_unset=True).items() if v is not None]
+    audit_logger.log(
+        action="SETTINGS_UPDATE",
+        target_type="settings",
+        target_id="system",
+        target_name="System Settings",
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        changes=f"Updated keys: {', '.join(updated_fields)}" if updated_fields else "no changes",
+    )
+
     return make_settings_response(settings)
+
 
 
 def execute_system_restart():
@@ -1695,6 +1733,13 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
             net_dict["auto_reload_ssl_services"] = str(sys_settings.auto_reload_ssl_services).lower()
         if sys_settings and sys_settings.discovery_beacon_enabled is not None:
             net_dict["discovery_beacon_enabled"] = str(sys_settings.discovery_beacon_enabled).lower()
+        if sys_settings:
+            if sys_settings.cloudhub_url: net_dict["cloudhub_url"] = sys_settings.cloudhub_url
+            if sys_settings.cloudhub_enabled is not None: net_dict["cloudhub_enabled"] = str(sys_settings.cloudhub_enabled).lower()
+            if sys_settings.cloudhub_sso_enabled is not None: net_dict["cloudhub_sso_enabled"] = str(sys_settings.cloudhub_sso_enabled).lower()
+            if sys_settings.cloudhub_node_id: net_dict["cloudhub_node_id"] = sys_settings.cloudhub_node_id
+            if sys_settings.cloudhub_org_name: net_dict["cloudhub_org_name"] = sys_settings.cloudhub_org_name
+            if sys_settings.cloudhub_group_name: net_dict["cloudhub_group_name"] = sys_settings.cloudhub_group_name
         sections["gui_network_ssl"] = net_dict
 
     # 3. LCD Display
@@ -2078,6 +2123,20 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     except Exception:
                         pass
                     discovery_beacon_service = None
+        if "cloudhub_url" in net_sec:
+            sys_settings.cloudhub_url = str(net_sec["cloudhub_url"]) if net_sec["cloudhub_url"] else None
+        if "cloudhub_enabled" in net_sec:
+            val = net_sec["cloudhub_enabled"]
+            sys_settings.cloudhub_enabled = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
+        if "cloudhub_sso_enabled" in net_sec:
+            val = net_sec["cloudhub_sso_enabled"]
+            sys_settings.cloudhub_sso_enabled = (str(val).lower() in ("true", "1", "yes")) if not isinstance(val, bool) else val
+        if "cloudhub_node_id" in net_sec:
+            sys_settings.cloudhub_node_id = str(net_sec["cloudhub_node_id"]) if net_sec["cloudhub_node_id"] else None
+        if "cloudhub_org_name" in net_sec:
+            sys_settings.cloudhub_org_name = str(net_sec["cloudhub_org_name"]) if net_sec["cloudhub_org_name"] else None
+        if "cloudhub_group_name" in net_sec:
+            sys_settings.cloudhub_group_name = str(net_sec["cloudhub_group_name"]) if net_sec["cloudhub_group_name"] else None
         imported_summary["gui_network_ssl"] = True
 
     if "lcd_display" in sections and isinstance(sections["lcd_display"], dict):
@@ -2610,6 +2669,83 @@ def unblock_security_ip(req: UnblockIPRequest):
     unblocked = security_guard.unblock(cleaned_ip)
     logger.info(f"[security] IP {cleaned_ip} manually unblocked via settings GUI (was_locked={unblocked})")
     return {"success": True, "ip": cleaned_ip, "unblocked": unblocked}
+
+
+class CloudHubEnrollRequest(BaseModel):
+    hub_url: str
+    token: str
+
+
+@app.get("/api/settings/cloudhub/status")
+async def get_cloudhub_status():
+    """
+    Returns outbound CloudHub reverse tunnel connection and enrollment status.
+    Protected behind session authentication by AuthBarrierMiddleware.
+    """
+    global cloud_tunnel_client
+    if not cloud_tunnel_client:
+        from core.cloud_tunnel_client import CloudTunnelClient
+        cloud_tunnel_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
+    return cloud_tunnel_client.get_status()
+
+
+@app.post("/api/settings/cloudhub/enroll")
+async def enroll_cloudhub(req: CloudHubEnrollRequest, request: Request):
+    """
+    Exchanges enrollment token with CloudHub orchestrator, stores credentials and starts tunnel.
+    """
+    global cloud_tunnel_client
+    if not cloud_tunnel_client:
+        from core.cloud_tunnel_client import CloudTunnelClient
+        cloud_tunnel_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
+    try:
+        res = await asyncio.to_thread(cloud_tunnel_client.enroll, req.hub_url, req.token)
+        await cloud_tunnel_client.start()
+        actor_info = audit_logger.extract_actor_info(request)
+        audit_logger.log(
+            action="CLOUDHUB_ENROLL",
+            target_type="settings",
+            target_id="cloudhub",
+            target_name=req.hub_url,
+            channel=actor_info["channel"],
+            username=actor_info["username"],
+            ip_address=actor_info["ip_address"],
+            details=f"Enrolled node to CloudHub at {req.hub_url}",
+        )
+        return res
+    except ConnectionError as ce:
+        raise HTTPException(status_code=400, detail=str(ce))
+    except Exception as e:
+        logger.error(f"CloudHub enrollment failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/settings/cloudhub/disconnect")
+async def disconnect_cloudhub(request: Request):
+    """
+    Unlinks appliance from CloudHub and terminates active outbound tunnel.
+    """
+    global cloud_tunnel_client
+    if cloud_tunnel_client:
+        await cloud_tunnel_client.stop()
+        cloud_tunnel_client.disconnect_hub()
+    else:
+        from core.cloud_tunnel_client import CloudTunnelClient
+        temp_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
+        temp_client.disconnect_hub()
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="CLOUDHUB_UNLINK",
+        target_type="settings",
+        target_id="cloudhub",
+        target_name="CloudHub",
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details="Disconnected and unlinked from CloudHub",
+    )
+    return {"status": "disconnected"}
+
 
 
 @app.post("/settings/logo")
@@ -3942,6 +4078,9 @@ lcd_manager = None
 # Global Discovery Beacon instance
 discovery_beacon_service = None
 
+# Global CloudHub Tunnel instance
+cloud_tunnel_client = None
+
 def sanitize_process_config_data(input_config: dict, filter_config: dict) -> bool:
     """
     Sanitize input_config and filter_config for non-decodable inputs.
@@ -4284,6 +4423,18 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Failed to start discovery beacon on startup: {e}")
 
+    global cloud_tunnel_client
+    try:
+        from core.cloud_tunnel_client import CloudTunnelClient
+        cloud_tunnel_client = CloudTunnelClient(asgi_app=app, db_session_factory=SessionLocal)
+        with SessionLocal() as db_start:
+            from database.models import SystemSettings
+            sys_set = db_start.query(SystemSettings).first()
+            if sys_set and sys_set.cloudhub_enabled:
+                await cloud_tunnel_client.start()
+    except Exception as e:
+        logger.warning(f"Failed to initialize cloud tunnel client on startup: {e}")
+
 @app.on_event("shutdown")
 async def shutdown_event():
     global _shutdown_initialized
@@ -4321,6 +4472,15 @@ async def shutdown_event():
         except Exception:
             pass
         discovery_beacon_service = None
+
+    global cloud_tunnel_client
+    if cloud_tunnel_client:
+        logger.info("Shutdown: Stopping cloud tunnel client...")
+        try:
+            await cloud_tunnel_client.stop()
+        except Exception:
+            pass
+        cloud_tunnel_client = None
 
     if is_reload_mode:
         logger.info("Shutdown: Warm Reload mode active. Preserving child stream processes for re-attach on reload.")
@@ -5280,7 +5440,7 @@ def list_processes(db: Session = Depends(get_db)):
     return processes_data
 
 @app.post("/processes")
-def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
+def create_process(proc_in: ProcessCreate, request: Request, db: Session = Depends(get_db)):
     svc_type = proc_in.service_type or "ffmpeg_stream"
     
     # If no build specified and ffmpeg_stream, use default ffmpeg build
@@ -5368,7 +5528,20 @@ def create_process(proc_in: ProcessCreate, db: Session = Depends(get_db)):
     from core.dependency_manager import dependency_manager
     dependency_manager.sync_auto_dependencies('service', db_proc.id, db_proc.input_config, db_proc.output_config, db)
     db.refresh(db_proc)
+
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="SERVICE_CREATE",
+        target_type="service",
+        target_id=db_proc.id,
+        target_name=db_proc.name,
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details=f"Service '{db_proc.name}' created (engine: {db_proc.service_type})",
+    )
     return db_proc
+
 
 @app.get("/api/services/mediamtx/next-available-ports")
 @app.get("/services/mediamtx/next-available-ports")
@@ -5419,13 +5592,29 @@ def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(No
     return {"command": shlex.join(cmd)}
 
 @app.put("/processes/{process_id}")
-def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depends(get_db)):
+def update_process(process_id: int, proc_in: ProcessUpdate, request: Request, db: Session = Depends(get_db)):
     db_proc = db.query(MediaProcess).get(process_id)
     if not db_proc:
         raise HTTPException(status_code=404, detail="Process not found")
 
+    import copy
+    old_state = {
+        "name": db_proc.name,
+        "service_type": db_proc.service_type,
+        "auto_start": db_proc.auto_start,
+        "startup_order": db_proc.startup_order,
+        "startup_delay": db_proc.startup_delay,
+        "alias": db_proc.alias,
+        "config": copy.deepcopy(db_proc.config) if db_proc.config else {},
+        "input_config": copy.deepcopy(db_proc.input_config) if db_proc.input_config else {},
+        "output_config": copy.deepcopy(db_proc.output_config) if db_proc.output_config else {},
+        "codec_config": copy.deepcopy(db_proc.codec_config) if db_proc.codec_config else {},
+        "filter_config": copy.deepcopy(db_proc.filter_config) if db_proc.filter_config else {},
+    }
+
     if proc_in.name is not None: db_proc.name = proc_in.name
     if proc_in.service_type is not None: db_proc.service_type = proc_in.service_type
+
     
     import copy
     from sqlalchemy.orm.attributes import flag_modified
@@ -5507,13 +5696,34 @@ def update_process(process_id: int, proc_in: ProcessUpdate, db: Session = Depend
     from core.dependency_manager import dependency_manager
     dependency_manager.sync_auto_dependencies('service', db_proc.id, db_proc.input_config, db_proc.output_config, db)
     db.refresh(db_proc)
+
+    new_state = {
+        "name": db_proc.name,
+        "service_type": db_proc.service_type,
+        "auto_start": db_proc.auto_start,
+        "startup_order": db_proc.startup_order,
+        "startup_delay": db_proc.startup_delay,
+        "alias": db_proc.alias,
+        "config": copy.deepcopy(db_proc.config) if db_proc.config else {},
+        "input_config": copy.deepcopy(db_proc.input_config) if db_proc.input_config else {},
+        "output_config": copy.deepcopy(db_proc.output_config) if db_proc.output_config else {},
+        "codec_config": copy.deepcopy(db_proc.codec_config) if db_proc.codec_config else {},
+        "filter_config": copy.deepcopy(db_proc.filter_config) if db_proc.filter_config else {},
+    }
+    summary, delta = calculate_dict_delta(old_state, new_state)
+    audit_service_action("SERVICE_UPDATE", db_proc.id, request, db, changes=summary, diff=delta)
     return db_proc
 
+
 @app.delete("/processes/{process_id}")
-async def delete_process(process_id: int, db: Session = Depends(get_db)):
+async def delete_process(process_id: int, request: Request, db: Session = Depends(get_db)):
     db_proc = db.query(MediaProcess).get(process_id)
     if not db_proc:
         raise HTTPException(status_code=404, detail="Process not found")
+
+    proc_name = db_proc.name
+    proc_type = db_proc.service_type
+
 
     # Resolve logs storage directory for this process
     log_storage_path = None
@@ -5564,8 +5774,21 @@ async def delete_process(process_id: int, db: Session = Depends(get_db)):
             except Exception:
                 pass
 
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="SERVICE_DELETE",
+        target_type="service",
+        target_id=process_id,
+        target_name=proc_name,
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details=f"Service '{proc_name}' ({proc_type}) permanently deleted",
+    )
+
     db.delete(db_proc)
     db.commit()
+
     return {"status": "deleted", "process_id": process_id}
 
 @app.post("/processes/{process_id}/clone")
@@ -6039,23 +6262,56 @@ def clear_kiosk_cache_endpoint(process_id: int, db: Session = Depends(get_db)):
     return {"success": True, "freed_bytes": freed, "service_id": process_id}
 
 
+def audit_service_action(
+    action: str,
+    service_id: int,
+    request: Request,
+    db: Session,
+    details: Optional[str] = None,
+    changes: Optional[str] = None,
+    diff: Optional[dict] = None
+):
+    try:
+        svc = db.query(MediaProcess).get(service_id)
+        svc_name = svc.name if svc else f"Service #{service_id}"
+        actor_info = audit_logger.extract_actor_info(request)
+        audit_logger.log(
+            action=action,
+            target_type="service",
+            target_id=service_id,
+            target_name=svc_name,
+            channel=actor_info["channel"],
+            username=actor_info["username"],
+            ip_address=actor_info["ip_address"],
+            changes=changes,
+            details=details,
+            structured_diff=diff,
+        )
+    except Exception as e:
+        logger.warning(f"Error logging audit action {action} for service {service_id}: {e}")
+
+
 @app.post("/processes/{process_id}/start")
-async def start_process(process_id: int):
+async def start_process(process_id: int, request: Request, db: Session = Depends(get_db)):
     await process_manager.start_process(process_id)
+    audit_service_action("SERVICE_START", process_id, request, db, details="Service started")
     return {"status": "starting", "process_id": process_id}
 
 @app.post("/processes/{process_id}/stop")
-async def stop_process(process_id: int):
+async def stop_process(process_id: int, request: Request, db: Session = Depends(get_db)):
     await process_manager.stop_process(process_id)
+    audit_service_action("SERVICE_STOP", process_id, request, db, details="Service stopped")
     return {"status": "stopping", "process_id": process_id}
 
 @app.post("/processes/{process_id}/restart")
-async def restart_process(process_id: int):
+async def restart_process(process_id: int, request: Request, db: Session = Depends(get_db)):
     await process_manager.stop_process(process_id, is_restart=True)
     # Short grace gap to allow hardware (ALSA/DeckLink) and network sockets to unbind cleanly
     await asyncio.sleep(0.5)
     await process_manager.start_process(process_id, is_restart=True)
+    audit_service_action("SERVICE_RESTART", process_id, request, db, details="Service restarted")
     return {"status": "restarting", "process_id": process_id}
+
 
 def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     if "profile" in payload and isinstance(payload["profile"], dict):
@@ -6669,7 +6925,7 @@ def list_services(db: Session = Depends(get_db)):
     ]
 
 @app.post("/api/services")
-def create_service(svc_in: ServiceCreate, db: Session = Depends(get_db)):
+def create_service(svc_in: ServiceCreate, request: Request, db: Session = Depends(get_db)):
     svc = MediaProcess(
         name=svc_in.name,
         service_type=svc_in.service_type,
@@ -6686,6 +6942,18 @@ def create_service(svc_in: ServiceCreate, db: Session = Depends(get_db)):
         process_manager.notify_pipewire_matrix_change()
     except Exception:
         pass
+
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="SERVICE_CREATE",
+        target_type="service",
+        target_id=svc.id,
+        target_name=svc.name,
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details=f"Service '{svc.name}' created (engine: {svc.service_type})",
+    )
     return svc
 
 @app.get("/api/services/{service_id}")
@@ -6696,10 +6964,19 @@ def get_service(service_id: int, db: Session = Depends(get_db)):
     return svc
 
 @app.put("/api/services/{service_id}")
-def update_service(service_id: int, svc_in: ServiceUpdate, db: Session = Depends(get_db)):
+def update_service(service_id: int, svc_in: ServiceUpdate, request: Request, db: Session = Depends(get_db)):
     svc = db.query(MediaProcess).get(service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
+
+    old_state = {
+        "name": svc.name,
+        "service_type": svc.service_type,
+        "is_active": svc.is_active,
+        "alias": svc.alias,
+        "config": copy.deepcopy(svc.config) if svc.config else {},
+    }
+
     if svc_in.name is not None:
         svc.name = svc_in.name
     if svc_in.service_type is not None:
@@ -6722,38 +6999,67 @@ def update_service(service_id: int, svc_in: ServiceUpdate, db: Session = Depends
         process_manager.notify_pipewire_matrix_change()
     except Exception:
         pass
+
+    new_state = {
+        "name": svc.name,
+        "service_type": svc.service_type,
+        "is_active": svc.is_active,
+        "alias": svc.alias,
+        "config": copy.deepcopy(svc.config) if svc.config else {},
+    }
+    summary, delta = calculate_dict_delta(old_state, new_state)
+    audit_service_action("SERVICE_UPDATE", svc.id, request, db, changes=summary, diff=delta)
     return svc
 
 @app.delete("/api/services/{service_id}")
-def delete_service(service_id: int, db: Session = Depends(get_db)):
+def delete_service(service_id: int, request: Request, db: Session = Depends(get_db)):
     svc = db.query(MediaProcess).get(service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
     if svc.status == 'running':
         raise HTTPException(status_code=400, detail="Cannot delete a running service")
+    svc_name = svc.name
+    svc_type = svc.service_type
     db.delete(svc)
     db.commit()
     try:
         process_manager.notify_pipewire_matrix_change()
     except Exception:
         pass
+
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="SERVICE_DELETE",
+        target_type="service",
+        target_id=service_id,
+        target_name=svc_name,
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details=f"Service '{svc_name}' ({svc_type}) deleted",
+    )
     return {"detail": "Service deleted"}
 
 @app.post("/api/services/{service_id}/start")
-async def start_service_endpoint(service_id: int):
+async def start_service_endpoint(service_id: int, request: Request, db: Session = Depends(get_db)):
     await process_manager.start_process(service_id)
+    audit_service_action("SERVICE_START", service_id, request, db, details="Service started")
     return {"status": "starting"}
 
 @app.post("/api/services/{service_id}/stop")
-async def stop_service_endpoint(service_id: int):
+async def stop_service_endpoint(service_id: int, request: Request, db: Session = Depends(get_db)):
     await process_manager.stop_process(service_id)
+    audit_service_action("SERVICE_STOP", service_id, request, db, details="Service stopped")
     return {"status": "stopping"}
 
 @app.post("/api/services/{service_id}/restart")
-async def restart_service_endpoint(service_id: int):
-    await process_manager.stop_process(service_id)
-    await process_manager.start_process(service_id)
+async def restart_service_endpoint(service_id: int, request: Request, db: Session = Depends(get_db)):
+    await process_manager.stop_process(service_id, is_restart=True)
+    await asyncio.sleep(0.5)
+    await process_manager.start_process(service_id, is_restart=True)
+    audit_service_action("SERVICE_RESTART", service_id, request, db, details="Service restarted")
     return {"status": "restarting"}
+
 
 @app.get("/api/services/{service_id}/logs")
 def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(get_db)):
@@ -6763,6 +7069,72 @@ def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(ge
     from database.models import ServiceLog
     logs = db.query(ServiceLog).filter(ServiceLog.service_id == service_id).order_by(ServiceLog.id.desc()).limit(limit).all()
     return [{"timestamp": l.timestamp.isoformat() + "Z", "level": l.level, "message": l.message} for l in reversed(logs)]
+
+
+@app.get("/api/audit-logs")
+def get_audit_logs_endpoint(
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    action: Optional[str] = Query(None),
+    target_type: Optional[str] = Query(None),
+    channel: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    query = db.query(AuditLog)
+    if action:
+        query = query.filter(AuditLog.action == action.upper())
+    if target_type:
+        query = query.filter(AuditLog.target_type == target_type.lower())
+    if channel:
+        query = query.filter(AuditLog.channel == channel.lower())
+    if search:
+        search_filter = f"%{search}%"
+        query = query.filter(
+            (AuditLog.target_name.ilike(search_filter))
+            | (AuditLog.username.ilike(search_filter))
+            | (AuditLog.changes.ilike(search_filter))
+            | (AuditLog.details.ilike(search_filter))
+            | (AuditLog.action.ilike(search_filter))
+        )
+
+    total = query.count()
+    entries = query.order_by(AuditLog.id.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "total": total,
+        "logs": [
+            {
+                "id": e.id,
+                "timestamp": e.timestamp.isoformat() + "Z" if e.timestamp else None,
+                "channel": e.channel,
+                "username": e.username,
+                "ip_address": e.ip_address,
+                "action": e.action,
+                "target_type": e.target_type,
+                "target_id": e.target_id,
+                "target_name": e.target_name,
+                "changes": e.changes,
+                "details": e.details,
+            }
+            for e in entries
+        ],
+    }
+
+
+@app.get("/api/audit-logs/download")
+def download_audit_logs():
+    log_path = audit_logger.get_log_path()
+    if not os.path.exists(log_path):
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("")
+    return FileResponse(
+        log_path,
+        media_type="text/plain; charset=utf-8",
+        filename="audit.log",
+    )
+
 
 @app.get("/api/services/{service_id}/preview")
 async def get_service_preview(service_id: int, db: Session = Depends(get_db)):
@@ -7158,7 +7530,7 @@ def list_tasks(db: Session = Depends(get_db)):
     return [serialize_task_item(t, db, deps_by_task.get(t.id, [])) for t in tasks]
 
 @app.post("/tasks")
-def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
+def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = Depends(get_db)):
     # Validate cron expression if recurring
     next_run = None
     if payload.schedule_type == 'recurring':
@@ -7202,7 +7574,19 @@ def create_task(payload: ScheduledTaskCreate, db: Session = Depends(get_db)):
     from core.dependency_manager import dependency_manager
     dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
     db.refresh(db_task)
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="TASK_CREATE",
+        target_type="task",
+        target_id=db_task.id,
+        target_name=db_task.name,
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details=f"Scheduled task '{db_task.name}' created (type: {db_task.schedule_type})",
+    )
     return serialize_task_item(db_task, db)
+
 
 @app.get("/tasks/export")
 def export_tasks(db: Session = Depends(get_db)):
@@ -7489,7 +7873,7 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
     }
 
 @app.put("/tasks/{task_id}")
-def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depends(get_db)):
+def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db: Session = Depends(get_db)):
     task = db.query(ScheduledTask).get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -7531,17 +7915,42 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, db: Session = Depend
     from core.dependency_manager import dependency_manager
     dependency_manager.sync_auto_dependencies('task', task.id, task.input_config, task.output_config, db)
     db.refresh(task)
+
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="TASK_UPDATE",
+        target_type="task",
+        target_id=task.id,
+        target_name=task.name,
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        changes=f"Updated keys: {', '.join(update_data.keys())}",
+    )
     return serialize_task_item(task, db)
 
 @app.delete("/tasks/{task_id}")
-def delete_task(task_id: int, db: Session = Depends(get_db)):
+def delete_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(ScheduledTask).get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.is_system:
         raise HTTPException(status_code=400, detail="Cannot delete system-defined tasks.")
+    task_name = task.name
     db.delete(task)
     db.commit()
+
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="TASK_DELETE",
+        target_type="task",
+        target_id=task_id,
+        target_name=task_name,
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details=f"Task '{task_name}' permanently deleted",
+    )
     return {"status": "success", "message": f"Task {task_id} and its executions deleted."}
 
 @app.delete("/tasks/{task_id}/executions")
@@ -7558,7 +7967,7 @@ def clear_task_executions(task_id: int, db: Session = Depends(get_db)):
     return {"status": "success", "message": f"Cleared {count} execution records for task {task_id}."}
 
 @app.post("/tasks/{task_id}/trigger")
-async def trigger_task(task_id: int, db: Session = Depends(get_db)):
+async def trigger_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(ScheduledTask).get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -7572,17 +7981,42 @@ async def trigger_task(task_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(execution)
     
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="TASK_TRIGGER",
+        target_type="task",
+        target_id=task.id,
+        target_name=task.name,
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details=f"Task execution #{execution.id} triggered manually",
+    )
+
     asyncio.create_task(task_manager.start_execution(execution.id))
     return {"status": "success", "execution_id": execution.id}
 
 @app.post("/tasks/executions/{execution_id}/stop")
-async def stop_task_execution(execution_id: int, db: Session = Depends(get_db)):
+async def stop_task_execution(execution_id: int, request: Request, db: Session = Depends(get_db)):
     execution = db.query(TaskExecution).get(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
     
     await task_manager.stop_execution(execution_id, status="stopped", error_msg="Stopped manually by user")
+
+    actor_info = audit_logger.extract_actor_info(request)
+    audit_logger.log(
+        action="TASK_STOP",
+        target_type="task",
+        target_id=execution.task_id,
+        target_name=f"Execution #{execution_id}",
+        channel=actor_info["channel"],
+        username=actor_info["username"],
+        ip_address=actor_info["ip_address"],
+        details=f"Task execution #{execution_id} stopped manually",
+    )
     return {"status": "success", "message": f"Execution {execution_id} stopped."}
+
 
 @app.get("/tasks/executions/{execution_id}/logs")
 def get_execution_logs(execution_id: int, db: Session = Depends(get_db)):

@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.53.2] - 2026-11-02
+
+### Fixed
+- **WSS Reverse Tunnel Resilience (`backend/core/cloud_tunnel_client.py`)**:
+  - Omitted explicit `ssl=None` on secure `wss://` WebSocket handshakes, allowing Python's default SSL context to authenticate certificates properly.
+  - Added compatibility fallback for `extra_headers` vs `additional_headers` across older and modern `websockets` library versions.
+- **CLI CloudHub Enrollment Non-Disruptive Flow (`backend/cli.py`)**:
+  - Preserved existing network listener interface and local SSL settings during `enroll-cloudhub` without prompting or forcing loopback binding.
+  - Ensured network and SSL configuration are read directly from and written to `config/config.json` rather than volatile runtime state.
+- **Database Path Auto-Resolution in Admin CLI (`backend/cli.py`)**:
+  - Automatically resolves database location and guarantees schema initialization in CLI operations before executing admin commands.
+
+## [2.53.1] - 2026-10-29
+
+### Added
+- **Node Branding & Identity Telemetry Sync (`backend/core/cloud_tunnel_client.py`)**:
+  - Stream `node_name`, `logo_text` (monogram/abbreviation, e.g. "VS1"), and `logo_path` within periodic telemetry heartbeats to CloudHub.
+  - Extended enrollment handshake to include `logo_text` fallback if image file is absent.
+
+### Fixed
+- **Settings Panel Restart Reconnection Behind Proxy (`frontend/src/components/views/SettingsView.tsx`)**:
+  - Resolved browser reconnection failure and reload loop when triggering "Restart Panel" from within a CloudHub reverse proxy session (`/proxy/{node_id}/`).
+  - Automatically detects proxied context and polls relative endpoints without attempting cross-host/cross-port connections to unreachable local ports, reloading the tab smoothly as soon as the appliance tunnel reconnects.
+  - Replaced hardcoded port jump with intelligent relative polling when direct port has not changed.
+
+## [2.53.0] - 2026-10-28
+
+### Added
+- **CloudHub Proxy Awareness & Clean Session Exit (`useAuth.ts`, `Sidebar.tsx`, `App.tsx`)**:
+  - Implemented automatic CloudHub proxy detection (`window.location.pathname` containing `/proxy/` or SSO parameter).
+  - Adapted Sidebar exit action to display dedicated "Disconnect" badge and tooltip (`nav.exitCloudHub`) when operating behind a CloudHub bastion.
+  - Implemented clean session logout invoking `window.close()` upon disconnection, with graceful fallback to an interstitial card screen if the browser security sandbox blocks automatic tab termination.
+  - Complete i18n parity in `en.json`, `es.json`, `ca.json`.
+
+## [2.52.0] - 2026-10-27
+
+### Added
+- **Human-Only Operational Audit Log System (`backend/core/audit_logger.py`, `AuditLogCard.tsx`, `backend/main.py`)**:
+  - Implemented dedicated, lightweight audit logging exclusively capturing deliberate human-initiated actions (lifecycle start/stop/restart, create, update, delete, system settings changes, and CloudHub enrollment).
+  - Strict exclusion of high-frequency polling (`GET`), telemetry updates, and background worker loops to guarantee minimal disk/database consumption (~3 MB/year).
+  - Semantic Field-Level Delta engine computing concise, human-readable differences between entity states (`bitrate: 2500k -> 4500k`) rather than raw JSON dumps, with automated credential masking (`gui_password`, `tunnel_secret`, etc.).
+  - Dual-write persistence: single-line human-readable text file (`data/logs/audit.log`) for quick SSH inspection via `tail -f`, plus structured SQLite table (`AuditLog`).
+  - Real-time WebSocket relay to central CloudHub bastions via `CloudTunnelClient.send_audit_event()`, ensuring unforgeable central audit retention even if local appliance logs are altered or nodes rebooted.
+  - Actor and channel attribution differentiating between signed CloudHub SSO users (`cloudhub:{username}`) and direct web access (`local:admin` + client IP).
+  - Dedicated `AuditLogCard` in Settings (`activeTab === 'audit'`) featuring action/channel filters, real-time search, expandable diff inspection, pagination, and direct `audit.log` disk file download.
+  - Incremented database schema version to `2.7.0` adding `audit_logs` table.
+  - 100% multilingual translation coverage across English, Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+  - Comprehensive unit test suite in `backend/tests/test_audit_logger.py`.
+
+## [2.51.0] - 2026-10-27
+
+
+### Added
+- **CloudHub Outbound Reverse Tunnel Client & In-Memory ASGI Bridge (`cloud_tunnel_client.py`, `CloudHubSettingsCard.tsx`, `main.py`)**:
+  - Implemented outbound persistent WebSocket reverse tunnel connecting to central CloudHub bastions (`/api/edge/tunnel`), overcoming NAT/CGNAT firewalls without inbound port forwards or VPNs.
+  - Direct in-memory ASGI 3.0 dispatch (`app(scope, receive, send)`) for proxied HTTP calls and WebSocket streams, avoiding loopback TCP port allocation and SSL redirect conflicts.
+  - Zero-knowledge ephemeral SSO assertion verification (HMAC-SHA256 with 60s timestamp window) issuing temporary local sessions without exposing appliance credentials.
+  - Interactive one-click enrollment ceremony (`POST /api/settings/cloudhub/enroll`) and disconnect endpoint (`POST /api/settings/cloudhub/disconnect`).
+  - Dedicated `CloudHubSettingsCard` in Web UI Settings under the Network tab, featuring real-time connection status badges, SSO toggles, and enrollment forms.
+  - 100% multilingual translation coverage across English (SSOT), Spanish, and Catalan (`en.json`, `es.json`, `ca.json`).
+  - GitHub `/tags` fallback in `update_checker.py` ensuring update discovery when `/releases/latest` is unpopulated.
+  - Incremented database schema to `2.6.0` adding 7 `cloudhub_*` columns to `SystemSettings` with automated migrations.
+  - Comprehensive unit and end-to-end integration tests (`test_cloud_tunnel_client.py`, `test_cloudhub_e2e_handshake.py`).
+
 ## [2.50.0] - 2026-10-26
 
 ### Added

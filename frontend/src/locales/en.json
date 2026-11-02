@@ -74,7 +74,9 @@
     "services": "Services",
     "tasks": "Scheduled Tasks",
     "settings": "Settings",
-    "logout": "Logout"
+    "logout": "Logout",
+    "exitCloudHub": "Disconnect and return to CloudHub",
+    "disconnect": "Disconnect"
   },
   "auth": {
     "accessRestricted": "Access restricted. Enter node password.",
@@ -82,6 +84,9 @@
     "unlockNode": "Unlock Node",
     "lockNode": "Lock Node",
     "logout": "Logout",
+    "remoteSessionClosed": "Remote Session Terminated",
+    "remoteSessionClosedDesc": "You have disconnected from this appliance. You can safely close this browser tab.",
+    "closeTab": "Close Tab",
     "checkingAuth": "Verifying security credentials...",
     "permissionsRestored": "Permissions Restored",
     "storageWarning": "Storage Permission Warning"
@@ -519,8 +524,10 @@
       "alsa": "ALSA Audio",
       "decklink": "DeckLink",
       "magewell": "Magewell",
-      "backup": "Backup & Restore"
+      "backup": "Backup & Restore",
+      "audit": "Audit Log"
     },
+
     "alsa": {
       "title": "ALSA MIXER",
       "subtitle": "Broadcast 4-Quadrant Signal Routing & Gain Control",
@@ -668,6 +675,32 @@
       "fallbackActive": "Log Storage Read-Only (Operating in Journalctl Fallback)",
       "permissionsRecoveredHelp": "Write access to {{path}} has been restored. Restart or reload the system service to resume writing logs to file.",
       "fallbackActiveHelp": "Cannot write to {{path}}. System logs are temporarily redirected to journalctl console."
+    },
+    "cloudhub": {
+      "cardTitle": "CLOUDHUB REVERSE TUNNEL CONNECTOR",
+      "description": "Enables outbound WebSocket reverse tunneling to a central CloudHub bastion, providing zero-port-forwarding NAT/CGNAT remote access and telemetry.",
+      "statusConnected": "Connected",
+      "statusReconnecting": "Reconnecting",
+      "statusDisabled": "Tunnel Disabled",
+      "statusUnenrolled": "Not Enrolled",
+      "hubUrl": "CloudHub URL",
+      "nodeId": "Node ID",
+      "organization": "Organization",
+      "nodeGroup": "Node Group",
+      "enableTunnel": "Enable Outbound Tunnel",
+      "enableTunnelHelp": "Keep persistent WebSocket tunnel active to receive remote connections.",
+      "enableSSO": "Accept Ephemeral SSO Assertions",
+      "ssoHelp": "Allows authenticated CloudHub operators to sign in automatically via HMAC assertions without exposing local password.",
+      "unlinkButton": "Unlink from CloudHub",
+      "confirmUnlink": "Are you sure you want to unlink this appliance from CloudHub?",
+      "unlinkSuccess": "Appliance unlinked from CloudHub",
+      "unlinkFailed": "Failed to unlink from CloudHub",
+      "hubUrlLabel": "CloudHub Orchestrator URL",
+      "tokenLabel": "Enrollment Token",
+      "tokenHelp": "Obtain this one-time token from your CloudHub organization administrator.",
+      "enrollButton": "Enroll Appliance",
+      "enrollSuccess": "Appliance successfully enrolled to CloudHub",
+      "enrollFailed": "Enrollment failed"
     },
     "lcd": {
       "title": "LCD display & Serial Driver",
@@ -835,6 +868,25 @@
       "importSuccess": "Backup restored successfully!",
       "invalidBackupFormat": "Invalid backup file format. Missing ffmpeg-gui signature."
     },
+    "audit": {
+      "title": "Operational Audit Log",
+      "subtitle": "Immutable history of human-initiated changes, operations, and configuration edits",
+      "download": "Download audit.log",
+      "download_tooltip": "Download raw audit.log from disk",
+      "all_actions": "All Actions",
+      "all_channels": "All Channels",
+      "search_placeholder": "Search target name, user, details...",
+      "no_records": "No audit entries match the current filter.",
+      "col_time": "Timestamp",
+      "col_channel": "Channel",
+      "col_user": "User",
+      "col_action": "Action",
+      "col_target": "Target",
+      "col_ip": "IP / Tunnel",
+      "col_changes": "Details & Semantic Diffs",
+      "pagination_summary": "Showing {{start}}-{{end}} of {{total}} events"
+    },
+
     "decklink": {
       "title": "BLACKMAGIC DECKLINK HARDWARE CONTROL",
       "subtitle": "Headless SDI/HDMI connector mapping, live signal telemetry, and firmware management",

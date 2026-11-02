@@ -11,6 +11,9 @@ import { InboundKeysCard } from './settings/InboundKeysCard';
 import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 import { FirewallPortMatrixCard } from './settings/FirewallPortMatrixCard';
+import { CloudHubSettingsCard } from './settings/CloudHubSettingsCard';
+import { AuditLogCard } from './settings/AuditLogCard';
+
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 import { AliasField } from '../common/AliasField';
 
@@ -113,7 +116,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup' | 'audit'>('general');
+
 
   const [softwareEngines, setSoftwareEngines] = useState<Record<string, SoftwareEngineData>>({});
 
@@ -907,14 +911,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
   
   const pollNewPort = () => {
+    // Detect if running behind CloudHub reverse proxy or proxied subpath
+    const isProxied =
+      window.location.pathname.startsWith('/proxy/') ||
+      Boolean((window as any).__CLOUDHUB_SESSION__);
+
+    if (isProxied) {
+      // Behind CloudHub proxy: the browser path is /proxy/{node_id}/...
+      // Poll through relative proxy path until the appliance tunnel reconnects and returns 200 OK.
+      const pingUrl = `${API}/api/settings/software`;
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(pingUrl, { cache: 'no-store' });
+          if (res.ok) {
+            clearInterval(interval);
+            window.location.reload();
+          }
+        } catch {
+          // Keep polling until edge tunnel is back online
+        }
+      }, 1500);
+      return;
+    }
+
     const targetPort = settings.gui_port || 8000;
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
+    const currentPort = window.location.port || (protocol === 'https:' ? '443' : '80');
+
+    // If port has not changed, just poll relative endpoint
+    if (String(targetPort) === currentPort) {
+      const pingUrl = `${API}/settings`;
+      const interval = setInterval(async () => {
+        try {
+          const res = await fetch(pingUrl, { cache: 'no-store' });
+          if (res.ok) {
+            clearInterval(interval);
+            window.location.reload();
+          }
+        } catch {
+          // Keep polling
+        }
+      }, 1500);
+      return;
+    }
+
     const url = `${protocol}//${hostname}:${targetPort}/settings`;
-    
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: 'no-store' });
         if (res.ok) {
           clearInterval(interval);
           // Redirect browser to the new port address
@@ -1097,7 +1142,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <ExportIcon size={14} />
           {t('settings.tabs.backup', 'BACKUP & RESTORE')}
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('audit')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+            activeTab === 'audit'
+              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+          }`}
+        >
+          <span className="text-sm">🛡️</span>
+          {t('settings.tabs.audit', 'AUDIT LOG')}
+        </button>
       </div>
+
 
       {/* Tab content wrapper (Scrollable area) */}
       <div className="flex-1 overflow-y-auto p-5 md:p-6 min-h-0 custom-scrollbar space-y-5">
@@ -2332,6 +2390,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             {/* CARD: LIVE FIREWALL & PORT MATRIX */}
             <FirewallPortMatrixCard API={API} />
 
+            {/* CARD: CLOUDHUB REVERSE TUNNEL CONNECTOR */}
+            <CloudHubSettingsCard API={API} />
+
             {/* CARD 5: EMAIL NOTIFICATIONS & ALERTING */}
             <div className="glass-card p-5 !rounded-2xl space-y-5">
               <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
@@ -2935,7 +2996,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
         {/* TAB 8: Backup & Restore */}
         {activeTab === 'backup' && <BackupRestoreCard API={API} />}
+
+        {/* TAB 9: Operational Audit Log */}
+        {activeTab === 'audit' && <AuditLogCard API={API} />}
       </div>
+
 
       {showRestartConfirm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in duration-300">

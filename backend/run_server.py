@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 import os
 import sys
+
+# Ensure both backend directory and project root are in sys.path
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(backend_dir)
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+if project_root not in sys.path:
+    sys.path.insert(1, project_root)
+
 import argparse
 import configparser
+
 import logging
 import logging.handlers
 import gzip

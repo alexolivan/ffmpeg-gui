@@ -48,7 +48,12 @@ class TestTaskAPI(unittest.TestCase):
         self.assertEqual(res.json()["task"]["name"], "API Test Task 1")
 
         # Update Task
-        update_payload = {"name": "API Test Task 1 Updated", "is_active": False}
+        update_payload = {
+            "name": "API Test Task 1 Updated",
+            "schedule_type": "recurring",
+            "schedule_cron": "0 0 * * *",
+            "is_active": False
+        }
         res = self.client.put(f"/tasks/{task_id}", json=update_payload)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()["name"], "API Test Task 1 Updated")

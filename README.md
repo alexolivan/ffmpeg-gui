@@ -221,6 +221,12 @@ sudo fail2ban-client reload
 - **Web GUI Kill-Switch**: Fully configurable and toggleable from Web GUI Settings (`Network & SSL`) or REST API.
 - **Desktop Companion App**: Pair with [ffmpeg-gui-scanner](https://github.com/alexolivan/ffmpeg-gui-scanner) on Windows, macOS, or Linux for zero-configuration LAN discovery, live vitality tracking, and 1-click dashboard access.
 
+### ☁️ 21. CloudHub Central Directory & Reverse Tunnel Bastion
+- **Zero-Port-Forwarding Remote Access**: Outbound WebSocket reverse tunnel connecting to a central [ffmpeg-gui-cloudhub](https://github.com/alexolivan/ffmpeg-gui-cloudhub) instance, bypassing firewalls and CGNAT without requiring VPN setups or open inbound router ports.
+- **In-Memory ASGI Bridge**: Proxied HTTP and WebSocket traffic executes directly within the local FastAPI application, eliminating port binding conflicts and SSL redirect loops.
+- **Zero-Knowledge Single Sign-On (SSO)**: Ephemeral HMAC-SHA256 signed assertions grant instant operator access without sharing local passwords.
+- **1-Click Token Enrollment**: Simple enrollment flow from the Network settings card with live vitality telemetry streaming.
+
 ---
 
 ## Architecture
