@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.56.2] - 2026-11-03
+
+### Fixed
+- **PipeWire Log Noise Reduction & RTP Jitter Warning Suppression (`backend/core/process_manager.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`)**:
+  - Scoped `PIPEWIRE_DEBUG` environment variable to `2,mod.rtp-sink:1,mod.rtp-source:1` (or `3,mod.rtp-sink:1,mod.rtp-source:1` in debug mode), instructing PipeWire's native logging engine to suppress repetitive timerfd micro-jitter warnings (`missing timeout`) while preserving all genuine errors and daemon warnings.
+  - Added multi-layered filtering in `_file_log_tailer`, `get_service_logs`, and `WebSocketSubscriptionHub` to prevent any residual or historical `missing timeout` lines from flooding the virtual console buffer.
+
 ## [2.56.1] - 2026-11-03
 
 ### Fixed

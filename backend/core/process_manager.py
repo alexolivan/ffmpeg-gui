@@ -629,7 +629,7 @@ class ProcessManager:
                         if pw_config_path:
                             sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
                         pw_debug_enabled = bool(debug_mode)
-                        sub_env["PIPEWIRE_DEBUG"] = "3" if pw_debug_enabled else "2"
+                        sub_env["PIPEWIRE_DEBUG"] = "3,mod.rtp-sink:1,mod.rtp-source:1" if pw_debug_enabled else "2,mod.rtp-sink:1,mod.rtp-source:1"
                         sub_env["PIPEWIRE_LOG_SYSTEMD"] = "false"
                         sub_env["PIPEWIRE_LOG"] = log_path
                         sub_env["PIPEWIRE_LOG_LINE"] = "false"
@@ -3690,6 +3690,8 @@ class ProcessManager:
                     if line:
                         msg = line.strip()
                         if msg:
+                            if "missing timeout" in msg.lower():
+                                continue
                             if sidecar_name:
                                 self._handle_sidecar_log_msg(process_id, sidecar_name, msg)
                             else:
@@ -3720,6 +3722,8 @@ class ProcessManager:
                                 break
                             t_msg = trailing.strip()
                             if t_msg:
+                                if "missing timeout" in t_msg.lower():
+                                    continue
                                 if sidecar_name:
                                     self._handle_sidecar_log_msg(process_id, sidecar_name, t_msg)
                                 else:

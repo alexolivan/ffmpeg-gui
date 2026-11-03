@@ -7097,7 +7097,11 @@ def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(ge
 
     # 1. If actively running and in memory buffer, return it
     if service_id in process_manager.log_buffers and len(process_manager.log_buffers[service_id]) > 0:
-        return list(process_manager.log_buffers[service_id])[-limit:]
+        valid_buffered = [
+            entry for entry in process_manager.log_buffers[service_id]
+            if "missing timeout" not in entry.get("message", "").lower()
+        ]
+        return valid_buffered[-limit:]
 
     # 2. Read physical log file from disk (process_{service_id}.log) if present
     log_file = process_manager.get_process_log_path(service_id, svc.log_storage_id, session=db)
@@ -7115,9 +7119,9 @@ def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(ge
 
     if lines:
         parsed = []
-        for line in lines[-limit:]:
+        for line in lines[-(limit * 2):]:
             line_str = line.strip()
-            if not line_str:
+            if not line_str or "missing timeout" in line_str.lower():
                 continue
             lower = line_str.lower()
             level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else "INFO"
@@ -7126,6 +7130,8 @@ def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(ge
                 "level": level,
                 "message": line_str
             })
+            if len(parsed) >= limit:
+                break
         return parsed
 
     # 3. Fallback to ServiceLog table in database

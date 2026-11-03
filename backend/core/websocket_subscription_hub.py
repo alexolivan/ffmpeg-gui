@@ -138,7 +138,10 @@ class WebSocketSubscriptionHub:
                 target_id = int(item_id) if (isinstance(item_id, (int, str)) and str(item_id).isdigit()) else item_id
                 if process_manager and hasattr(process_manager, "log_buffers"):
                     if target_id in process_manager.log_buffers:
-                        lines = list(process_manager.log_buffers[target_id])
+                        lines = [
+                            entry for entry in process_manager.log_buffers[target_id]
+                            if "missing timeout" not in entry.get("message", "").lower()
+                        ]
 
                 # If no in-memory buffer, check if log file exists on disk
                 if not lines and db_session_factory and process_manager:
@@ -159,7 +162,10 @@ class WebSocketSubscriptionHub:
                                         if f_size > 65536:
                                             f.seek(f_size - 65536)
                                         chunk = f.read().decode("utf-8", errors="replace")
-                                    raw_lines = chunk.splitlines()[-100:]
+                                    raw_lines = [
+                                        l.strip() for l in chunk.splitlines()
+                                        if l.strip() and "missing timeout" not in l.lower()
+                                    ][-100:]
                                     lines = [
                                         {"timestamp": "", "level": "INFO", "message": l}
                                         for l in raw_lines
