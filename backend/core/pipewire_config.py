@@ -142,11 +142,14 @@ class PipeWireConfigGenerator:
         cls,
         requested_latency_ms: Any,
         quantum: int,
-        sample_rate: int
+        sample_rate: int,
+        ptime_mode: Optional[str] = None
     ) -> int:
         """
-        Compute safe sess.latency.msec enforcing the mathematical guardrail:
-        effective_latency_ms >= ceil(3.0 * (quantum / sample_rate) * 1000.0).
+        Compute safe sess.latency.msec enforcing:
+        1. Mathematical quantum guardrail: effective_latency_ms >= ceil(3.0 * (quantum / sample_rate) * 1000.0).
+        2. PipeWire RTP frame quantization: when a fixed ptime mode is specified (e.g. 1ms or 4ms),
+           the latency is rounded up to an exact integer multiple of that packet time.
         If requested_latency_ms is 0, None, or 'auto', defaults to max(60, ceil(4.0 * quantum_ms)).
         """
         safe_rate = max(8000, int(sample_rate or 48000))
@@ -161,11 +164,18 @@ class PipeWireConfigGenerator:
             except (ValueError, TypeError):
                 req_val = 0
 
-        if req_val <= 0:
-            auto_ms = max(60, int(math.ceil(quantum_ms * 4.0)))
-            return max(auto_ms, min_safe_ms)
+        base_ms = max(req_val if req_val > 0 else max(60, int(math.ceil(quantum_ms * 4.0))), min_safe_ms)
 
-        return max(req_val, min_safe_ms)
+        if ptime_mode:
+            mode = str(ptime_mode).strip().lower()
+            if mode == "1ms":
+                # Integer milliseconds are exact multiples of 1ms
+                return int(base_ms)
+            if mode == "4ms":
+                # Round up to multiple of 4ms
+                return int(math.ceil(base_ms / 4.0) * 4)
+
+        return int(base_ms)
 
     @classmethod
     def generate_config(
@@ -205,7 +215,7 @@ class PipeWireConfigGenerator:
             ptime_mode = aes67_net.get("rtp_ptime_mode") or config.get("rtp_ptime_mode") or "auto"
         min_ptime, max_ptime = cls.resolve_rtp_ptime_limits(ptime_mode)
         raw_jitter_ms = aes67_net.get("jitter_buffer_ms", config.get("jitter_buffer_ms", "auto"))
-        effective_latency_ms = cls.resolve_safe_jitter_latency_ms(raw_jitter_ms, quantum, sample_rate)
+        effective_latency_ms = cls.resolve_safe_jitter_latency_ms(raw_jitter_ms, quantum, sample_rate, ptime_mode)
 
         pulse_socket = os.path.join(runtime_dir, "pulse.sock")
 
@@ -232,6 +242,15 @@ class PipeWireConfigGenerator:
             "",
             "context.modules = [",
             "    { name = \"libpipewire-module-rt\"",
+            "        args = {",
+            "            nice.level = -11",
+            "            rt.prio = 88",
+            "            rt.time.soft = -1",
+            "            rt.time.hard = -1",
+            "            rlimits.enabled = true",
+            "            rtportal.enabled = false",
+            "            rtkit.enabled = false",
+            "        }",
             "        flags = [ ifexists nofail ]",
             "    },",
             "    { name = \"libpipewire-module-protocol-native\" },",
@@ -335,6 +354,15 @@ class PipeWireConfigGenerator:
                     f"                node.name = {cls._spa_val(f'rtp_tx_{sink_id}')}",
                     f"                node.description = {cls._spa_val(f'AES67 Tx for {sink_name}')}",
                     f"                target.object = {cls._spa_val(sink_id)}",
+                    f"                sess.name = {cls._spa_val(sap_name)}",
+                    f"                rtp.destination.ip = {cls._spa_val(dest_ip)}",
+                    f"                rtp.destination.port = {dest_port}",
+                    "                rtp.media = \"audio\"",
+                    f"                rtp.mime = {cls._spa_val('L24' if '24' in audio_fmt else ('L16' if '16' in audio_fmt else 'L24'))}",
+                    f"                rtp.rate = {sample_rate}",
+                    f"                rtp.channels = {channels}",
+                    f"                rtp.ptime = {1.0 if aoip_profile == 'dante' else float(min_ptime)}",
+                    f"                rtp.ts-refclk = {cls._spa_val(f'ptp=IEEE1588-2008:{eui64}:0')}",
                     "                sess.sap.announce = true",
                     "                stream.dont-remix = true",
                     "                node.always-process = true",
@@ -362,7 +390,7 @@ class PipeWireConfigGenerator:
             audio_format = rs.get("format", "S24BE")
             audio_rate = int(rs.get("rate") or sample_rate)
             rs_jitter = rs.get("jitter_buffer_ms", raw_jitter_ms)
-            rs_latency_ms = cls.resolve_safe_jitter_latency_ms(rs_jitter, quantum, audio_rate)
+            rs_latency_ms = cls.resolve_safe_jitter_latency_ms(rs_jitter, quantum, audio_rate, ptime_mode)
 
             rtp_rx_args = []
             if nic_name:
@@ -377,6 +405,8 @@ class PipeWireConfigGenerator:
                 f"            audio.rate = {audio_rate}",
                 f"            audio.channels = {channels}",
                 f"            audio.position = {pos_formatted}",
+                f"            sess.min-ptime = {min_ptime}",
+                f"            sess.max-ptime = {max_ptime}",
                 f"            sess.latency.msec = {rs_latency_ms}",
                 "            stream.props = {",
                 f"                node.name = {cls._spa_val(f'rtp_rx_{rs_id}')}",

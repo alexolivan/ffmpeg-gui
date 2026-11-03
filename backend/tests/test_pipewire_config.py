@@ -554,6 +554,57 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("clientOnly              0", conf)
         self.assertIn("serverOnly              1", conf)
 
+    def test_rt_module_headless_rlimits_no_rtkit(self):
+        """Verifies libpipewire-module-rt disables RTKit/Portal probing in headless environments."""
+        conf = PipeWireConfigGenerator.generate_config(50, {}, "/tmp/run")
+        self.assertIn("rtkit.enabled = false", conf)
+        self.assertIn("rtportal.enabled = false", conf)
+        self.assertIn("rlimits.enabled = true", conf)
+
+    def test_rtp_sink_stream_props_sdp_metadata(self):
+        """Verifies libpipewire-module-rtp-sink populates stream.props with SDP fields for rtp-sap."""
+        cfg = {
+            "virtual_sinks": [
+                {
+                    "id": "pgm",
+                    "name": "PGM Audio",
+                    "aes67_enabled": True,
+                    "multicast_ip": "239.69.1.1",
+                    "rtp_port": 5004,
+                    "channels": 2
+                }
+            ]
+        }
+        conf = PipeWireConfigGenerator.generate_config(51, cfg, "/tmp/run")
+        self.assertIn('rtp.destination.ip = "239.69.1.1"', conf)
+        self.assertIn('rtp.destination.port = 5004', conf)
+        self.assertIn('rtp.media = "audio"', conf)
+        self.assertIn('rtp.mime = "L24"', conf)
+        self.assertIn('rtp.channels = 2', conf)
+
+    def test_rtp_source_min_max_ptime_and_quantization(self):
+        """Verifies libpipewire-module-rtp-source includes sess.min-ptime and sess.max-ptime."""
+        cfg = {
+            "aoip_profile": "dante",
+            "remote_sinks": [
+                {
+                    "id": "rx_dante",
+                    "name": "Dante Rx Stream",
+                    "multicast_ip": "239.69.2.2",
+                    "rtp_port": 5004,
+                    "channels": 2
+                }
+            ]
+        }
+        conf = PipeWireConfigGenerator.generate_config(52, cfg, "/tmp/run")
+        self.assertIn("sess.min-ptime = 1", conf)
+        self.assertIn("sess.max-ptime = 1", conf)
+        self.assertIn("sess.latency.msec = 86", conf)
+
+        # 4ms quantization test
+        lat_4ms = PipeWireConfigGenerator.resolve_safe_jitter_latency_ms(86, quantum=1024, sample_rate=48000, ptime_mode="4ms")
+        self.assertEqual(lat_4ms, 88)
+
 
 if __name__ == "__main__":
     unittest.main()

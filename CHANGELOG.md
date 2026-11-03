@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.56.3] - 2026-11-03
+
+### Fixed
+- **PipeWire Headless Realtime Scheduling & D-Bus Warning Suppression (`backend/core/pipewire_config.py`)**:
+  - Configured `libpipewire-module-rt` with `rtkit.enabled = false` and `rtportal.enabled = false` in daemon configuration, silencing benign headless system bus errors (`Failed to connect to session bus: Unable to autolaunch a dbus-daemon without a $DISPLAY for X11` and `RTKit error: org.freedesktop.DBus.Error.ServiceUnknown`), while enforcing direct Linux POSIX realtime limits via `rlimits.enabled = true` and `rt.prio = 88`.
+- **RTP SAP Stream Properties for Built-in SDP Creation (`backend/core/pipewire_config.py`)**:
+  - Populated stream node properties (`stream.props`) for AES67 transmitters (`libpipewire-module-rtp-sink`) with complete SDP metadata (`rtp.destination.ip`, `rtp.destination.port`, `sess.name`, `rtp.media`, `rtp.mime`, `rtp.rate`, `rtp.channels`, `rtp.ptime`, `rtp.ts-refclk`). This satisfies `libpipewire-module-rtp-sap`'s destination address resolution, completely eliminating startup error `mod.rtp-sap | Failed to create SDP: Invalid argument`.
+- **RTP Source Packet Time & Jitter Latency Quantization (`backend/core/pipewire_config.py`)**:
+  - Configured `sess.min-ptime` and `sess.max-ptime` on `libpipewire-module-rtp-source` receivers, matching the active profile (e.g. 1ms for Dante, 4ms or auto for AES67) rather than defaulting to generic MTU 1280.
+  - Aligned `resolve_safe_jitter_latency_ms` to quantize buffer latency to integer multiples of the configured packet time, eliminating the startup warning `sess.latency.msec ... should be an integer multiple of rtp.ptime`.
+
 ## [2.56.2] - 2026-11-03
 
 ### Fixed
