@@ -598,6 +598,8 @@ class PipeWireConfigGenerator:
             f"[{clean_iface}]",
             "network_transport       UDPv4",
             "delay_mechanism         E2E",
+            f"serverOnly              {server_only}",
+            f"clientOnly              {client_only}",
             ""
         ]
         return "\n".join(lines)

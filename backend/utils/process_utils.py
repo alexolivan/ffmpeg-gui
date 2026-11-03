@@ -15,7 +15,7 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
         try:
             name = proc.info['name'] or ''
             # Check if it is a managed process binary
-            is_candidate = any(target in name.lower() for target in ['ffmpeg', 'mediamtx', 'icecast', 'cog', 'xvfb', 'x11vnc'])
+            is_candidate = any(target in name.lower() for target in ['ffmpeg', 'mediamtx', 'icecast', 'cog', 'xvfb', 'x11vnc', 'pipewire', 'ptp4l', 'phc2sys'])
             if is_candidate:
                 pid = proc.info['pid']
                 gui_proc_id = None
@@ -27,7 +27,7 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
                 except Exception:
                     pass
 
-                # Fallback: check command line arguments for mediamtx ephemeral file or progress log pattern
+                # Fallback: check command line arguments for ephemeral file, runtime dir, or progress log pattern
                 if not gui_proc_id and not gui_exec_id:
                     try:
                         cmdline = " ".join(proc.cmdline())
@@ -36,13 +36,21 @@ def cleanup_rogue_processes(process_id: int = None, execution_id: int = None, ac
                         if m_proc:
                             gui_proc_id = m_proc.group(1)
                         else:
-                            m_s = re.search(r"ffmpeg_progress_(\d+)s\.log", cmdline)
-                            if m_s:
-                                gui_proc_id = m_s.group(1)
+                            m_pw = re.search(r"pipewire_(\d+)\.conf", cmdline)
+                            if m_pw:
+                                gui_proc_id = m_pw.group(1)
                             else:
-                                m_t = re.search(r"ffmpeg_progress_(\d+)t\.log", cmdline)
-                                if m_t:
-                                    gui_exec_id = m_t.group(1)
+                                m_ptp = re.search(r"ptp4l_(\d+)\.conf", cmdline)
+                                if m_ptp:
+                                    gui_proc_id = m_ptp.group(1)
+                                else:
+                                    m_s = re.search(r"ffmpeg_progress_(\d+)s\.log", cmdline)
+                                    if m_s:
+                                        gui_proc_id = m_s.group(1)
+                                    else:
+                                        m_t = re.search(r"ffmpeg_progress_(\d+)t\.log", cmdline)
+                                        if m_t:
+                                            gui_exec_id = m_t.group(1)
                     except Exception:
                         pass
 

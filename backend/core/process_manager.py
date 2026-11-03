@@ -666,6 +666,14 @@ class ProcessManager:
                     self.processes[process_id] = proc
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                     if svc_type == "pipewire_hub":
+                        # Fast startup check: verify PipeWire didn't immediately crash due to socket/lock conflict
+                        await asyncio.sleep(0.15)
+                        if proc.returncode is not None:
+                            self.logger.error(
+                                f"[PipeWire Hub #{process_id}] PipeWire process died immediately on startup (code: {proc.returncode}). Aborting companion daemon launch."
+                            )
+                            return
+
                         from core.pipewire_matrix_supervisor import PipeWireMatrixSupervisor
                         supervisor = PipeWireMatrixSupervisor(process_id, self)
                         self.pipewire_supervisors[process_id] = supervisor
@@ -1277,6 +1285,7 @@ class ProcessManager:
                         if nic:
                             from core.resource_lock_manager import resource_manager
                             resource_manager.release_resource("network_interface", nic, owner_type="service", owner_id=process_id)
+                        self._reap_orphan_pipewire_for_service(process_id)
                         self._reap_orphan_ptp4l_for_service(process_id)
 
                     if getattr(media_proc, "service_type", None) == "desktop":
@@ -2199,6 +2208,61 @@ class ProcessManager:
 
         return [icecast_bin, "-c", ephem_file], ephem_file
 
+    def _reap_orphan_pipewire_for_service(self, service_id: int):
+        """
+        Scans and terminates any rogue or orphan pipewire process referencing
+        this service's configuration file (/dev/shm/pipewire_{service_id}.conf or runtime dir),
+        and safely cleans up stale communication lockfiles and sockets.
+        """
+        conf_token = f"pipewire_{service_id}.conf"
+        rdir_token = f"pipewire-{service_id}"
+        runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{service_id}"
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    name = (proc.info.get('name') or '').lower()
+                    cmdline = proc.info.get('cmdline') or []
+                    cmd_str = " ".join(cmdline).lower()
+                    if "pipewire" in name or "pipewire" in cmd_str:
+                        matches = (conf_token in cmd_str) or (rdir_token in cmd_str)
+                        if not matches:
+                            try:
+                                env = proc.environ()
+                                if env.get("FFMPEG_GUI_PROCESS_ID") == str(service_id):
+                                    matches = True
+                                elif rdir_token in str(env.get("PIPEWIRE_RUNTIME_DIR", "")):
+                                    matches = True
+                            except Exception:
+                                pass
+                        if matches:
+                            pid = proc.info['pid']
+                            self.logger.warning(
+                                f"[PipeWire Hub #{service_id}] Killing orphan/rogue pipewire process (PID: {pid})"
+                            )
+                            try:
+                                proc.terminate()
+                                try:
+                                    proc.wait(timeout=1.0)
+                                except (psutil.TimeoutExpired, TimeoutError):
+                                    proc.kill()
+                            except (psutil.NoSuchProcess, ProcessLookupError):
+                                pass
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except Exception as e:
+            self.logger.debug(f"[PipeWire Hub #{service_id}] Error scanning orphan pipewire: {e}")
+
+        # Stale lockfile & socket cleanup:
+        # Remove stale pipewire-0.lock and socket files so the new daemon can bind cleanly without EAGAIN
+        if os.path.exists(runtime_dir):
+            for stale_file in ["pipewire-0.lock", "pipewire-0", "pipewire-0-manager", "pulse.sock"]:
+                sf_path = os.path.join(runtime_dir, stale_file)
+                if os.path.exists(sf_path):
+                    try:
+                        os.remove(sf_path)
+                    except Exception:
+                        pass
+
     def _build_pipewire_config_and_cmd(self, media_proc, pipewire_bin: str, session) -> Tuple[List[str], str, str]:
         """
         Builds PipeWire isolated runtime environment, generates config in ephemeral RAM (/dev/shm),
@@ -2208,6 +2272,10 @@ class ProcessManager:
         from core.resource_lock_manager import resource_manager
 
         process_id = media_proc.id
+        # Pre-flight cleanup: terminate any lingering orphan pipewire and ptp4l processes for this service
+        self._reap_orphan_pipewire_for_service(process_id)
+        self._reap_orphan_ptp4l_for_service(process_id)
+
         runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
         os.makedirs(runtime_dir, mode=0o700, exist_ok=True)
         try:
@@ -3552,22 +3620,42 @@ class ProcessManager:
         limit_bytes = max_log_bytes if (max_log_bytes and max_log_bytes > 0) else self._get_max_log_file_bytes()
         check_counter = 0
         try:
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.1)
             if not os.path.exists(log_path):
                 return
             with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                f.seek(0, os.SEEK_END)
+                # Read from start of file so early startup logs and initial error messages are always captured
                 while True:
+                    line = f.readline()
+                    if line:
+                        msg = line.strip()
+                        if msg:
+                            self._handle_log_msg(process_id, msg, status_re=None)
+                        continue
+
+                    # Only check if process has exited once EOF on the current log stream is reached
+                    is_done = False
                     if proc is not None:
                         if proc.returncode is not None:
-                            break
+                            is_done = True
                     elif effective_pid is not None:
                         if not psutil.pid_exists(effective_pid):
-                            break
+                            is_done = True
                     else:
-                        break
+                        is_done = True
 
                     if process_id not in self.processes and process_id not in self.reattached_pids:
+                        is_done = True
+
+                    if is_done:
+                        # Drain any trailing lines written right before exit
+                        while True:
+                            trailing = f.readline()
+                            if not trailing:
+                                break
+                            t_msg = trailing.strip()
+                            if t_msg:
+                                self._handle_log_msg(process_id, t_msg, status_re=None)
                         break
 
                     check_counter += 1
@@ -3586,13 +3674,7 @@ class ProcessManager:
                         except Exception as trunc_err:
                             self.logger.debug(f"Could not truncate flooded log {log_path}: {trunc_err}")
 
-                    line = f.readline()
-                    if line:
-                        msg = line.strip()
-                        if msg:
-                            self._handle_log_msg(process_id, msg, status_re=None)
-                    else:
-                        await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.5)
         except asyncio.CancelledError:
             pass
         except Exception as e:

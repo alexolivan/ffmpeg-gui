@@ -1070,6 +1070,65 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
         finally:
             app.dependency_overrides.pop(verify_token, None)
 
+    @patch("psutil.process_iter")
+    def test_reap_orphan_pipewire_for_service(self, mock_proc_iter):
+        """Verifies that _reap_orphan_pipewire_for_service kills rogue pipewire processes and purges stale lockfiles."""
+        fake_proc = MagicMock()
+        fake_proc.info = {
+            "pid": 77777,
+            "name": "pipewire",
+            "cmdline": ["/usr/bin/pipewire", "-c", "/dev/shm/pipewire_77.conf"]
+        }
+        mock_proc_iter.return_value = [fake_proc]
+
+        runtime_dir = "/tmp/ffmpeg-gui/pipewire-77"
+        os.makedirs(runtime_dir, exist_ok=True)
+        self.cleanup_dirs.append(runtime_dir)
+
+        lock_path = os.path.join(runtime_dir, "pipewire-0.lock")
+        sock_path = os.path.join(runtime_dir, "pipewire-0")
+        pulse_path = os.path.join(runtime_dir, "pulse.sock")
+
+        for fpath in (lock_path, sock_path, pulse_path):
+            with open(fpath, "w") as f:
+                f.write("test")
+
+        self.assertTrue(os.path.exists(lock_path))
+        self.assertTrue(os.path.exists(sock_path))
+        self.assertTrue(os.path.exists(pulse_path))
+
+        self.pm._reap_orphan_pipewire_for_service(77)
+
+        fake_proc.terminate.assert_called_once()
+        self.assertFalse(os.path.exists(lock_path))
+        self.assertFalse(os.path.exists(sock_path))
+        self.assertFalse(os.path.exists(pulse_path))
+
+    async def test_file_log_tailer_captures_early_crash_output(self):
+        """Verifies that _file_log_tailer reads from byte 0 and captures startup crash messages before process exits."""
+        import tempfile
+        from collections import deque
+
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".log") as tmp:
+            tmp.write("mod.rt: Failed to connect to session bus\n")
+            tmp.write("default: failed to create context: Resource temporarily unavailable\n")
+            tmp.flush()
+            log_path = tmp.name
+        self.cleanup_files.append(log_path)
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 88888
+        mock_proc.returncode = 245  # Process already exited with early failure
+
+        self.pm.log_buffers[88] = deque(maxlen=100)
+
+        # Run the tailer
+        await self.pm._file_log_tailer(88, log_path, proc=mock_proc)
+
+        buffered_messages = [item["message"] for item in self.pm.log_buffers[88]]
+        self.assertIn("mod.rt: Failed to connect to session bus", buffered_messages)
+        self.assertIn("default: failed to create context: Resource temporarily unavailable", buffered_messages)
+
 
 if __name__ == "__main__":
     unittest.main()

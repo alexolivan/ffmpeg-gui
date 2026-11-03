@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.55.1] - 2026-11-03
+
+### Fixed
+- **PipeWire Restart Lockfile Collision & Rogue Process Reaping (`backend/core/process_manager.py`, `backend/utils/process_utils.py`)**:
+  - Implemented `_reap_orphan_pipewire_for_service` in `ProcessManager` to terminate rogue/orphan PipeWire processes holding runtime directories and purge stale `pipewire-0.lock`, `pipewire-0`, and `pulse.sock` files, preventing exit code 245 (`Resource temporarily unavailable`).
+  - Added early startup exit check in `start_process` to abort companion supervisor spawning if PipeWire fails to boot.
+  - Registered `pipewire`, `ptp4l`, and `phc2sys` under `cleanup_rogue_processes` with regex matching for configuration files.
+- **Virtual Console Early Crash Capture & Stopped Service Log Persistence (`backend/core/process_manager.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Fixed `_file_log_tailer` to read from byte 0 and drain log lines prior to exit detection, ensuring startup errors are captured into log buffers.
+  - Updated `PipeWirePreviewModal` to retain console history when a daemon stops or crashes, and automatically fetch past execution logs via `/api/services/:id/logs` upon opening the console tab.
+- **PTP Sidecar Interface-Level BMCA Override (`backend/core/pipewire_config.py`)**:
+  - Explicitly declared `serverOnly` and `clientOnly` directives in both `[global]` and the interface section (`[{iface}]`) of `ptp4l.conf` to guarantee port-level Master/Slave compliance.
+
 ## [2.55.0] - 2026-11-03
 
 ### Added

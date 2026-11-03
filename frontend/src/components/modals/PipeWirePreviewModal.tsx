@@ -194,12 +194,30 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
   const { subscribe } = useTelemetry();
 
-  // Subscribe to daemon execution logs via WebSocket on-demand only when console tab is active (Zero HTTP polling)
+  // Subscribe to daemon execution logs via WebSocket on-demand and fetch history when console tab is active
   useEffect(() => {
-    if (activeTab !== 'console' || !isRunning) {
-      setDaemonLogs([]);
+    if (activeTab !== 'console') {
       return;
     }
+
+    // Always fetch existing logs on mount or tab selection so crashed or stopped services display their output
+    const fetchLogs = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${API}/api/services/${currentProcess.id}/logs?limit=100`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setDaemonLogs(data);
+          }
+        }
+      } catch {
+        // ignore network error
+      }
+    };
+    fetchLogs();
 
     const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
       if (msg.reset) {
@@ -210,7 +228,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     });
 
     return () => unsub();
-  }, [currentProcess.id, activeTab, isRunning, subscribe]);
+  }, [currentProcess.id, activeTab, subscribe, API]);
 
   // Auto-scroll virtual terminal
   useEffect(() => {
