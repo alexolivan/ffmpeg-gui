@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.55.0] - 2026-11-03
+
+### Added
+- **AoIP Profiles & Audinate Dante / AES67 Interoperability (`backend/core/pipewire_config.py`, `frontend/src/components/forms/PipeWireConfigForm.tsx`)**:
+  - Introduced AoIP Operating Profiles (`standalone` ffmpeg-gui mesh, `dante` strict AES67, `ravenna` broadcast).
+  - Emitted SAP announcements to RFC 2974 administratively scoped multicast (`239.255.255.255:9875`) by default, enabling zero-configuration discovery by Audinate Dante Controller (appearing in blue as AES67 device with 2 channels) and standard broadcast AES67 receivers.
+  - Injected RFC 7273 PTP clock headers (`sess.mediaclk = "direct=0"`, `sess.ts-refclk = "ptp=IEEE1588-2008:<EUI64>:0"`) into `libpipewire-module-rtp-sink` with canonical EUI-64 generation derived from network interfaces.
+  - Added multi-group multicast SAP listener subscription (`239.255.255.255`, `224.0.0.56`, `224.2.127.254`) in `AoIpDiscoverySupervisor` for universal AoIP stream discovery.
+  - Implemented automatic hardware PTP detection with `phc2sys -s <iface> -c CLOCK_REALTIME -w` companion daemon in `ProcessManager` for Dante profile slave synchronization.
+  - Added UI mode selector in `PipeWireConfigForm` with reactive parameter enclavation (locking 48 kHz sample rate, 1 ms ptime, S24BE format, and domain 0 under Dante mode).
+  - Provided safe passive PTP client configuration (`clientOnly 1`, `serverOnly 0`, `priority1 254`) to guarantee zero clock hierarchy collisions on production Dante networks, alongside a laboratory override checkbox.
+
+### Fixed
+- **ptp4l Sidecar Lifecycle & Orphan Process Elimination (`backend/core/process_manager.py`)**:
+  - Bound auxiliary PIDs (`self.auxiliary_pids`) upon spawning `ptp4l` and `phc2sys` processes, ensuring graceful termination when the PipeWire Hub service stops.
+  - Added pre-flight and teardown orphan process reaping (`_reap_orphan_ptp4l_for_service`) to kill any rogue background `ptp4l` processes holding UDP ports 319/320.
+
 ## [2.54.1] - 2026-11-02
 
 ### Fixed
