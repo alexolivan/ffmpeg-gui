@@ -11,6 +11,7 @@ import math
 import os
 import re
 import socket
+import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -79,6 +80,28 @@ class PipeWireConfigGenerator:
         clean_prefix = str(base_prefix).strip().rstrip(".")
         idx = max(1, min(254, int(sink_index)))
         return f"{clean_prefix}.{idx}"
+
+    @classmethod
+    def get_canonical_eui64(cls, mac_or_ip: Optional[str] = None) -> str:
+        """
+        Derive canonical EUI-64 clock identifier (IEEE 1588-2008 / RFC 7273).
+        Example: '00:15:5d:11:22:33' -> '00-15-5D-FF-FE-11-22-33'
+        """
+        if mac_or_ip:
+            clean = re.sub(r'[^a-fA-F0-9]', '', str(mac_or_ip))
+            if len(clean) == 12:
+                # 48-bit MAC -> EUI-64: insert FFFE in the middle
+                eui = f"{clean[:6]}fffe{clean[6:]}".upper()
+                return "-".join(eui[i:i+2] for i in range(0, 16, 2))
+            if len(clean) == 16:
+                # Already 64-bit
+                return "-".join(clean[i:i+2].upper() for i in range(0, 16, 2))
+
+        # Fallback to system node MAC address
+        node = uuid.getnode()
+        mac_hex = f"{node:012x}"
+        eui = f"{mac_hex[:6]}fffe{mac_hex[6:]}".upper()
+        return "-".join(eui[i:i+2] for i in range(0, 16, 2))
 
     @classmethod
     def format_sap_name(cls, raw_name: str, hostname: Optional[str] = None) -> str:
@@ -162,18 +185,24 @@ class PipeWireConfigGenerator:
         Returns:
             Formatted PipeWire SPA/JSON configuration string.
         """
-        sample_rate = int(config.get("sample_rate", 48000))
+        aes67_net = config.get("aes67_network", {})
+        aoip_profile = str(config.get("aoip_profile") or aes67_net.get("aoip_profile") or "standalone").lower()
+        sample_rate = 48000 if aoip_profile == "dante" else int(config.get("sample_rate", 48000))
         quantum = int(config.get("quantum", 1024))
         min_quantum = int(config.get("min_quantum", 128))
         max_quantum = int(config.get("max_quantum", 2048))
         debug_mode = bool(config.get("debug_mode", False))
         log_level = int(config.get("log_level", 2 if debug_mode else 1))
-        aes67_net = config.get("aes67_network", {})
         nic_ip = aes67_net.get("ip", "0.0.0.0")
         nic_name = aes67_net.get("interface")
+        nic_mac = aes67_net.get("mac") or aes67_net.get("interface_mac")
         base_prefix = aes67_net.get("base_multicast_prefix") or cls.get_canonical_base_multicast_prefix(nic_ip)
+        eui64 = cls.get_canonical_eui64(nic_mac or nic_ip)
 
-        ptime_mode = aes67_net.get("rtp_ptime_mode") or config.get("rtp_ptime_mode") or "auto"
+        if aoip_profile == "dante":
+            ptime_mode = "1ms"
+        else:
+            ptime_mode = aes67_net.get("rtp_ptime_mode") or config.get("rtp_ptime_mode") or "auto"
         min_ptime, max_ptime = cls.resolve_rtp_ptime_limits(ptime_mode)
         raw_jitter_ms = aes67_net.get("jitter_buffer_ms", config.get("jitter_buffer_ms", "auto"))
         effective_latency_ms = cls.resolve_safe_jitter_latency_ms(raw_jitter_ms, quantum, sample_rate)
@@ -224,10 +253,11 @@ class PipeWireConfigGenerator:
         virtual_sinks = config.get("virtual_sinks", [])
         remote_sinks = config.get("remote_sinks", [])
         has_aes67_tx = any(sink.get("aes67_enabled", False) for sink in virtual_sinks)
+        sap_ip = aes67_net.get("sap_ip") or config.get("sap_ip") or "239.255.255.255"
 
         if has_aes67_tx:
             sap_args = [
-                "            sap.ip = \"224.0.0.56\"",
+                f"            sap.ip = {cls._spa_val(sap_ip)}",
                 "            sap.port = 9875",
                 "            net.ttl = 32",
                 "            net.loop = false",
@@ -277,6 +307,7 @@ class PipeWireConfigGenerator:
                 dest_port = int(sink.get("rtp_port", 5004))
                 raw_sap = sink.get("sap_name") or sink.get("name") or sink_id
                 sap_name = cls.format_sap_name(raw_sap)
+                audio_fmt = "S24BE" if aoip_profile == "dante" else sink.get("format", "S24BE")
 
                 rtp_args = []
                 if nic_name:
@@ -289,7 +320,9 @@ class PipeWireConfigGenerator:
                     f"            destination.port = {dest_port}",
                     f"            sess.name = {cls._spa_val(sap_name)}",
                     "            sess.media = \"audio\"",
-                    "            audio.format = \"S24BE\"",
+                    "            sess.mediaclk = \"direct=0\"",
+                    f"            sess.ts-refclk = {cls._spa_val(f'ptp=IEEE1588-2008:{eui64}:0')}",
+                    f"            audio.format = {cls._spa_val(audio_fmt)}",
                     f"            audio.rate = {sample_rate}",
                     f"            audio.channels = {channels}",
                     f"            audio.position = {pos_formatted}",
@@ -493,17 +526,32 @@ class PipeWireConfigGenerator:
         Supports hardware and software timestamping, auto-inhibition (BMCA masterOnly flag),
         priority1, domain, and transport profiles.
         """
-        priority1 = int(ptp_cfg.get("priority1", 128))
-        priority1 = max(0, min(255, priority1))
-        domain = int(ptp_cfg.get("domain", 0))
-        domain = max(0, min(127, domain))
-        auto_inhibit = bool(ptp_cfg.get("auto_inhibit", True))
+        aoip_profile = str(ptp_cfg.get("aoip_profile", "")).lower()
+        force_local_master = bool(ptp_cfg.get("force_local_master", False))
         profile = str(ptp_cfg.get("profile", "aes67")).lower()
 
-        # If auto_inhibit is False, node forces itself as Server/Master Only (serverOnly 1).
-        # If auto_inhibit is True, node allows BMCA negotiation (serverOnly 0) to avoid clock collisions.
-        # (serverOnly is the standard IEEE 1588-2019 directive replacing deprecated masterOnly in linuxptp).
-        server_only = 0 if auto_inhibit else 1
+        if aoip_profile == "dante":
+            domain = 0
+            if force_local_master:
+                priority1 = 128
+                priority2 = 128
+                client_only = 0
+                server_only = 1
+            else:
+                priority1 = 254
+                priority2 = 254
+                client_only = 1
+                server_only = 0
+        else:
+            priority1 = int(ptp_cfg.get("priority1", 128))
+            priority1 = max(0, min(255, priority1))
+            priority2 = int(ptp_cfg.get("priority2", 128))
+            priority2 = max(0, min(255, priority2))
+            domain = int(ptp_cfg.get("domain", 0))
+            domain = max(0, min(127, domain))
+            auto_inhibit = bool(ptp_cfg.get("auto_inhibit", True))
+            client_only = 1 if ptp_cfg.get("client_only") else 0
+            server_only = 0 if auto_inhibit else 1
 
         is_hw = (ptp_support == "hardware")
         ts_mode = "hardware" if is_hw else "software"
@@ -528,12 +576,13 @@ class PipeWireConfigGenerator:
             "[global]",
             f"domainNumber            {domain}",
             f"priority1               {priority1}",
-            "priority2               128",
+            f"priority2               {priority2}",
             "clockClass              248",
             "clockAccuracy           0xFE",
             "offsetScaledLogVariance 0xFFFF",
             "free_running            0",
             "freq_est_interval       1",
+            f"clientOnly              {client_only}",
             f"serverOnly              {server_only}",
             f"uds_address             {uds_path}",
             f"uds_ro_address          {uds_ro_path}",

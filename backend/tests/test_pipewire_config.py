@@ -117,7 +117,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
 
         # 1. SAP Announcement module loaded with restricted announce-stream rule (suppresses duplicate create-stream)
         self.assertIn('name = "libpipewire-module-rtp-sap"', res)
-        self.assertIn('sap.ip = "224.0.0.56"', res)
+        self.assertIn('sap.ip = "239.255.255.255"', res)
         self.assertIn('sap.port = 9875', res)
         self.assertIn('local.ifname = "eth0"', res)
         self.assertIn('net.loop = false', res)
@@ -133,6 +133,8 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('sess.min-ptime = 2', res)
         self.assertIn('sess.max-ptime = 20', res)
         self.assertIn('sess.latency.msec = 86', res)
+        self.assertIn('sess.mediaclk = "direct=0"', res)
+        self.assertIn('sess.ts-refclk = "ptp=IEEE1588-2008:', res)
         self.assertIn('node.name = "rtp_tx_aes67_pgm"', res)
         self.assertIn('target.object = "aes67_pgm"', res)
         self.assertIn('sess.sap.announce = true', res)
@@ -462,6 +464,95 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
 
         res_debug = PipeWireConfigGenerator.generate_config(2, {"debug_mode": True}, "/tmp/run")
         self.assertIn("log.level = 2", res_debug)
+
+    def test_get_canonical_eui64(self):
+        """Verifies EUI-64 generation from MAC addresses and fallbacks."""
+        # Standard MAC with colons
+        eui1 = PipeWireConfigGenerator.get_canonical_eui64("00:15:5d:11:22:33")
+        self.assertEqual(eui1, "00-15-5D-FF-FE-11-22-33")
+
+        # MAC with hyphens
+        eui2 = PipeWireConfigGenerator.get_canonical_eui64("00-15-5d-11-22-33")
+        self.assertEqual(eui2, "00-15-5D-FF-FE-11-22-33")
+
+        # Already 64-bit
+        eui3 = PipeWireConfigGenerator.get_canonical_eui64("00155dfffe112233")
+        self.assertEqual(eui3, "00-15-5D-FF-FE-11-22-33")
+
+        # Fallback to host MAC when None or invalid
+        eui_fallback = PipeWireConfigGenerator.get_canonical_eui64(None)
+        self.assertEqual(len(eui_fallback.split("-")), 8)
+        self.assertIn("FF-FE", eui_fallback)
+
+    def test_sap_ip_custom_override(self):
+        """Verifies sap_ip can be explicitly configured if needed."""
+        cfg = {
+            "sap_ip": "239.255.0.1",
+            "virtual_sinks": [{"id": "s1", "aes67_enabled": True}]
+        }
+        res = PipeWireConfigGenerator.generate_config(10, cfg, "/tmp/run")
+        self.assertIn('sap.ip = "239.255.0.1"', res)
+
+    def test_dante_profile_pipewire_config_generation(self):
+        """Verifies Dante profile locks 48000 Hz, 1ms ptime, S24BE format, and adds RFC 7273 SDP attributes."""
+        cfg = {
+            "aoip_profile": "dante",
+            "sample_rate": 96000,  # Should be overridden to 48000 for Dante
+            "virtual_sinks": [
+                {
+                    "id": "dante_out",
+                    "name": "Dante Bus",
+                    "channels": 2,
+                    "aes67_enabled": True
+                }
+            ]
+        }
+        res = PipeWireConfigGenerator.generate_config(33, cfg, "/tmp/run")
+        self.assertIn("default.clock.rate = 48000", res)
+        self.assertIn('sap.ip = "239.255.255.255"', res)
+        self.assertIn('sess.min-ptime = 1', res)
+        self.assertIn('sess.max-ptime = 1', res)
+        self.assertIn('audio.format = "S24BE"', res)
+        self.assertIn('sess.mediaclk = "direct=0"', res)
+        self.assertIn('sess.ts-refclk = "ptp=IEEE1588-2008:', res)
+
+    def test_dante_profile_ptp4l_slave_mode(self):
+        """Verifies Dante profile ptp4l configuration defaults to clientOnly=1, serverOnly=0, priority1=254, domain=0."""
+        ptp_cfg = {
+            "enabled": True,
+            "aoip_profile": "dante",
+            "priority1": 128,  # Should be forced to 254 for Dante slave
+            "domain": 1        # Should be forced to 0 for Dante
+        }
+        conf = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=40,
+            ptp_cfg=ptp_cfg,
+            iface="eth0",
+            ptp_support="software"
+        )
+        self.assertIn("domainNumber            0", conf)
+        self.assertIn("priority1               254", conf)
+        self.assertIn("priority2               254", conf)
+        self.assertIn("clientOnly              1", conf)
+        self.assertIn("serverOnly              0", conf)
+
+    def test_dante_profile_ptp4l_lab_force_master(self):
+        """Verifies Dante profile with force_local_master allows serverOnly=1 and priority1=128 in lab setups."""
+        ptp_cfg = {
+            "enabled": True,
+            "aoip_profile": "dante",
+            "force_local_master": True
+        }
+        conf = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=41,
+            ptp_cfg=ptp_cfg,
+            iface="eth0",
+            ptp_support="software"
+        )
+        self.assertIn("domainNumber            0", conf)
+        self.assertIn("priority1               128", conf)
+        self.assertIn("clientOnly              0", conf)
+        self.assertIn("serverOnly              1", conf)
 
 
 if __name__ == "__main__":
