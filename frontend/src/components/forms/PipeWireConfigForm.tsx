@@ -198,6 +198,9 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
   // 3. AES67 / Dante Broadcast (Tx) Network Module
   const aesNetCfg = pwCfg.aes67_network || {};
+  const [aoipProfile, setAoipProfile] = useState<'standalone' | 'dante' | 'ravenna'>(
+    pwCfg.aoip_profile || aesNetCfg.aoip_profile || 'standalone'
+  );
   const [aes67Enabled, setAes67Enabled] = useState<boolean>(Boolean(aesNetCfg.enabled));
   const [selectedInterface, setSelectedInterface] = useState<string>(aesNetCfg.interface || '');
   const [baseMulticastPrefix, setBaseMulticastPrefix] = useState<string>(
@@ -213,10 +216,32 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
   // PTP Master Clock State
   const initialPtp = aesNetCfg.ptp || {};
+  const [forceLocalMaster, setForceLocalMaster] = useState<boolean>(
+    Boolean(initialPtp.force_local_master)
+  );
   const [ptpEnabled, setPtpEnabled] = useState<boolean>(Boolean(initialPtp.enabled));
   const [ptpAutoInhibit, setPtpAutoInhibit] = useState<boolean>(
     initialPtp.auto_inhibit !== undefined ? Boolean(initialPtp.auto_inhibit) : true
   );
+
+  const handleProfileChange = (profile: 'standalone' | 'dante' | 'ravenna') => {
+    setAoipProfile(profile);
+    if (profile === 'dante') {
+      setSampleRate(48000);
+      setRtpPtimeMode('1ms');
+      setPtpDomain(0);
+      setPtpPriority1(forceLocalMaster ? 128 : 254);
+      setPtpAutoInhibit(!forceLocalMaster);
+    }
+  };
+
+  const handleForceLocalMasterToggle = (forced: boolean) => {
+    setForceLocalMaster(forced);
+    if (aoipProfile === 'dante') {
+      setPtpPriority1(forced ? 128 : 254);
+      setPtpAutoInhibit(!forced);
+    }
+  };
   const [ptpPriority1, setPtpPriority1] = useState<number>(
     initialPtp.priority1 !== undefined ? Number(initialPtp.priority1) : 128
   );
@@ -601,25 +626,36 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       origin_ip: rs.origin_ip?.trim() || undefined,
     }));
 
+    const effectiveSampleRate = aoipProfile === 'dante' ? 48000 : Number(sampleRate);
+    const effectivePtimeMode = aoipProfile === 'dante' ? '1ms' : rtpPtimeMode;
+    const effectivePtpDomain = aoipProfile === 'dante' ? 0 : Math.max(0, Math.min(127, Number(ptpDomain) || 0));
+    const effectivePtpPriority1 = aoipProfile === 'dante'
+      ? (forceLocalMaster ? 128 : 254)
+      : Math.max(0, Math.min(255, Number(ptpPriority1) || 128));
+
     const configPayload = {
-      sample_rate: Number(sampleRate),
+      aoip_profile: aoipProfile,
+      sample_rate: effectiveSampleRate,
       quantum: Number(quantum),
       min_quantum: 128,
       max_quantum: 2048,
       virtual_sinks: cleanSinks,
       remote_sinks: cleanRemoteSinks,
       aes67_network: {
+        aoip_profile: aoipProfile,
         enabled: aes67Enabled,
         interface: aes67Enabled ? selectedInterface : null,
         ip: aes67Enabled ? selectedIp : '0.0.0.0',
         base_multicast_prefix: aes67Enabled ? cleanPrefix : null,
-        rtp_ptime_mode: rtpPtimeMode,
+        rtp_ptime_mode: effectivePtimeMode,
         jitter_buffer_ms: jitterBufferMs === 'auto' ? 'auto' : effectiveJitterMs,
         ptp: aes67Enabled ? {
+          aoip_profile: aoipProfile,
           enabled: Boolean(ptpEnabled && canEnableMasterClock),
-          auto_inhibit: Boolean(ptpAutoInhibit),
-          priority1: Math.max(0, Math.min(255, Number(ptpPriority1) || 128)),
-          domain: Math.max(0, Math.min(127, Number(ptpDomain) || 0)),
+          auto_inhibit: aoipProfile === 'dante' ? !forceLocalMaster : Boolean(ptpAutoInhibit),
+          force_local_master: aoipProfile === 'dante' ? forceLocalMaster : false,
+          priority1: effectivePtpPriority1,
+          domain: effectivePtpDomain,
           profile: ptpProfile || 'aes67',
         } : undefined,
       },
@@ -713,13 +749,24 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1 border-t border-[var(--glass-border)]">
             <div>
-              <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                {t('services.pipewire.sampleRate', 'Sample Rate (Hz)')}
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)]">
+                  {t('services.pipewire.sampleRate', 'Sample Rate (Hz)')}
+                </label>
+                {aoipProfile === 'dante' && (
+                  <span className="text-[10px] text-blue-400 font-bold flex items-center gap-1">
+                    <span>🔒</span>
+                    <span>{t('services.pipewire.danteLockedBadge', 'Locked by Dante Profile')}</span>
+                  </span>
+                )}
+              </div>
               <select
                 value={sampleRate}
+                disabled={aoipProfile === 'dante'}
                 onChange={(e) => setSampleRate(Number(e.target.value))}
-                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
+                className={`w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer ${
+                  aoipProfile === 'dante' ? 'opacity-60 cursor-not-allowed' : ''
+                }`}
               >
                 <option value={44100}>44100 Hz</option>
                 <option value={48000}>48000 Hz ({t('common.default', 'Default')})</option>
@@ -774,6 +821,76 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
           {aes67Enabled && (
             <div className="space-y-4 pt-1">
+              {/* AoIP Operating Profile Selector */}
+              <div className="p-3.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)]">
+                    {t('services.pipewire.aoipProfileLabel', 'AoIP Operating Profile')}
+                  </label>
+                  {aoipProfile === 'dante' && (
+                    <span className="text-[10px] text-blue-400 font-bold px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/30 flex items-center gap-1">
+                      <span>⚡</span>
+                      <span>Dante Controller Ready</span>
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleProfileChange('standalone')}
+                    className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                      aoipProfile === 'standalone'
+                        ? 'border-brand-lime bg-brand-lime/10 shadow-sm'
+                        : 'border-[var(--glass-border)] hover:border-[var(--text-secondary)] bg-[var(--bg-card)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-primary)]">
+                      <span>📻</span>
+                      <span>{t('services.pipewire.profileStandalone', 'ffmpeg-gui Mesh (Flexible)')}</span>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-secondary)] mt-1 leading-snug">
+                      {t('services.pipewire.profileStandaloneDesc', 'Relaxed packet framing and flexible clocking. Best for inter-node ffmpeg-gui mesh audio.')}
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleProfileChange('dante')}
+                    className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                      aoipProfile === 'dante'
+                        ? 'border-blue-500 bg-blue-500/10 shadow-sm ring-1 ring-blue-500/30'
+                        : 'border-[var(--glass-border)] hover:border-[var(--text-secondary)] bg-[var(--bg-card)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-primary)]">
+                      <span>⚡</span>
+                      <span className="text-blue-400">{t('services.pipewire.profileDante', 'Audinate Dante / AES67 (Strict)')}</span>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-secondary)] mt-1 leading-snug">
+                      {t('services.pipewire.profileDanteDesc', 'Strict 1ms packetization (1000 pkt/s), 48kHz S24BE, RFC 7273 SDP timing, and passive PTP slave clocking for Dante Controller integration.')}
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleProfileChange('ravenna')}
+                    className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                      aoipProfile === 'ravenna'
+                        ? 'border-brand-lime bg-brand-lime/10 shadow-sm'
+                        : 'border-[var(--glass-border)] hover:border-[var(--text-secondary)] bg-[var(--bg-card)]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-primary)]">
+                      <span>🌐</span>
+                      <span>{t('services.pipewire.profileRavenna', 'Ravenna / Broadcast AES67')}</span>
+                    </div>
+                    <p className="text-[10px] text-[var(--text-secondary)] mt-1 leading-snug">
+                      {t('services.pipewire.profileRavennaDesc', 'Standard broadcast AES67 with 1ms or 4ms packet framing and configurable PTP domain.')}
+                    </p>
+                  </button>
+                </div>
+              </div>
+
               {/* NIC Selector */}
               <div>
                 <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
@@ -925,13 +1042,24 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
                   {/* Packet Time (ptime) Cadence */}
                   <div>
-                    <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                      {t('services.pipewire.rtpPtimeLabel', 'RTP Packet Cadence (Tx ptime)')}
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)]">
+                        {t('services.pipewire.rtpPtimeLabel', 'RTP Packet Cadence (Tx ptime)')}
+                      </label>
+                      {aoipProfile === 'dante' && (
+                        <span className="text-[10px] text-blue-400 font-bold flex items-center gap-1">
+                          <span>🔒</span>
+                          <span>{t('services.pipewire.danteLockedBadge', 'Locked by Dante Profile')}</span>
+                        </span>
+                      )}
+                    </div>
                     <select
-                      value={rtpPtimeMode}
+                      value={aoipProfile === 'dante' ? '1ms' : rtpPtimeMode}
+                      disabled={aoipProfile === 'dante'}
                       onChange={(e) => setRtpPtimeMode(e.target.value as 'auto' | '4ms' | '1ms')}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer"
+                      className={`w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer ${
+                        aoipProfile === 'dante' ? 'opacity-60 cursor-not-allowed' : ''
+                      }`}
                     >
                       <option value="auto">
                         {t('services.pipewire.rtpPtimeAuto', 'Relaxed Auto (2–20ms · ~230 pkt/s · Recommended)')}
@@ -944,7 +1072,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                       </option>
                     </select>
                     <span className="text-[9px] text-[var(--text-secondary)] mt-1 block leading-tight">
-                      {rtpPtimeMode === '1ms'
+                      {(aoipProfile === 'dante' || rtpPtimeMode === '1ms')
                         ? t(
                             'services.pipewire.rtpPtime1msWarn',
                             '⚠️ 1ms fires 1,000 timers/sec. On non-RT kernels or modest NICs this can trigger timer jitter.'
@@ -1043,90 +1171,143 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
                 {ptpEnabled && canEnableMasterClock && (
                   <div className="space-y-3 pt-2 border-t border-[var(--glass-border)]">
-                    {/* Toggle 2: Auto-inhibition (BMCA) */}
-                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
-                      <div className="pr-4">
-                        <label className="text-xs font-semibold text-[var(--text-primary)] block cursor-pointer">
-                          {t('services.pipewire.ptpAutoInhibit', 'Auto-inhibit if another Master is detected (BMCA)')}
-                        </label>
-                        <span className="text-[10px] text-[var(--text-secondary)] block mt-0.5 leading-relaxed">
-                          {t('services.pipewire.ptpAutoInhibitHelp', 'Enables Best Master Clock Algorithm negotiation. Prevents clock collisions by yielding if an external Grandmaster is present on the network.')}
-                        </span>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={ptpAutoInhibit}
-                          onChange={(e) => setPtpAutoInhibit(e.target.checked)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-brand-lime"></div>
-                      </label>
-                    </div>
-
-                    {/* Dynamic Master Detection Status Banners */}
-                    {!isExternalMasterDetected ? (
-                      <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2">
-                        <span className="text-sm shrink-0">🟢</span>
-                        <span>
-                          {isLocalMaster
-                            ? t('services.pipewire.ptpStatusLocalMaster', 'This host is currently broadcasting as PTP Master on this interface.')
-                            : t('services.pipewire.ptpStatusFree', 'No external PTP clock detected on LAN. This node will act as Grandmaster.')}
-                        </span>
-                      </div>
-                    ) : !ptpAutoInhibit ? (
-                      <div className="p-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-600 dark:text-red-400 text-xs flex items-start gap-2 animate-in fade-in duration-200">
-                        <span className="text-base shrink-0">🚨</span>
-                        <div>
-                          <p className="font-bold">
-                            {t(
-                              'services.pipewire.ptpStatusDanger',
-                              'CLOCK COLLISION RISK: Auto-inhibition is disabled while another Grandmaster ({{ip}}) is broadcasting. This will cause packet jitter and packet loss on AES67/Dante receivers unless domain or priority is isolated.',
-                              { ip: detectedMasterIp }
+                    {aoipProfile === 'dante' ? (
+                      <div className="p-3.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-500 text-xs space-y-2.5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)]">
+                            <span>⏱️</span>
+                            <span>{t('services.pipewire.ptpSlaveModeLabel', 'PTP Synchronization (Slave Only · Dante Compatible)')}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono text-[10px] font-bold">
+                              {forceLocalMaster ? 'serverOnly 1 · Priority 128' : 'clientOnly 1 · Priority 254'}
+                            </span>
+                            {selectedIfaceObj && (
+                              (selectedIfaceObj.ptp_support === 'hardware' || selectedIfaceObj.ptp_hardware_capable) ? (
+                                <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/30 font-semibold text-[10px]">
+                                  {t('services.pipewire.ptpHwCapableBadge', 'Hardware PTP Capable (PHC + phc2sys support)')}
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/30 font-semibold text-[10px]">
+                                  {t('services.pipewire.ptpSwOnlyBadge', 'Software PTP Only (Emulated Clock)')}
+                                </span>
+                              )
                             )}
-                          </p>
-                        </div>
-                      </div>
-                    ) : ptpPriority1 >= 200 ? (
-                      <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-300 text-xs flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm shrink-0">⏱️</span>
-                          <span>
-                            {t(
-                              'services.pipewire.ptpStatusHealthyBackup',
-                              'External PTP Grandmaster active on LAN ({{ip}}). This node is configured as secondary/backup clock (Priority {{prio}}).',
-                              { ip: detectedMasterIp, prio: ptpPriority1 }
-                            )}
-                          </span>
-                        </div>
-                        <span className="shrink-0 px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[10px] font-mono font-bold">
-                          BMCA Backup
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                        <div className="flex items-start gap-2">
-                          <span className="text-sm shrink-0 mt-0.5">ℹ️</span>
-                          <div>
-                            <p className="font-semibold leading-snug">
-                              {t(
-                                'services.pipewire.ptpStatusContending',
-                                'External PTP Grandmaster detected on LAN ({{ip}}). Both nodes claim primary priority ({{prio}}). BMCA will negotiate leadership, or you can designate this node as backup.',
-                                { ip: detectedMasterIp, prio: ptpPriority1 }
-                              )}
-                            </p>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setPtpPriority1(200)}
-                          title={t('services.pipewire.ptpSetBackupTitle', 'Set priority to 200 to ensure this node acts as a non-intrusive backup slave')}
-                          className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
-                        >
-                          <span>🛡️</span>
-                          <span>{t('services.pipewire.ptpSetBackupBtn', 'Set Backup Priority (200)')}</span>
-                        </button>
+
+                        <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
+                          {t('services.pipewire.ptpSlaveModeHelp', 'Under the Dante profile, this node acts strictly as a PTP client (clientOnly=1, priority=254) to synchronize to the console/Grandmaster without causing clock conflicts.')}
+                        </p>
+
+                        {/* Collapsible Lab Override */}
+                        <div className="pt-2 border-t border-blue-500/20 flex flex-col gap-1.5">
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={forceLocalMaster}
+                              onChange={(e) => handleForceLocalMasterToggle(e.target.checked)}
+                              className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
+                            />
+                            <span className="text-[11px] font-semibold text-[var(--text-primary)]">
+                              {t('services.pipewire.ptpForceMasterLab', 'Force local PTP Grandmaster (Lab / Isolated testing only)')}
+                            </span>
+                          </label>
+                          {forceLocalMaster && (
+                            <div className="p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[10px] leading-relaxed">
+                              {t('services.pipewire.ptpForceMasterWarn', '⚠️ WARNING: Only enable this in isolated laboratory setups without Dante consoles or physical hardware clocks. Forcing Grandmaster on a production Dante network will cause clock collisions and muting.')}
+                            </div>
+                          )}
+                        </div>
                       </div>
+                    ) : (
+                      <>
+                        {/* Toggle 2: Auto-inhibition (BMCA) */}
+                        <div className="flex items-center justify-between p-2.5 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)]">
+                          <div className="pr-4">
+                            <label className="text-xs font-semibold text-[var(--text-primary)] block cursor-pointer">
+                              {t('services.pipewire.ptpAutoInhibit', 'Auto-inhibit if another Master is detected (BMCA)')}
+                            </label>
+                            <span className="text-[10px] text-[var(--text-secondary)] block mt-0.5 leading-relaxed">
+                              {t('services.pipewire.ptpAutoInhibitHelp', 'Enables Best Master Clock Algorithm negotiation. Prevents clock collisions by yielding if an external Grandmaster is present on the network.')}
+                            </span>
+                          </div>
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={ptpAutoInhibit}
+                              onChange={(e) => setPtpAutoInhibit(e.target.checked)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-8 h-4 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-brand-lime"></div>
+                          </label>
+                        </div>
+
+                        {/* Dynamic Master Detection Status Banners */}
+                        {!isExternalMasterDetected ? (
+                          <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2">
+                            <span className="text-sm shrink-0">🟢</span>
+                            <span>
+                              {isLocalMaster
+                                ? t('services.pipewire.ptpStatusLocalMaster', 'This host is currently broadcasting as PTP Master on this interface.')
+                                : t('services.pipewire.ptpStatusFree', 'No external PTP clock detected on LAN. This node will act as Grandmaster.')}
+                            </span>
+                          </div>
+                        ) : !ptpAutoInhibit ? (
+                          <div className="p-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-600 dark:text-red-400 text-xs flex items-start gap-2 animate-in fade-in duration-200">
+                            <span className="text-base shrink-0">🚨</span>
+                            <div>
+                              <p className="font-bold">
+                                {t(
+                                  'services.pipewire.ptpStatusDanger',
+                                  'CLOCK COLLISION RISK: Auto-inhibition is disabled while another Grandmaster ({{ip}}) is broadcasting. This will cause packet jitter and packet loss on AES67/Dante receivers unless domain or priority is isolated.',
+                                  { ip: detectedMasterIp }
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        ) : ptpPriority1 >= 200 ? (
+                          <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-600 dark:text-blue-300 text-xs flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm shrink-0">⏱️</span>
+                              <span>
+                                {t(
+                                  'services.pipewire.ptpStatusHealthyBackup',
+                                  'External PTP Grandmaster active on LAN ({{ip}}). This node is configured as secondary/backup clock (Priority {{prio}}).',
+                                  { ip: detectedMasterIp, prio: ptpPriority1 }
+                                )}
+                              </span>
+                            </div>
+                            <span className="shrink-0 px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 text-[10px] font-mono font-bold">
+                              BMCA Backup
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="flex items-start gap-2">
+                              <span className="text-sm shrink-0 mt-0.5">ℹ️</span>
+                              <div>
+                                <p className="font-semibold leading-snug">
+                                  {t(
+                                    'services.pipewire.ptpStatusContending',
+                                    'External PTP Grandmaster detected on LAN ({{ip}}). Both nodes claim primary priority ({{prio}}). BMCA will negotiate leadership, or you can designate this node as backup.',
+                                    { ip: detectedMasterIp, prio: ptpPriority1 }
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setPtpPriority1(200)}
+                              title={t('services.pipewire.ptpSetBackupTitle', 'Set priority to 200 to ensure this node acts as a non-intrusive backup slave')}
+                              className="shrink-0 px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-700 dark:text-amber-300 border border-amber-500/40 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-auto shadow-sm"
+                            >
+                              <span>🛡️</span>
+                              <span>{t('services.pipewire.ptpSetBackupBtn', 'Set Backup Priority (200)')}</span>
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {/* 3 Intercompatibility Parameters */}
@@ -1137,7 +1318,11 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                           <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)]">
                             {t('services.pipewire.ptpPriority1', 'Priority 1 (BMCA)')}
                           </label>
-                          {ptpPriority1 >= 200 && (
+                          {aoipProfile === 'dante' ? (
+                            <span className="text-[9px] font-mono text-blue-400 font-bold">
+                              {forceLocalMaster ? '[Master 128]' : '[Slave 254]'}
+                            </span>
+                          ) : ptpPriority1 >= 200 && (
                             <span className="text-[9px] font-mono text-emerald-500 font-bold">
                               [Backup]
                             </span>
@@ -1147,42 +1332,69 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                           type="number"
                           min={0}
                           max={255}
-                          value={ptpPriority1}
+                          disabled={aoipProfile === 'dante'}
+                          value={aoipProfile === 'dante' ? (forceLocalMaster ? 128 : 254) : ptpPriority1}
                           onChange={(e) => setPtpPriority1(Math.max(0, Math.min(255, Number(e.target.value) || 0)))}
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                          className={`w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime ${
+                            aoipProfile === 'dante' ? 'opacity-60 cursor-not-allowed' : ''
+                          }`}
                         />
                         <span className="text-[9px] text-[var(--text-secondary)] mt-0.5 block leading-tight">
-                          {t('services.pipewire.ptpPriority1Help', 'BMCA preference (0-255). 128 is default; 64 for primary, 200 for backup.')}
+                          {aoipProfile === 'dante'
+                            ? (forceLocalMaster ? 'Forced local Grandmaster for isolated lab testing.' : 'Locked to 254 (passive client) in Dante profile.')
+                            : t('services.pipewire.ptpPriority1Help', 'BMCA preference (0-255). 128 is default; 64 for primary, 200 for backup.')}
                         </span>
                       </div>
 
                       {/* Domain */}
                       <div>
-                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                          {t('services.pipewire.ptpDomain', 'PTP Domain')}
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)]">
+                            {t('services.pipewire.ptpDomain', 'PTP Domain')}
+                          </label>
+                          {aoipProfile === 'dante' && (
+                            <span className="text-[9px] font-mono text-blue-400 font-bold">
+                              [Domain 0]
+                            </span>
+                          )}
+                        </div>
                         <input
                           type="number"
                           min={0}
                           max={127}
-                          value={ptpDomain}
+                          disabled={aoipProfile === 'dante'}
+                          value={aoipProfile === 'dante' ? 0 : ptpDomain}
                           onChange={(e) => setPtpDomain(Math.max(0, Math.min(127, Number(e.target.value) || 0)))}
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                          className={`w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime ${
+                            aoipProfile === 'dante' ? 'opacity-60 cursor-not-allowed' : ''
+                          }`}
                         />
                         <span className="text-[9px] text-[var(--text-secondary)] mt-0.5 block leading-tight">
-                          {t('services.pipewire.ptpDomainHelp', 'PTP domain (0-127). Domain 0 is AES67 / Dante default.')}
+                          {aoipProfile === 'dante'
+                            ? 'Dante standard domain 0 (strictly locked).'
+                            : t('services.pipewire.ptpDomainHelp', 'PTP domain (0-127). Domain 0 is AES67 / Dante default.')}
                         </span>
                       </div>
 
                       {/* Profile */}
                       <div>
-                        <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)] mb-1">
-                          {t('services.pipewire.ptpProfile', 'PTP Profile')}
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[10px] font-bold uppercase text-[var(--text-secondary)]">
+                            {t('services.pipewire.ptpProfile', 'PTP Profile')}
+                          </label>
+                          {aoipProfile === 'dante' && (
+                            <span className="text-[9px] font-mono text-blue-400 font-bold">
+                              [AES67]
+                            </span>
+                          )}
+                        </div>
                         <select
-                          value={ptpProfile}
+                          value={aoipProfile === 'dante' ? 'aes67' : ptpProfile}
+                          disabled={aoipProfile === 'dante'}
                           onChange={(e) => setPtpProfile(e.target.value)}
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer"
+                          className={`w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime cursor-pointer ${
+                            aoipProfile === 'dante' ? 'opacity-60 cursor-not-allowed' : ''
+                          }`}
                         >
                           <option value="aes67">{t('services.pipewire.ptpProfileAes67', 'AES67 Media (8 sync/s · DSCP 46/34)')}</option>
                           <option value="ieee1588">{t('services.pipewire.ptpProfileIeee1588', 'IEEE 1588 Default (1 sync/s)')}</option>
