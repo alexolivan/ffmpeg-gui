@@ -32,28 +32,44 @@ if [ -f "$SYSTEM_SERVICE" ]; then
 
     # Ensure CapabilityBoundingSet contains all required capabilities
     if grep -q "^CapabilityBoundingSet=" "$SYSTEM_SERVICE"; then
-        CURRENT_BOUNDING=$(grep "^CapabilityBoundingSet=" "$SYSTEM_SERVICE" | cut -d= -f2)
-        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE"; then
-            echo "--> Updating CapabilityBoundingSet to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME, CAP_PERFMON, CAP_SYS_ADMIN..."
-            sed -i 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_PERFMON CAP_SYS_ADMIN/' "$SYSTEM_SERVICE"
+        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE" || ! grep -q "CAP_SYS_NICE" "$SYSTEM_SERVICE"; then
+            echo "--> Updating CapabilityBoundingSet to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME, CAP_SYS_NICE, CAP_IPC_LOCK, CAP_PERFMON, CAP_SYS_ADMIN..."
+            sed -i 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK CAP_PERFMON CAP_SYS_ADMIN/' "$SYSTEM_SERVICE"
             CHANGED=1
         fi
     else
         echo "--> Injecting CapabilityBoundingSet into $SYSTEM_SERVICE..."
-        sed -i '/\[Service\]/a CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_PERFMON CAP_SYS_ADMIN' "$SYSTEM_SERVICE"
+        sed -i '/\[Service\]/a CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK CAP_PERFMON CAP_SYS_ADMIN' "$SYSTEM_SERVICE"
         CHANGED=1
     fi
 
-    # Ensure AmbientCapabilities contains network and timing capabilities
+    # Ensure AmbientCapabilities contains network, timing, and realtime scheduling capabilities
     if grep -q "^AmbientCapabilities=" "$SYSTEM_SERVICE"; then
-        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE"; then
-            echo "--> Updating AmbientCapabilities to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME..."
-            sed -i 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME/' "$SYSTEM_SERVICE"
+        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE" || ! grep -q "CAP_SYS_NICE" "$SYSTEM_SERVICE"; then
+            echo "--> Updating AmbientCapabilities to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME, CAP_SYS_NICE, CAP_IPC_LOCK..."
+            sed -i 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK/' "$SYSTEM_SERVICE"
             CHANGED=1
         fi
     else
         echo "--> Injecting AmbientCapabilities into $SYSTEM_SERVICE..."
-        sed -i '/\[Service\]/a AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME' "$SYSTEM_SERVICE"
+        sed -i '/\[Service\]/a AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK' "$SYSTEM_SERVICE"
+        CHANGED=1
+    fi
+
+    # Ensure POSIX Realtime scheduling rlimits for PipeWire AoIP / AES67 / Dante
+    if ! grep -q "^LimitRTPRIO=" "$SYSTEM_SERVICE"; then
+        echo "--> Injecting LimitRTPRIO=95 into $SYSTEM_SERVICE..."
+        sed -i '/^AmbientCapabilities=/a LimitRTPRIO=95' "$SYSTEM_SERVICE"
+        CHANGED=1
+    fi
+    if ! grep -q "^LimitNICE=" "$SYSTEM_SERVICE"; then
+        echo "--> Injecting LimitNICE=-19 into $SYSTEM_SERVICE..."
+        sed -i '/^LimitRTPRIO=/a LimitNICE=-19' "$SYSTEM_SERVICE"
+        CHANGED=1
+    fi
+    if ! grep -q "^LimitMEMLOCK=" "$SYSTEM_SERVICE"; then
+        echo "--> Injecting LimitMEMLOCK=infinity into $SYSTEM_SERVICE..."
+        sed -i '/^LimitNICE=/a LimitMEMLOCK=infinity' "$SYSTEM_SERVICE"
         CHANGED=1
     fi
 

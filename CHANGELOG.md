@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.56.4] - 2026-11-03
+
+### Fixed
+- **PipeWire Core D-Bus Plugin Suppression (`backend/core/pipewire_config.py`)**:
+  - Set `support.dbus = false` inside `context.properties` so `pw_context_new()` does not load `libspa-dbus.so` in headless server environments. This eliminates the residual `spa.dbus | Failed to connect to session bus` error from `libpipewire-module-protocol-pulse` and prevents `libpipewire-module-rt` from falling back to Portal/RTKit bus lookups.
+- **POSIX Realtime Scheduling Capabilities for Systemd Daemon (`install.sh`, `scripts/setup-system-capabilities.sh`, `INSTALL.md`)**:
+  - Added `CAP_SYS_NICE`, `CAP_IPC_LOCK`, `LimitRTPRIO=95`, `LimitNICE=-19`, and `LimitMEMLOCK=infinity` to `/etc/systemd/system/ffmpeg-gui.service` and the idempotent `setup-system-capabilities.sh` helper so unprivileged `User=ffmpeg-gui` PipeWire instances acquire deterministic `SCHED_FIFO` realtime priority `88` and `nice -11` natively via `rlimits`.
+
 ## [2.56.3] - 2026-11-03
 
 ### Fixed

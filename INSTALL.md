@@ -54,10 +54,13 @@ To allow the Python application to bind to port 80/443 and monitor Intel GPU met
    sudo setcap cap_net_bind_service=+ep $(readlink -f venv/bin/python3)
    sudo setcap cap_perfmon,cap_sys_admin=+ep $(which intel_gpu_top)
    ```
-2. The systemd service unit includes:
+2. The systemd service unit includes capabilities and realtime scheduling limits (used by PipeWire AoIP/AES67 hubs and PTP sidecars):
    ```ini
-   CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_PERFMON CAP_SYS_ADMIN
-   AmbientCapabilities=CAP_NET_BIND_SERVICE
+   CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK CAP_PERFMON CAP_SYS_ADMIN
+   AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK
+   LimitRTPRIO=95
+   LimitNICE=-19
+   LimitMEMLOCK=infinity
    ```
 3. If capabilities are modified or python packages are updated, capabilities can be verified and re-applied using:
    ```bash

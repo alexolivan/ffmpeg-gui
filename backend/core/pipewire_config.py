@@ -232,6 +232,7 @@ class PipeWireConfigGenerator:
             f"    default.clock.max-quantum = {max_quantum}",
             f"    log.level = {log_level}",
             "    mem.warn-mlock = false",
+            "    support.dbus = false",
             "}",
             "",
             "context.spa-libs = {",

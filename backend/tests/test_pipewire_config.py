@@ -555,8 +555,9 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("serverOnly              1", conf)
 
     def test_rt_module_headless_rlimits_no_rtkit(self):
-        """Verifies libpipewire-module-rt disables RTKit/Portal probing in headless environments."""
+        """Verifies headless config disables core D-Bus plugin and RTKit/Portal probing."""
         conf = PipeWireConfigGenerator.generate_config(50, {}, "/tmp/run")
+        self.assertIn("support.dbus = false", conf)
         self.assertIn("rtkit.enabled = false", conf)
         self.assertIn("rtportal.enabled = false", conf)
         self.assertIn("rlimits.enabled = true", conf)
