@@ -39,8 +39,8 @@ export interface TelemetryContextType {
   resourceLocks: any[];
   actionPending: ActionPendingState;
   setActionPending: React.Dispatch<React.SetStateAction<ActionPendingState>>;
-  subscribe: (topic: string, id: number | undefined, callback: (data: any) => void) => () => void;
-  sendSubscription: (action: 'subscribe' | 'unsubscribe', topic: string, id?: number) => void;
+  subscribe: (topic: string, id: number | string | undefined, callback: (data: any) => void) => () => void;
+  sendSubscription: (action: 'subscribe' | 'unsubscribe', topic: string, id?: number | string) => void;
 }
 
 const TelemetryContext = createContext<TelemetryContextType | null>(null);
@@ -71,9 +71,9 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const subscribersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
   const activeSubsRef = useRef<Set<string>>(new Set());
 
-  const getSubKey = (topic: string, id?: number) => (id !== undefined ? `${topic}:${id}` : topic);
+  const getSubKey = (topic: string, id?: number | string) => (id !== undefined ? `${topic}:${id}` : topic);
 
-  const sendSubscription = useCallback((action: 'subscribe' | 'unsubscribe', topic: string, id?: number) => {
+  const sendSubscription = useCallback((action: 'subscribe' | 'unsubscribe', topic: string, id?: number | string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
         wsRef.current.send(JSON.stringify({ action, topic, id }));
@@ -83,7 +83,7 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   }, []);
 
-  const subscribe = useCallback((topic: string, id: number | undefined, callback: (data: any) => void) => {
+  const subscribe = useCallback((topic: string, id: number | string | undefined, callback: (data: any) => void) => {
     const key = getSubKey(topic, id);
     if (!subscribersRef.current.has(key)) {
       subscribersRef.current.set(key, new Set());
@@ -172,6 +172,12 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (msg.resource_locks) setResourceLocks(msg.resource_locks);
           } else if (msg.type === 'process_logs') {
             const key = getSubKey('process_logs', msg.id);
+            const callbacks = subscribersRef.current.get(key);
+            if (callbacks) {
+              callbacks.forEach(cb => cb(msg));
+            }
+          } else if (msg.type === 'sidecar_logs') {
+            const key = getSubKey('sidecar_logs', msg.id);
             const callbacks = subscribersRef.current.get(key);
             if (callbacks) {
               callbacks.forEach(cb => cb(msg));

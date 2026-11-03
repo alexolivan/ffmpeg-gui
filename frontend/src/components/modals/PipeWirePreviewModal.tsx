@@ -145,11 +145,15 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const [graphData, setGraphData] = useState<GraphTelemetryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw' | 'aoip'>('nodes');
+  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw' | 'aoip' | 'ptp4l' | 'phc2sys'>('nodes');
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [ptpLogs, setPtpLogs] = useState<any[]>([]);
+  const [phcLogs, setPhcLogs] = useState<any[]>([]);
+  const [copySuccessTab, setCopySuccessTab] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
+  const ptpLogsContainerRef = useRef<HTMLDivElement | null>(null);
+  const phcLogsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const handleReconcileMatrix = async () => {
     if (!currentProcess?.id || isReconciling) return;
@@ -230,21 +234,103 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     return () => unsub();
   }, [currentProcess.id, activeTab, subscribe, API]);
 
-  // Auto-scroll virtual terminal
+  // Subscribe to ptp4l sidecar logs via WebSocket on-demand and fetch history when ptp4l tab is active
+  useEffect(() => {
+    if (activeTab !== 'ptp4l') {
+      return;
+    }
+
+    const fetchPtpLogs = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${API}/api/services/${currentProcess.id}/sidecar-logs/ptp4l?limit=100`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setPtpLogs(data);
+          }
+        }
+      } catch {
+        // ignore network error
+      }
+    };
+    fetchPtpLogs();
+
+    const unsub = subscribe('sidecar_logs', `${currentProcess.id}:ptp4l`, (msg: any) => {
+      if (msg.reset) {
+        setPtpLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setPtpLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, activeTab, subscribe, API]);
+
+  // Subscribe to phc2sys sidecar logs via WebSocket on-demand and fetch history when phc2sys tab is active
+  useEffect(() => {
+    if (activeTab !== 'phc2sys') {
+      return;
+    }
+
+    const fetchPhcLogs = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${API}/api/services/${currentProcess.id}/sidecar-logs/phc2sys?limit=100`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setPhcLogs(data);
+          }
+        }
+      } catch {
+        // ignore network error
+      }
+    };
+    fetchPhcLogs();
+
+    const unsub = subscribe('sidecar_logs', `${currentProcess.id}:phc2sys`, (msg: any) => {
+      if (msg.reset) {
+        setPhcLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setPhcLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, activeTab, subscribe, API]);
+
+  // Auto-scroll virtual terminals
   useEffect(() => {
     if (processLogsContainerRef.current && isRunning) {
       processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
     }
   }, [daemonLogs, isRunning, activeTab]);
 
-  const handleCopyLogs = () => {
-    const text = daemonLogs
+  useEffect(() => {
+    if (ptpLogsContainerRef.current && isRunning) {
+      ptpLogsContainerRef.current.scrollTop = ptpLogsContainerRef.current.scrollHeight;
+    }
+  }, [ptpLogs, isRunning, activeTab]);
+
+  useEffect(() => {
+    if (phcLogsContainerRef.current && isRunning) {
+      phcLogsContainerRef.current.scrollTop = phcLogsContainerRef.current.scrollHeight;
+    }
+  }, [phcLogs, isRunning, activeTab]);
+
+  const handleCopyLogs = (tabKey: string, logs: any[]) => {
+    const text = logs
       .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
       .join('\n');
     universalCopy(text).then((success) => {
       if (success) {
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
+        setCopySuccessTab(tabKey);
+        setTimeout(() => setCopySuccessTab(null), 2000);
       }
     });
   };
@@ -254,6 +340,13 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const remoteSinks = Array.isArray(pwConfig.remote_sinks) ? pwConfig.remote_sinks : [];
   const isAes67Enabled = Boolean(pwConfig.aes67_network?.enabled);
   const showAoIpTab = isAes67Enabled || remoteSinks.length > 0;
+  const ptpConfig = pwConfig.aes67_network?.ptp || {};
+  const showPtpTab = Boolean(isAes67Enabled && (ptpConfig.enabled ?? true));
+  const showPhc2sysTab = Boolean(
+    showPtpTab &&
+    (pwConfig.aoip_profile === 'dante' || ptpConfig.aoip_profile === 'dante') &&
+    !ptpConfig.force_local_master
+  );
 
   const handleConfigureStreamInHub = (stream: AoIpStream | any) => {
     const rawName = stream.session_name || stream.sap_name || stream.name || 'Remote AoIP Stream';
@@ -463,6 +556,30 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
               >
                 {t('services.pipewire.consoleTab', 'Console & Logs')} ({daemonLogs.length})
               </button>
+              {showPtpTab && (
+                <button
+                  onClick={() => setActiveTab('ptp4l')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'ptp4l'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                  }`}
+                >
+                  ⏱️ {t('services.pipewire.ptp4lTab', 'PTP Clock (ptp4l)')} ({ptpLogs.length})
+                </button>
+              )}
+              {showPhc2sysTab && (
+                <button
+                  onClick={() => setActiveTab('phc2sys')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'phc2sys'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                  }`}
+                >
+                  🔄 {t('services.pipewire.phc2sysTab', 'HW Sync (phc2sys)')} ({phcLogs.length})
+                </button>
+              )}
               {showAoIpTab && (
                 <button
                   onClick={() => setActiveTab('aoip')}
@@ -769,11 +886,11 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleCopyLogs}
+                    onClick={() => handleCopyLogs('console', daemonLogs)}
                     className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
                   >
-                    {copySuccess ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
-                    <span>{copySuccess ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
+                    {copySuccessTab === 'console' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                    <span>{copySuccessTab === 'console' ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
                   </button>
                   <button
                     type="button"
@@ -812,6 +929,160 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     const logMsg = typeof log === 'string' ? log : log.message || '';
                     const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
                     const isErr = logMsg.toLowerCase().includes('err') || (typeof log === 'object' && log.level === 'ERROR');
+                    const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
+
+                    return (
+                      <div key={i} className="whitespace-pre-wrap flex items-start gap-2">
+                        {logTime && (
+                          <span className="text-[var(--text-secondary)] select-none shrink-0 opacity-70">
+                            [{logTime}]
+                          </span>
+                        )}
+                        <span
+                          className={`${
+                            isErr ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {logMsg}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'ptp4l' && (
+            <div className="bg-black/60 border border-[var(--glass-border)] rounded-xl p-4 font-mono space-y-3">
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                  <span>⏱️</span>
+                  {t('services.pipewire.ptp4lTitle', 'PTP Master/Slave Clock Sidecar (ptp4l)')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyLogs('ptp4l', ptpLogs)}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    {copySuccessTab === 'ptp4l' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                    <span>{copySuccessTab === 'ptp4l' ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = ptpLogs
+                        .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+                        .join('\n');
+                      const blob = new Blob([text], { type: 'text/plain' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `ptp4l_${currentProcess.id}_console.log`;
+                      a.click();
+                    }}
+                    className="px-2.5 py-1 bg-brand-lime/10 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/20 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    {t('services.pipewire.downloadLogs', 'Download Logs')}
+                  </button>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold ml-1">
+                    {ptpLogs.length} {t('common.lines', 'lines')}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                ref={ptpLogsContainerRef}
+                className="h-80 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
+              >
+                {ptpLogs.length === 0 ? (
+                  <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-24 select-none">
+                    {isRunning
+                      ? t('services.pipewire.waitingSidecarLogs', 'Sidecar active. Waiting for clock synchronization events...')
+                      : t('services.pipewire.stoppedSidecarLogs', 'Sidecar is inactive or stopped.')}
+                  </div>
+                ) : (
+                  ptpLogs.map((log, i) => {
+                    const logMsg = typeof log === 'string' ? log : log.message || '';
+                    const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                    const isErr = logMsg.toLowerCase().includes('err') || logMsg.toLowerCase().includes('fail') || (typeof log === 'object' && log.level === 'ERROR');
+                    const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
+
+                    return (
+                      <div key={i} className="whitespace-pre-wrap flex items-start gap-2">
+                        {logTime && (
+                          <span className="text-[var(--text-secondary)] select-none shrink-0 opacity-70">
+                            [{logTime}]
+                          </span>
+                        )}
+                        <span
+                          className={`${
+                            isErr ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {logMsg}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'phc2sys' && (
+            <div className="bg-black/60 border border-[var(--glass-border)] rounded-xl p-4 font-mono space-y-3">
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                  <span>🔄</span>
+                  {t('services.pipewire.phc2sysTitle', 'Hardware PHC Sync Companion (phc2sys)')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyLogs('phc2sys', phcLogs)}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    {copySuccessTab === 'phc2sys' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                    <span>{copySuccessTab === 'phc2sys' ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = phcLogs
+                        .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+                        .join('\n');
+                      const blob = new Blob([text], { type: 'text/plain' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `phc2sys_${currentProcess.id}_console.log`;
+                      a.click();
+                    }}
+                    className="px-2.5 py-1 bg-brand-lime/10 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/20 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    {t('services.pipewire.downloadLogs', 'Download Logs')}
+                  </button>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold ml-1">
+                    {phcLogs.length} {t('common.lines', 'lines')}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                ref={phcLogsContainerRef}
+                className="h-80 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
+              >
+                {phcLogs.length === 0 ? (
+                  <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-24 select-none">
+                    {isRunning
+                      ? t('services.pipewire.waitingSidecarLogs', 'Sidecar active. Waiting for clock synchronization events...')
+                      : t('services.pipewire.stoppedSidecarLogs', 'Sidecar is inactive or stopped.')}
+                  </div>
+                ) : (
+                  phcLogs.map((log, i) => {
+                    const logMsg = typeof log === 'string' ? log : log.message || '';
+                    const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                    const isErr = logMsg.toLowerCase().includes('err') || logMsg.toLowerCase().includes('fail') || (typeof log === 'object' && log.level === 'ERROR');
                     const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
 
                     return (

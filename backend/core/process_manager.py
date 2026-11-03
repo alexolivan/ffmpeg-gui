@@ -19,6 +19,7 @@ class ProcessManager:
     def __init__(self, db_session_factory):
         self.processes: Dict[int, asyncio.subprocess.Process] = {}
         self.log_buffers: Dict[int, collections.deque] = {}
+        self.sidecar_log_buffers: Dict[str, collections.deque] = {}
         self.restart_counts: Dict[int, int] = {}
         self.pending_restarts: Dict[int, asyncio.Task] = {}
         self.watchdog_tasks: Dict[int, asyncio.Task] = {}
@@ -628,7 +629,10 @@ class ProcessManager:
                         if pw_config_path:
                             sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
                         pw_debug_enabled = bool(debug_mode)
-                        sub_env["PIPEWIRE_DEBUG"] = "2" if pw_debug_enabled else "1"
+                        sub_env["PIPEWIRE_DEBUG"] = "3" if pw_debug_enabled else "2"
+                        sub_env["PIPEWIRE_LOG_SYSTEMD"] = "false"
+                        sub_env["PIPEWIRE_LOG"] = log_path
+                        sub_env["PIPEWIRE_LOG_LINE"] = "false"
                         if pw_root and os.path.isdir(pw_root):
                             lib_dirs = [
                                 os.path.join(pw_root, "lib"),
@@ -2410,6 +2414,12 @@ class ProcessManager:
                 self.auxiliary_pids[process_id] = []
             if ptp_proc.pid and ptp_proc.pid not in self.auxiliary_pids[process_id]:
                 self.auxiliary_pids[process_id].append(ptp_proc.pid)
+
+            ptp_key = f"{process_id}:ptp4l"
+            self.sidecar_log_buffers[ptp_key] = collections.deque(maxlen=100)
+            asyncio.create_task(
+                self._file_log_tailer(process_id, ptp_log_path, proc=ptp_proc, sidecar_name="ptp4l")
+            )
         except Exception as e:
             self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch ptp4l sidecar: {e}")
 
@@ -2443,6 +2453,12 @@ class ProcessManager:
                         self.auxiliary_pids[process_id] = []
                     if phc_proc.pid and phc_proc.pid not in self.auxiliary_pids[process_id]:
                         self.auxiliary_pids[process_id].append(phc_proc.pid)
+
+                    phc_key = f"{process_id}:phc2sys"
+                    self.sidecar_log_buffers[phc_key] = collections.deque(maxlen=100)
+                    asyncio.create_task(
+                        self._file_log_tailer(process_id, phc_log_path, proc=phc_proc, sidecar_name="phc2sys")
+                    )
                 except Exception as e:
                     self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch phc2sys companion daemon: {e}")
 
@@ -3591,6 +3607,26 @@ class ProcessManager:
         
         self.logger.debug(f"[{process_id}] {msg}")
 
+    def _handle_sidecar_log_msg(self, process_id: int, sidecar_name: str, msg: str):
+        key = f"{process_id}:{sidecar_name}"
+        lower_msg = msg.lower()
+        if any(kw in lower_msg for kw in ["error", "failed", "invalid", "could not", "cannot"]):
+            level = "ERROR"
+        elif any(kw in lower_msg for kw in ["warn", "warning"]):
+            level = "WARN"
+        else:
+            level = "INFO"
+
+        if key not in self.sidecar_log_buffers:
+            self.sidecar_log_buffers[key] = collections.deque(maxlen=100)
+
+        self.sidecar_log_buffers[key].append({
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": level,
+            "message": msg
+        })
+        self.logger.debug(f"[{process_id}:{sidecar_name}] {msg}")
+
     def _get_max_log_file_bytes(self) -> int:
         """Read max log file size in bytes from ffmpeg-gui.conf (default 10 MB = 10485760)."""
         config_path = os.environ.get("CONFIG_FILE_PATH", "/etc/ffmpeg-gui/ffmpeg-gui.conf")
@@ -3613,7 +3649,8 @@ class ProcessManager:
         log_path: str,
         proc: Optional[asyncio.subprocess.Process] = None,
         pid: Optional[int] = None,
-        max_log_bytes: Optional[int] = None
+        max_log_bytes: Optional[int] = None,
+        sidecar_name: Optional[str] = None
     ):
         """Tails the physical log file on disk for daemon services and enforces a real-time size circuit breaker."""
         effective_pid = pid or (proc.pid if proc else None)
@@ -3630,7 +3667,10 @@ class ProcessManager:
                     if line:
                         msg = line.strip()
                         if msg:
-                            self._handle_log_msg(process_id, msg, status_re=None)
+                            if sidecar_name:
+                                self._handle_sidecar_log_msg(process_id, sidecar_name, msg)
+                            else:
+                                self._handle_log_msg(process_id, msg, status_re=None)
                         continue
 
                     # Only check if process has exited once EOF on the current log stream is reached
@@ -3644,7 +3684,9 @@ class ProcessManager:
                     else:
                         is_done = True
 
-                    if process_id not in self.processes and process_id not in self.reattached_pids:
+                    if not sidecar_name and (process_id not in self.processes and process_id not in self.reattached_pids):
+                        is_done = True
+                    elif sidecar_name and (process_id not in self.processes and process_id not in self.reattached_pids):
                         is_done = True
 
                     if is_done:
@@ -3655,7 +3697,10 @@ class ProcessManager:
                                 break
                             t_msg = trailing.strip()
                             if t_msg:
-                                self._handle_log_msg(process_id, t_msg, status_re=None)
+                                if sidecar_name:
+                                    self._handle_sidecar_log_msg(process_id, sidecar_name, t_msg)
+                                else:
+                                    self._handle_log_msg(process_id, t_msg, status_re=None)
                         break
 
                     check_counter += 1
@@ -3907,6 +3952,11 @@ class ProcessManager:
                         self.auxiliary_pids[process_id] = [ap for ap in self.auxiliary_pids.get(process_id, []) if psutil.pid_exists(ap)]
                         self.auxiliary_processes[process_id] = [ap for ap in self.auxiliary_processes.get(process_id, []) if ap.returncode is None and psutil.pid_exists(ap.pid)]
                         await self._ensure_desktop_vnc(process_id)
+                    elif _svc_type == "pipewire_hub":
+                        self.logger.warning(f"[PipeWire Hub #{process_id}] Auxiliary sidecar process terminated unexpectedly.")
+                        # Prune dead auxiliary references so watchdog continues monitoring the healthy main PipeWire process
+                        self.auxiliary_pids[process_id] = [ap for ap in self.auxiliary_pids.get(process_id, []) if psutil.pid_exists(ap)]
+                        self.auxiliary_processes[process_id] = [ap for ap in self.auxiliary_processes.get(process_id, []) if ap.returncode is None and psutil.pid_exists(ap.pid)]
                     else:
                         self.logger.warning(f"Auxiliary process for service {process_id} terminated unexpectedly.")
                         break

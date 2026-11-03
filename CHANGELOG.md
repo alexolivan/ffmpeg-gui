@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.56.0] - 2026-11-03
+
+### Added
+- **PipeWire Sidecars Live Observability (`backend/core/process_manager.py`, `backend/core/websocket_subscription_hub.py`, `backend/main.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Added dedicated conditional tabs in `PipeWirePreviewModal` for `ptp4l` (PTP Clock) and `phc2sys` (Hardware PHC Sync).
+  - Implemented REST endpoint `GET /api/services/{id}/sidecar-logs/{sidecar_name}` (`ptp4l`, `phc2sys`) with memory buffer streaming and disk log fallback.
+  - Added WebSocket topic `sidecar_logs` (`<id>:<sidecar_name>`) for real-time live log deltas with zero HTTP polling.
+  - Added full multi-language translations in `en.json`, `es.json`, `ca.json` and multi-theme terminal styling with copy-to-clipboard and log file downloads.
+
+### Fixed
+- **PipeWire Logging Redirection & Systemd Bypass (`backend/core/process_manager.py`)**:
+  - Injected `PIPEWIRE_LOG_SYSTEMD="false"`, `PIPEWIRE_LOG=log_path`, and `PIPEWIRE_DEBUG=2/3` in PipeWire startup environment to prevent the daemon from silently bypassing stdout/stderr directly into journald when running under systemd.
+- **ptp4l Section Scope Syntax Correction (`backend/core/pipewire_config.py`)**:
+  - Removed `clientOnly` from port section (`[{clean_iface}]`) in `generate_ptp4l_config` to comply with `linuxptp` grammar where `clientOnly` is strictly a global option (`GLOB_ITEM_INT`), eliminating parser failure `unknown option clientOnly at line in section`.
+- **Watchdog Auxiliary Process Resilience (`backend/core/process_manager.py`)**:
+  - Prevented auxiliary sidecar termination (`ptp4l`/`phc2sys`) from breaking out of the PipeWire Hub watchdog loop, allowing continuous monitoring and health checks of the primary PipeWire process.
+
 ## [2.55.1] - 2026-11-03
 
 ### Fixed

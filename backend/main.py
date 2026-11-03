@@ -7099,6 +7099,49 @@ def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(ge
     return [{"timestamp": l.timestamp.isoformat() + "Z", "level": l.level, "message": l.message} for l in reversed(logs)]
 
 
+@app.get("/api/services/{service_id}/sidecar-logs/{sidecar_name}")
+def get_service_sidecar_logs(service_id: int, sidecar_name: str, limit: int = 100, db: Session = Depends(get_db)):
+    if sidecar_name not in ("ptp4l", "phc2sys"):
+        raise HTTPException(status_code=400, detail="Invalid sidecar name. Allowed: ptp4l, phc2sys")
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    key = f"{service_id}:{sidecar_name}"
+    if key in process_manager.sidecar_log_buffers and len(process_manager.sidecar_log_buffers[key]) > 0:
+        return list(process_manager.sidecar_log_buffers[key])
+
+    log_storage_id = (svc.config or {}).get("log_storage_id")
+    logs_dir = process_manager.get_process_log_storage_path(process_id=service_id, log_storage_id=log_storage_id, session=db)
+    sidecar_log_file = os.path.join(logs_dir, f"{sidecar_name}_{service_id}.log")
+
+    lines = []
+    if os.path.exists(sidecar_log_file):
+        try:
+            f_size = os.path.getsize(sidecar_log_file)
+            with open(sidecar_log_file, "rb") as f:
+                if f_size > 65536:
+                    f.seek(f_size - 65536)
+                chunk = f.read().decode("utf-8", errors="replace")
+            lines.extend(chunk.splitlines())
+        except Exception as e:
+            logger.error(f"Error reading sidecar log file {sidecar_log_file}: {e}")
+
+    parsed_logs = []
+    for line in lines[-limit:]:
+        line_str = line.strip()
+        if not line_str:
+            continue
+        lower = line_str.lower()
+        level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else ("WARN" if "warn" in lower else "INFO")
+        parsed_logs.append({
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": level,
+            "message": line_str
+        })
+    return parsed_logs
+
+
 @app.get("/api/audit-logs")
 def get_audit_logs_endpoint(
     limit: int = Query(50, ge=1, le=500),

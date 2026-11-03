@@ -18,6 +18,7 @@ class WebSocketSubscriptionHub:
         # item_id can be None for global topics like 'resource_locks'
         self._topics: Dict[str, Dict[Any, Set[Any]]] = {
             "process_logs": {},
+            "sidecar_logs": {},
             "task_logs": {},
             "pipewire_graph": {},
             "resource_locks": {},
@@ -170,6 +171,20 @@ class WebSocketSubscriptionHub:
                     "reset": True
                 })
 
+            elif topic == "sidecar_logs" and item_id is not None:
+                lines = []
+                if process_manager and hasattr(process_manager, "sidecar_log_buffers"):
+                    if item_id in process_manager.sidecar_log_buffers:
+                        lines = list(process_manager.sidecar_log_buffers[item_id])
+
+                self._client_offsets[(ws, topic, item_id)] = len(lines)
+                await ws.send_json({
+                    "type": "sidecar_logs",
+                    "id": item_id,
+                    "lines": lines,
+                    "reset": True
+                })
+
             elif topic == "task_logs" and item_id is not None and db_session_factory:
                 lines = []
                 try:
@@ -247,6 +262,38 @@ class WebSocketSubscriptionHub:
                             await ws.send_json({
                                 "type": "process_logs",
                                 "id": proc_id,
+                                "lines": delta,
+                                "reset": False
+                            })
+                        except Exception:
+                            dead_clients.append(ws)
+
+                for dead in dead_clients:
+                    self.unregister_client(dead)
+
+        # 1.5. Sidecar log deltas
+        if process_manager and hasattr(process_manager, "sidecar_log_buffers"):
+            active_sidecar_subs = self._topics.get("sidecar_logs", {})
+            for sidecar_id, subscribers in list(active_sidecar_subs.items()):
+                if not subscribers:
+                    continue
+                buffer = process_manager.sidecar_log_buffers.get(sidecar_id)
+                if not buffer:
+                    continue
+
+                all_lines = list(buffer)
+                total_len = len(all_lines)
+
+                dead_clients = []
+                for ws in subscribers:
+                    last_idx = self._client_offsets.get((ws, "sidecar_logs", sidecar_id), 0)
+                    if total_len > last_idx:
+                        delta = all_lines[last_idx:total_len]
+                        self._client_offsets[(ws, "sidecar_logs", sidecar_id)] = total_len
+                        try:
+                            await ws.send_json({
+                                "type": "sidecar_logs",
+                                "id": sidecar_id,
                                 "lines": delta,
                                 "reset": False
                             })

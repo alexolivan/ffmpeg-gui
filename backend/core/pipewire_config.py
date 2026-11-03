@@ -526,9 +526,9 @@ class PipeWireConfigGenerator:
         Supports hardware and software timestamping, auto-inhibition (BMCA masterOnly flag),
         priority1, domain, and transport profiles.
         """
-        aoip_profile = str(ptp_cfg.get("aoip_profile", "")).lower()
+        aoip_profile = str(ptp_cfg.get("aoip_profile") or ptp_cfg.get("profile", "")).lower()
         force_local_master = bool(ptp_cfg.get("force_local_master", False))
-        profile = str(ptp_cfg.get("profile", "aes67")).lower()
+        profile = "aes67" if aoip_profile in ("dante", "aes67") else str(ptp_cfg.get("profile", "aes67")).lower()
 
         if aoip_profile == "dante":
             domain = 0
@@ -599,7 +599,6 @@ class PipeWireConfigGenerator:
             "network_transport       UDPv4",
             "delay_mechanism         E2E",
             f"serverOnly              {server_only}",
-            f"clientOnly              {client_only}",
             ""
         ]
         return "\n".join(lines)

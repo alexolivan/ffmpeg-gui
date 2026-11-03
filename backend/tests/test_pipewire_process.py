@@ -1129,6 +1129,104 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
         self.assertIn("mod.rt: Failed to connect to session bus", buffered_messages)
         self.assertIn("default: failed to create context: Resource temporarily unavailable", buffered_messages)
 
+    def test_ptp4l_config_syntax_strict_port_section_rules(self):
+        """Verifies that clientOnly is restricted to [global] and never placed in the port section."""
+        from core.pipewire_config import PipeWireConfigGenerator
+        ptp_cfg = {
+            "enabled": True,
+            "force_local_master": True,
+            "domain": 0,
+            "aoip_profile": "dante"
+        }
+        cfg_str = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=7,
+            ptp_cfg=ptp_cfg,
+            iface="enp6s0",
+            ptp_support="software"
+        )
+        self.assertIn("[global]", cfg_str)
+        self.assertIn("[enp6s0]", cfg_str)
+        # clientOnly must exist in global
+        global_part, port_part = cfg_str.split("[enp6s0]")
+        self.assertIn("clientOnly", global_part)
+        self.assertIn("serverOnly              1", global_part)
+        # clientOnly MUST NOT exist in port section (syntax error in linuxptp)
+        self.assertNotIn("clientOnly", port_part)
+        # serverOnly is valid in port section
+        self.assertIn("serverOnly              1", port_part)
+
+    def test_sidecar_logs_api_endpoint(self):
+        """Verifies GET /api/services/{service_id}/sidecar-logs/{sidecar_name} returns buffered logs and validates sidecar."""
+        from collections import deque
+        try:
+            from main import app, verify_token, get_db, process_manager
+        except ImportError:
+            from backend.main import app, verify_token, get_db, process_manager
+
+        with self.Session() as session:
+            svc_hub = Service(
+                id=701,
+                name="Sidecar PW Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={"pipewire_config": {}}
+            )
+            session.add(svc_hub)
+            session.commit()
+
+        def override_get_db():
+            db = self.Session()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        app.dependency_overrides[verify_token] = lambda: "admin"
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            client = TestClient(app)
+
+            # 1. Invalid sidecar name -> 400
+            res_bad = client.get("/api/services/701/sidecar-logs/invalid_daemon")
+            self.assertEqual(res_bad.status_code, 400)
+
+            # 2. ptp4l from buffer
+            process_manager.sidecar_log_buffers["701:ptp4l"] = deque([
+                {"timestamp": "2026-11-03T13:00:00Z", "level": "INFO", "message": "selected local clock as best master"}
+            ], maxlen=100)
+
+            res_ptp = client.get("/api/services/701/sidecar-logs/ptp4l")
+            self.assertEqual(res_ptp.status_code, 200)
+            data_ptp = res_ptp.json()
+            self.assertEqual(len(data_ptp), 1)
+            self.assertEqual(data_ptp[0]["message"], "selected local clock as best master")
+
+            # 3. Non-existent service -> 404
+            res_404 = client.get("/api/services/99999/sidecar-logs/ptp4l")
+            self.assertEqual(res_404.status_code, 404)
+        finally:
+            app.dependency_overrides.pop(verify_token, None)
+            app.dependency_overrides.pop(get_db, None)
+            process_manager.sidecar_log_buffers.pop("701:ptp4l", None)
+
+    def test_handle_sidecar_log_msg_buffering(self):
+        """Verifies _handle_sidecar_log_msg properly creates sidecar deque and parses levels."""
+        self.pm._handle_sidecar_log_msg(55, "ptp4l", "port 1 (enp6s0): INITIALIZING to LISTENING on INIT_COMPLETE")
+        self.pm._handle_sidecar_log_msg(55, "ptp4l", "port 1 (enp6s0): failed to bind socket: permission denied")
+        self.pm._handle_sidecar_log_msg(55, "phc2sys", "clock check warning: offset is large")
+
+        self.assertIn("55:ptp4l", self.pm.sidecar_log_buffers)
+        self.assertIn("55:phc2sys", self.pm.sidecar_log_buffers)
+
+        ptp_logs = list(self.pm.sidecar_log_buffers["55:ptp4l"])
+        self.assertEqual(len(ptp_logs), 2)
+        self.assertEqual(ptp_logs[0]["level"], "INFO")
+        self.assertEqual(ptp_logs[1]["level"], "ERROR")
+
+        phc_logs = list(self.pm.sidecar_log_buffers["55:phc2sys"])
+        self.assertEqual(len(phc_logs), 1)
+        self.assertEqual(phc_logs[0]["level"], "WARN")
+
 
 if __name__ == "__main__":
     unittest.main()
