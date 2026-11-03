@@ -697,7 +697,7 @@ class ProcessManager:
                         if aes_net.get("enabled") and aes_net.get("interface"):
                             ptp_cfg = aes_net.get("ptp", {})
                             if ptp_cfg.get("enabled"):
-                                await self._start_ptp4l_sidecar(process_id, aes_net["interface"], ptp_cfg, logs_dir)
+                                await self._start_ptp4l_sidecar(process_id, aes_net["interface"], ptp_cfg, logs_dir, is_restart=is_restart)
                 elif svc_type == "desktop":
                     # Clean up stale X11 lock file and socket if previous Xvfb crashed
                     x_lock_path = f"/tmp/.X{display_num}-lock"
@@ -2339,7 +2339,7 @@ class ProcessManager:
         except Exception as e:
             self.logger.debug(f"[PipeWire Hub #{service_id}] Error scanning orphan ptp4l/phc2sys: {e}")
 
-    async def _start_ptp4l_sidecar(self, process_id: int, iface: str, ptp_cfg: Dict[str, Any], logs_dir: str):
+    async def _start_ptp4l_sidecar(self, process_id: int, iface: str, ptp_cfg: Dict[str, Any], logs_dir: str, is_restart: bool = False):
         """
         Launches managed ptp4l master clock daemon as an auxiliary process tied to PipeWire Hub service.
         Generates /dev/shm/ptp4l_{process_id}.conf in ephemeral RAM and applies proper timestamping flags.
@@ -2397,6 +2397,20 @@ class ProcessManager:
         )
         try:
             ptp_log_path = os.path.join(logs_dir, f"ptp4l_{process_id}.log")
+            from datetime import timezone
+            now_iso = datetime.now(timezone.utc).isoformat()
+            if not now_iso.endswith("Z") and "+" not in now_iso:
+                now_iso += "Z"
+
+            if not is_restart:
+                ptp_header = f"--- PTP4L LAUNCH AT {now_iso} ---\nCOMMAND: {' '.join(ptp_cmd)}\n"
+                with open(ptp_log_path, "wb") as f:
+                    f.write(ptp_header.encode("utf-8"))
+            else:
+                ptp_header = f"\n--- PTP4L RESTART AT {now_iso} ---\nCOMMAND: {' '.join(ptp_cmd)}\n"
+                with open(ptp_log_path, "ab") as f:
+                    f.write(ptp_header.encode("utf-8"))
+
             ptp_log_file = open(ptp_log_path, "ab", buffering=0)
             ptp_proc = await asyncio.create_subprocess_exec(
                 *ptp_cmd,
@@ -2436,6 +2450,15 @@ class ProcessManager:
                 )
                 try:
                     phc_log_path = os.path.join(logs_dir, f"phc2sys_{process_id}.log")
+                    if not is_restart:
+                        phc_header = f"--- PHC2SYS LAUNCH AT {now_iso} ---\nCOMMAND: {' '.join(phc_cmd)}\n"
+                        with open(phc_log_path, "wb") as f:
+                            f.write(phc_header.encode("utf-8"))
+                    else:
+                        phc_header = f"\n--- PHC2SYS RESTART AT {now_iso} ---\nCOMMAND: {' '.join(phc_cmd)}\n"
+                        with open(phc_log_path, "ab") as f:
+                            f.write(phc_header.encode("utf-8"))
+
                     phc_log_file = open(phc_log_path, "ab", buffering=0)
                     phc_proc = await asyncio.create_subprocess_exec(
                         *phc_cmd,

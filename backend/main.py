@@ -7094,6 +7094,41 @@ def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(ge
     svc = db.query(MediaProcess).get(service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
+
+    # 1. If actively running and in memory buffer, return it
+    if service_id in process_manager.log_buffers and len(process_manager.log_buffers[service_id]) > 0:
+        return list(process_manager.log_buffers[service_id])[-limit:]
+
+    # 2. Read physical log file from disk (process_{service_id}.log) if present
+    log_file = process_manager.get_process_log_path(service_id, svc.log_storage_id, session=db)
+    lines = []
+    if os.path.exists(log_file):
+        try:
+            f_size = os.path.getsize(log_file)
+            with open(log_file, "rb") as f:
+                if f_size > 65536:
+                    f.seek(f_size - 65536)
+                chunk = f.read().decode("utf-8", errors="replace")
+            lines.extend(chunk.splitlines())
+        except Exception as e:
+            logger.error(f"Error reading log file {log_file} for service {service_id}: {e}")
+
+    if lines:
+        parsed = []
+        for line in lines[-limit:]:
+            line_str = line.strip()
+            if not line_str:
+                continue
+            lower = line_str.lower()
+            level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else "INFO"
+            parsed.append({
+                "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                "level": level,
+                "message": line_str
+            })
+        return parsed
+
+    # 3. Fallback to ServiceLog table in database
     from database.models import ServiceLog
     logs = db.query(ServiceLog).filter(ServiceLog.service_id == service_id).order_by(ServiceLog.id.desc()).limit(limit).all()
     return [{"timestamp": l.timestamp.isoformat() + "Z", "level": l.level, "message": l.message} for l in reversed(logs)]

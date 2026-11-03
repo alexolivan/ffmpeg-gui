@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.56.1] - 2026-11-03
+
+### Fixed
+- **PipeWire Daemon Console Logs Hydration & WebSocket Snapshots (`backend/main.py`, `backend/core/websocket_subscription_hub.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`, `frontend/src/context/TelemetryContext.tsx`)**:
+  - Upgraded `/api/services/{id}/logs` to check the running in-memory ring buffer and physical disk log file (`process_{id}.log`) before falling back to the `ServiceLog` table, ensuring active execution logs appear immediately when the console tab is opened.
+  - Destructured and rendered `externalLogs` in `PipeWirePreviewModal`, ensuring logs buffered upon process selection are displayed instantly without waiting for new events.
+  - Normalized `item_id` in `WebSocketSubscriptionHub` between integer and string formats and fixed the `database.models` import path during disk log fallback.
+  - Updated `TelemetryContext` to send a subscription request whenever a subscriber mounts and fixed composite subscription key parsing (`sidecar_logs:id:sidecar`) on WebSocket reconnection.
+- **Sidecar Log File Truncation & Stale Crash Wipe (`backend/core/process_manager.py`)**:
+  - Truncated `ptp4l_{id}.log` and `phc2sys_{id}.log` with a clean launch banner on non-restart service startups, preventing historical crash artifacts from earlier failed runs from being replayed in the virtual terminal.
+
 ## [2.56.0] - 2026-11-03
 
 ### Added

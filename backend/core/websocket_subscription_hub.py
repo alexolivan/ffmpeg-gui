@@ -135,19 +135,23 @@ class WebSocketSubscriptionHub:
         try:
             if topic == "process_logs" and item_id is not None:
                 lines = []
+                target_id = int(item_id) if (isinstance(item_id, (int, str)) and str(item_id).isdigit()) else item_id
                 if process_manager and hasattr(process_manager, "log_buffers"):
-                    if item_id in process_manager.log_buffers:
-                        lines = list(process_manager.log_buffers[item_id])
+                    if target_id in process_manager.log_buffers:
+                        lines = list(process_manager.log_buffers[target_id])
 
                 # If no in-memory buffer, check if log file exists on disk
                 if not lines and db_session_factory and process_manager:
                     try:
                         with db_session_factory() as session:
-                            from backend.database.models import MediaProcess
-                            proc = session.query(MediaProcess).get(int(item_id))
+                            try:
+                                from database.models import MediaProcess
+                            except ImportError:
+                                from backend.database.models import MediaProcess
+                            proc = session.get(MediaProcess, target_id) if hasattr(session, "get") else session.query(MediaProcess).get(target_id)
                             if proc:
                                 log_file = process_manager.get_process_log_path(
-                                    int(item_id), proc.log_storage_id, session=session
+                                    target_id, proc.log_storage_id, session=session
                                 )
                                 if os.path.exists(log_file):
                                     f_size = os.path.getsize(log_file)
@@ -161,7 +165,7 @@ class WebSocketSubscriptionHub:
                                         for l in raw_lines
                                     ]
                     except Exception as e:
-                        logger.error(f"Error fetching initial log file for process {item_id}: {e}")
+                        logger.error(f"Error fetching initial log file for process {target_id}: {e}")
 
                 self._client_offsets[(ws, topic, item_id)] = len(lines)
                 await ws.send_json({
@@ -245,7 +249,8 @@ class WebSocketSubscriptionHub:
             for proc_id, subscribers in list(active_proc_subs.items()):
                 if not subscribers:
                     continue
-                buffer = process_manager.log_buffers.get(proc_id)
+                target_id = int(proc_id) if (isinstance(proc_id, (int, str)) and str(proc_id).isdigit()) else proc_id
+                buffer = process_manager.log_buffers.get(target_id)
                 if not buffer:
                     continue
 

@@ -90,11 +90,9 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     subscribersRef.current.get(key)!.add(callback);
 
-    // If this is the first subscriber for this key, send subscribe to backend
-    if (!activeSubsRef.current.has(key)) {
-      activeSubsRef.current.add(key);
-      sendSubscription('subscribe', topic, id);
-    }
+    // Always send subscribe frame to ensure fresh initial snapshot delivery to the new subscriber
+    activeSubsRef.current.add(key);
+    sendSubscription('subscribe', topic, id);
 
     return () => {
       const set = subscribersRef.current.get(key);
@@ -123,9 +121,15 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       ws.onopen = () => {
         // Resubscribe active subscriptions upon (re)connect
         activeSubsRef.current.forEach(key => {
-          const [topic, rawId] = key.split(':');
-          const id = rawId !== undefined ? parseInt(rawId, 10) : undefined;
-          sendSubscription('subscribe', topic, isNaN(id as number) ? undefined : id);
+          const colonIdx = key.indexOf(':');
+          if (colonIdx === -1) {
+            sendSubscription('subscribe', key, undefined);
+          } else {
+            const topic = key.slice(0, colonIdx);
+            const rawId = key.slice(colonIdx + 1);
+            const numId = parseInt(rawId, 10);
+            sendSubscription('subscribe', topic, isNaN(numId) ? rawId : numId);
+          }
         });
       };
 

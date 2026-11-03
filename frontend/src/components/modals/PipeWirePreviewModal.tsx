@@ -130,6 +130,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   selectedProcess,
   telemetry,
   actionPending,
+  logs: externalLogs = [],
   onClose,
   onEditProcess,
   onStartService,
@@ -149,6 +150,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [ptpLogs, setPtpLogs] = useState<any[]>([]);
   const [phcLogs, setPhcLogs] = useState<any[]>([]);
+  const activeDaemonLogs = daemonLogs.length > 0 ? daemonLogs : (externalLogs || []);
   const [copySuccessTab, setCopySuccessTab] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -309,7 +311,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     if (processLogsContainerRef.current && isRunning) {
       processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
     }
-  }, [daemonLogs, isRunning, activeTab]);
+  }, [activeDaemonLogs, isRunning, activeTab]);
 
   useEffect(() => {
     if (ptpLogsContainerRef.current && isRunning) {
@@ -554,7 +556,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
                 }`}
               >
-                {t('services.pipewire.consoleTab', 'Console & Logs')} ({daemonLogs.length})
+                {t('services.pipewire.consoleTab', 'Console & Logs')} ({activeDaemonLogs.length})
               </button>
               {showPtpTab && (
                 <button
@@ -886,7 +888,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => handleCopyLogs('console', daemonLogs)}
+                    onClick={() => handleCopyLogs('console', activeDaemonLogs)}
                     className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     {copySuccessTab === 'console' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
@@ -895,7 +897,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      const text = daemonLogs
+                      const text = activeDaemonLogs
                         .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
                         .join('\n');
                       const blob = new Blob([text], { type: 'text/plain' });
@@ -909,7 +911,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     {t('services.pipewire.downloadLogs', 'Download Logs')}
                   </button>
                   <span className="text-[var(--text-secondary)] text-[10px] font-bold ml-1">
-                    {daemonLogs.length} {t('common.lines', 'lines')}
+                    {activeDaemonLogs.length} {t('common.lines', 'lines')}
                   </span>
                 </div>
               </div>
@@ -918,14 +920,14 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 ref={processLogsContainerRef}
                 className="h-80 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
               >
-                {daemonLogs.length === 0 ? (
+                {activeDaemonLogs.length === 0 ? (
                   <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-24 select-none">
                     {isRunning
                       ? t('services.pipewire.waitingLogs', 'Daemon active. Waiting for PipeWire audio routing output...')
                       : t('services.pipewire.stoppedLogs', 'Daemon is stopped. Start service to view execution output.')}
                   </div>
                 ) : (
-                  daemonLogs.map((log, i) => {
+                  activeDaemonLogs.map((log, i) => {
                     const logMsg = typeof log === 'string' ? log : log.message || '';
                     const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
                     const isErr = logMsg.toLowerCase().includes('err') || (typeof log === 'object' && log.level === 'ERROR');
