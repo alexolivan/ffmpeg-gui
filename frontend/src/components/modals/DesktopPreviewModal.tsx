@@ -63,7 +63,9 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
 
   const isKiosk = selectedProcess.service_type === 'kiosk_browser';
   const kioskCfg = isKiosk ? (currentProcess.config?.kiosk_config || currentProcess.config || {}) : null;
-  const targetDesktopId = isKiosk ? kioskCfg?.desktop_service_id : selectedProcess.id;
+  const targetDesktopId = isKiosk
+    ? (kioskCfg?.desktop_service_id || kioskCfg?.target_desktop_service_id)
+    : selectedProcess.id;
   const targetDesktopProcess = isKiosk ? telemetry.find((p) => p.id === targetDesktopId) : null;
   const deskCfg = isKiosk
     ? (targetDesktopProcess?.config?.desktop_config || targetDesktopProcess?.desktop_config || {})

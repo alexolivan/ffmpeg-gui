@@ -644,6 +644,11 @@ class CloudTunnelClient:
             asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
 
 
+        sec_subprotocols = []
+        raw_subprotocols = headers_dict.get("sec-websocket-protocol") or headers_dict.get("Sec-WebSocket-Protocol", "")
+        if raw_subprotocols:
+            sec_subprotocols = [p.strip() for p in raw_subprotocols.split(",") if p.strip()]
+
         scope = {
             "type": "websocket",
             "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -655,7 +660,7 @@ class CloudTunnelClient:
             "headers": asgi_headers,
             "client": ("127.0.0.1", 0),
             "server": ("cloudhub-tunnel", 0),
-            "subprotocols": [],
+            "subprotocols": sec_subprotocols,
         }
 
         queue: asyncio.Queue = asyncio.Queue()

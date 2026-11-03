@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.56.5] - 2026-11-03
+
+### Fixed
+- **Virtual Desktop & Kiosk X11VNC WebSocket Proxy Dereferencing (`backend/main.py`)**:
+  - Dereferenced parent Virtual Desktop service IDs (`desktop_service_id` or `target_desktop_service_id`) when `/ws/desktop/{service_id}/vnc` receives a `kiosk_browser` service identifier, preventing premature `1008 Policy Violation` closes and routing the socket to the active `x11vnc` port.
+- **In-Memory ASGI WebSocket Subprotocol Negotiation (`backend/core/cloud_tunnel_client.py`)**:
+  - Extracted and forwarded client-requested subprotocols (e.g. `binary` for noVNC) from `Sec-WebSocket-Protocol` headers into the in-memory ASGI scope, aligning edge subprotocol negotiation with CloudHub reverse proxies.
+- **Desktop Preview Modal Fallback ID Resolution (`frontend/src/components/modals/DesktopPreviewModal.tsx`)**:
+  - Added fallback check for `target_desktop_service_id` in addition to `desktop_service_id` to ensure correct virtual desktop binding for kiosk displays.
+
 ## [2.56.4] - 2026-11-03
 
 ### Fixed

@@ -8911,6 +8911,17 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
                 return
 
         svc = db.get(Service, service_id) if hasattr(db, "get") else db.query(Service).get(service_id)
+        if not svc:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        # If a kiosk_browser service is referenced, transparently resolve its parent virtual desktop
+        if svc.service_type == "kiosk_browser":
+            k_cfg = (svc.config or {}).get("kiosk_config", svc.config or {})
+            parent_desk_id = k_cfg.get("desktop_service_id") or k_cfg.get("target_desktop_service_id")
+            if parent_desk_id:
+                svc = db.get(Service, int(parent_desk_id)) if hasattr(db, "get") else db.query(Service).get(int(parent_desk_id))
+
         if not svc or svc.service_type != "desktop":
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
