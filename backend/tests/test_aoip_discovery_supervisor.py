@@ -159,6 +159,36 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
         await supervisor.stop()
         self.assertFalse(supervisor._running)
 
+    def test_setup_sap_socket_joins_dante_multicast_group(self):
+        """Verifies that _setup_sap_socket joins 239.255.255.255 for Dante/AES67 discovery."""
+        mock_pm = MagicMock()
+        supervisor = AoIpDiscoverySupervisor(14, mock_pm)
+        supervisor.interface = "enp9s0"
+        supervisor.nic_ip = "192.168.99.13"
+
+        with patch("socket.socket") as mock_sock_cls, \
+             patch("socket.if_nametoindex", return_value=3):
+            mock_sock = MagicMock()
+            mock_sock_cls.return_value = mock_sock
+
+            res = supervisor._setup_sap_socket()
+            self.assertEqual(res, mock_sock)
+
+            # Check that IP_ADD_MEMBERSHIP was called for 239.255.255.255
+            add_membership_calls = [
+                c for c in mock_sock.setsockopt.call_args_list
+                if len(c[0]) >= 2 and c[0][1] == socket.IP_ADD_MEMBERSHIP
+            ]
+            joined_ips = []
+            for call in add_membership_calls:
+                mreq_bytes = call[0][2]
+                joined_ip = socket.inet_ntoa(mreq_bytes[:4])
+                joined_ips.append(joined_ip)
+
+            self.assertIn("239.255.255.255", joined_ips)
+            self.assertIn("224.0.0.56", joined_ips)
+            self.assertIn("224.2.127.254", joined_ips)
+
     def test_handle_sap_packet_and_streams_count(self):
         mock_pm = MagicMock()
         supervisor = AoIpDiscoverySupervisor(14, mock_pm)

@@ -378,8 +378,8 @@ class AoIpDiscoverySupervisor:
             sock.setblocking(False)
             sock.bind(("0.0.0.0", 9875))
 
-            # Multicast groups to join: AES67 (224.0.0.56) and Standard SAP (224.2.127.254)
-            groups = ["224.0.0.56", "224.2.127.254"]
+            # Multicast groups to join: Dante / Admin AES67 (239.255.255.255), Link-Local AES67 (224.0.0.56) and Standard SAP (224.2.127.254)
+            groups = ["239.255.255.255", "224.0.0.56", "224.2.127.254"]
             for grp in groups:
                 joined = False
                 # 1. Prefer struct ip_mreqn with interface index
