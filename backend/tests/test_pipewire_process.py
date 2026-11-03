@@ -970,6 +970,92 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             await self.pm.stop_process(40)
             mock_ptp_proc.terminate.assert_called()
 
+    async def test_start_ptp4l_sidecar_dante_hardware_spawns_phc2sys(self):
+        """Verifies that Dante profile with hardware PTP spawns phc2sys companion daemon."""
+        with self.Session() as session:
+            hub = Service(
+                id=41,
+                name="Dante Hardware PTP Hub 41",
+                service_type="pipewire_hub",
+                status="stopped",
+                config={
+                    "pipewire_config": {
+                        "aoip_profile": "dante",
+                        "aes67_network": {
+                            "enabled": True,
+                            "interface": "enp9s0",
+                            "ptp": {
+                                "enabled": True,
+                                "aoip_profile": "dante"
+                            }
+                        },
+                        "virtual_sinks": [{"id": "dante_sink"}]
+                    }
+                }
+            )
+            session.add(hub)
+            session.commit()
+
+        mock_pw_proc = self._create_mock_proc(pid=41001)
+        mock_ptp_proc = self._create_mock_proc(pid=41002)
+        mock_phc_proc = self._create_mock_proc(pid=41003)
+
+        def mock_exec(*cmd, **kwargs):
+            if "ptp4l" in cmd[0]:
+                return mock_ptp_proc
+            if "phc2sys" in cmd[0]:
+                return mock_phc_proc
+            return mock_pw_proc
+
+        def mock_find_bin(name):
+            if name == "ptp4l":
+                return "/usr/sbin/ptp4l"
+            if name == "phc2sys":
+                return "/usr/sbin/phc2sys"
+            return None
+
+        with patch("asyncio.create_subprocess_exec", side_effect=mock_exec) as mock_spawn, \
+             patch("core.network_inspector.find_system_binary", side_effect=mock_find_bin), \
+             patch("core.network_inspector.audit_pipewire_network_capabilities", return_value={
+                 "interfaces": [{"name": "enp9s0", "ptp_support": "hardware"}]
+             }), \
+             patch("os.path.exists", side_effect=lambda p: True if "ptp4l" in str(p) or "pipewire" in str(p) else False), \
+             patch("shutil.which", return_value="/usr/bin/pipewire"), \
+             patch.object(self.pm, "_watchdog", new_callable=AsyncMock):
+
+            await self.pm.start_process(41)
+
+            spawn_calls = [c[0] for c in mock_spawn.call_args_list]
+
+            # 1. ptp4l spawned with hardware timestamping (no -S)
+            ptp_call = next((c for c in spawn_calls if any("ptp4l" in str(arg) for arg in c)), None)
+            self.assertIsNotNone(ptp_call)
+            self.assertNotIn("-S", ptp_call)
+            self.assertIn("-i", ptp_call)
+            self.assertIn("enp9s0", ptp_call)
+
+            # 2. phc2sys spawned with -s enp9s0 -c CLOCK_REALTIME -w
+            phc_call = next((c for c in spawn_calls if any("phc2sys" in str(arg) for arg in c)), None)
+            self.assertIsNotNone(phc_call)
+            self.assertIn("-s", phc_call)
+            self.assertIn("enp9s0", phc_call)
+            self.assertIn("-c", phc_call)
+            self.assertIn("CLOCK_REALTIME", phc_call)
+            self.assertIn("-w", phc_call)
+
+            # 3. Both processes tracked in auxiliary_processes and auxiliary_pids
+            aux_procs = self.pm.auxiliary_processes.get(41, [])
+            self.assertIn(mock_ptp_proc, aux_procs)
+            self.assertIn(mock_phc_proc, aux_procs)
+            aux_pids = self.pm.auxiliary_pids.get(41, [])
+            self.assertIn(41002, aux_pids)
+            self.assertIn(41003, aux_pids)
+
+            # 4. Stop process and verify both terminate
+            await self.pm.stop_process(41)
+            mock_ptp_proc.terminate.assert_called()
+            mock_phc_proc.terminate.assert_called()
+
     def test_get_aoip_discovery_endpoint(self):
         """Verifies GET /api/pipewire/aoip-discovery returns discovery status."""
         app.dependency_overrides[verify_token] = lambda: "admin"

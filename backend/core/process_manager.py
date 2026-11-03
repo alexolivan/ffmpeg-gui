@@ -2240,10 +2240,11 @@ class ProcessManager:
         cmd = [pipewire_bin, "-c", config_path]
         return cmd, config_path, runtime_dir
 
-    def _reap_orphan_ptp4l_for_service(self, service_id: int):
+    def _reap_orphan_ptp4l_for_service(self, service_id: int, iface: Optional[str] = None):
         """
-        Scans and terminates any rogue or orphan ptp4l processes referencing
-        this service's ephemeral configuration file (/dev/shm/ptp4l_{service_id}.conf or /tmp/ptp4l_{service_id}.conf).
+        Scans and terminates any rogue or orphan ptp4l or phc2sys processes referencing
+        this service's ephemeral configuration file (/dev/shm/ptp4l_{service_id}.conf or /tmp/ptp4l_{service_id}.conf)
+        or network interface.
         """
         conf_token = f"ptp4l_{service_id}.conf"
         try:
@@ -2256,21 +2257,28 @@ class ProcessManager:
                             f"[PipeWire Hub #{service_id}] Killing orphan/rogue ptp4l process (PID: {proc.info['pid']})"
                         )
                         proc.kill()
+                    elif iface and "phc2sys" in cmd_str and f"-s {iface}" in cmd_str:
+                        self.logger.warning(
+                            f"[PipeWire Hub #{service_id}] Killing orphan/rogue phc2sys process for {iface} (PID: {proc.info['pid']})"
+                        )
+                        proc.kill()
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
         except Exception as e:
-            self.logger.debug(f"[PipeWire Hub #{service_id}] Error scanning orphan ptp4l: {e}")
+            self.logger.debug(f"[PipeWire Hub #{service_id}] Error scanning orphan ptp4l/phc2sys: {e}")
 
     async def _start_ptp4l_sidecar(self, process_id: int, iface: str, ptp_cfg: Dict[str, Any], logs_dir: str):
         """
         Launches managed ptp4l master clock daemon as an auxiliary process tied to PipeWire Hub service.
         Generates /dev/shm/ptp4l_{process_id}.conf in ephemeral RAM and applies proper timestamping flags.
+        In Dante profile with hardware PTP timestamping (and not forcing local master), also launches
+        phc2sys to synchronize CLOCK_REALTIME from the hardware PTP interface (PHC).
         """
         from core.network_inspector import find_system_binary, audit_pipewire_network_capabilities
         from core.pipewire_config import PipeWireConfigGenerator
 
-        # Pre-flight cleanup: terminate any lingering orphan ptp4l process for this service
-        self._reap_orphan_ptp4l_for_service(process_id)
+        # Pre-flight cleanup: terminate any lingering orphan ptp4l or phc2sys process for this service
+        self._reap_orphan_ptp4l_for_service(process_id, iface)
 
         ptp4l_bin = find_system_binary("ptp4l")
         if not ptp4l_bin:
@@ -2336,6 +2344,39 @@ class ProcessManager:
                 self.auxiliary_pids[process_id].append(ptp_proc.pid)
         except Exception as e:
             self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch ptp4l sidecar: {e}")
+
+        # In Dante profile with hardware PTP timestamping (and not forcing local master),
+        # spawn phc2sys to synchronize CLOCK_REALTIME from the hardware PTP interface (PHC).
+        aoip_profile = str(ptp_cfg.get("aoip_profile", "")).lower()
+        force_local_master = bool(ptp_cfg.get("force_local_master", False))
+        if ptp_support == "hardware" and aoip_profile == "dante" and not force_local_master:
+            phc2sys_bin = find_system_binary("phc2sys")
+            if phc2sys_bin:
+                phc_cmd = [phc2sys_bin, "-s", iface, "-c", "CLOCK_REALTIME", "-w"]
+                self.logger.info(
+                    f"[PipeWire Hub #{process_id}] Spawning managed phc2sys companion daemon: {' '.join(phc_cmd)}"
+                )
+                try:
+                    phc_log_path = os.path.join(logs_dir, f"phc2sys_{process_id}.log")
+                    phc_log_file = open(phc_log_path, "ab", buffering=0)
+                    phc_proc = await asyncio.create_subprocess_exec(
+                        *phc_cmd,
+                        stdout=phc_log_file,
+                        stderr=asyncio.subprocess.STDOUT,
+                        stdin=asyncio.subprocess.DEVNULL
+                    )
+                    try:
+                        phc_log_file.close()
+                    except Exception:
+                        pass
+
+                    self.auxiliary_processes.setdefault(process_id, []).append(phc_proc)
+                    if process_id not in self.auxiliary_pids:
+                        self.auxiliary_pids[process_id] = []
+                    if phc_proc.pid and phc_proc.pid not in self.auxiliary_pids[process_id]:
+                        self.auxiliary_pids[process_id].append(phc_proc.pid)
+                except Exception as e:
+                    self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch phc2sys companion daemon: {e}")
 
     def _get_pipewire_tool_binary(self, hub_service_id: int, tool_name: str = "pw-link") -> Tuple[Optional[str], Optional[str]]:
         """Resolves binary path and install_dir for PipeWire CLI tools (pw-link, pw-dump, pw-cli)."""
