@@ -964,6 +964,7 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             self.assertIn("enp9s0", ptp_call)
             self.assertIn("-S", ptp_call)  # software timestamping
             self.assertIn(mock_ptp_proc, self.pm.auxiliary_processes.get(40, []))
+            self.assertIn(40002, self.pm.auxiliary_pids.get(40, []))
 
             # Stop process and verify auxiliary cleanup
             await self.pm.stop_process(40)

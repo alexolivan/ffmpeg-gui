@@ -1277,6 +1277,7 @@ class ProcessManager:
                         if nic:
                             from core.resource_lock_manager import resource_manager
                             resource_manager.release_resource("network_interface", nic, owner_type="service", owner_id=process_id)
+                        self._reap_orphan_ptp4l_for_service(process_id)
 
                     if getattr(media_proc, "service_type", None) == "desktop":
                         d_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
@@ -2239,6 +2240,27 @@ class ProcessManager:
         cmd = [pipewire_bin, "-c", config_path]
         return cmd, config_path, runtime_dir
 
+    def _reap_orphan_ptp4l_for_service(self, service_id: int):
+        """
+        Scans and terminates any rogue or orphan ptp4l processes referencing
+        this service's ephemeral configuration file (/dev/shm/ptp4l_{service_id}.conf or /tmp/ptp4l_{service_id}.conf).
+        """
+        conf_token = f"ptp4l_{service_id}.conf"
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = proc.info.get('cmdline') or []
+                    cmd_str = " ".join(cmdline)
+                    if "ptp4l" in cmd_str and conf_token in cmd_str:
+                        self.logger.warning(
+                            f"[PipeWire Hub #{service_id}] Killing orphan/rogue ptp4l process (PID: {proc.info['pid']})"
+                        )
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except Exception as e:
+            self.logger.debug(f"[PipeWire Hub #{service_id}] Error scanning orphan ptp4l: {e}")
+
     async def _start_ptp4l_sidecar(self, process_id: int, iface: str, ptp_cfg: Dict[str, Any], logs_dir: str):
         """
         Launches managed ptp4l master clock daemon as an auxiliary process tied to PipeWire Hub service.
@@ -2246,6 +2268,9 @@ class ProcessManager:
         """
         from core.network_inspector import find_system_binary, audit_pipewire_network_capabilities
         from core.pipewire_config import PipeWireConfigGenerator
+
+        # Pre-flight cleanup: terminate any lingering orphan ptp4l process for this service
+        self._reap_orphan_ptp4l_for_service(process_id)
 
         ptp4l_bin = find_system_binary("ptp4l")
         if not ptp4l_bin:
@@ -2305,6 +2330,10 @@ class ProcessManager:
                 pass
 
             self.auxiliary_processes.setdefault(process_id, []).append(ptp_proc)
+            if process_id not in self.auxiliary_pids:
+                self.auxiliary_pids[process_id] = []
+            if ptp_proc.pid and ptp_proc.pid not in self.auxiliary_pids[process_id]:
+                self.auxiliary_pids[process_id].append(ptp_proc.pid)
         except Exception as e:
             self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch ptp4l sidecar: {e}")
 
