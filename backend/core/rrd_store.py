@@ -7,6 +7,7 @@ micro-outliers, drops, and spikes across 24-hour periods.
 
 from collections import deque
 import logging
+import re
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -14,6 +15,93 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger("ffmpeg_gui.rrd")
 
 METRICS = ("cpu", "ram", "fps", "bitrate", "speed")
+
+
+def parse_metric_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert any metric value (str, int, float, None) to float."""
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        try:
+            f = float(val)
+            return default if (f != f) else f
+        except (ValueError, TypeError):
+            return default
+    s = str(val).strip()
+    if not s or s.upper() in ("N/A", "NONE", "NULL", "NAN", "-"):
+        return default
+    m = re.search(r"[-+]?\d*\.?\d+", s)
+    if m:
+        try:
+            return float(m.group(0))
+        except (ValueError, TypeError):
+            return default
+    return default
+
+
+def parse_bitrate_kbps(val: Any) -> float:
+    """
+    Parse a bitrate value into kilobits per second (kbps).
+    Handles:
+      - "N/A", None, "0 kb/s" -> 0.0
+      - "128.0kbits/s", "128 kb/s", "128k" -> 128.0
+      - "2.5Mbits/s", "2.5 mbps" -> 2500.0
+      - 2500000 (raw bps) -> 2500.0
+      - 128.0 -> 128.0
+    """
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        fval = float(val)
+        if fval > 100000:
+            return round(fval / 1000.0, 2)
+        return round(fval, 2)
+
+    s = str(val).strip().lower()
+    if not s or s in ("n/a", "none", "null", "nan", "-"):
+        return 0.0
+
+    multiplier = 1.0
+    if "mbits/s" in s or "mbps" in s or "mbit/s" in s or "mb/s" in s:
+        multiplier = 1000.0
+    elif "kbits/s" in s or "kbps" in s or "kbit/s" in s or "kb/s" in s:
+        multiplier = 1.0
+    elif "bits/s" in s or "bps" in s:
+        multiplier = 0.001
+    elif "gbit" in s:
+        multiplier = 1000000.0
+
+    m = re.search(r"[-+]?\d*\.?\d+", s)
+    if m:
+        try:
+            num = float(m.group(0))
+            result = num * multiplier
+            if multiplier == 1.0 and "k" not in s and result > 100000:
+                result = result / 1000.0
+            return round(result, 2)
+        except (ValueError, TypeError):
+            return 0.0
+    return 0.0
+
+
+def parse_speed_ratio(val: Any) -> float:
+    """
+    Parse a speed value (e.g. "1.02x", "0.98x", 1.0, "N/A", "0x") into float ratio.
+    """
+    if val is None:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().lower()
+    if not s or s in ("n/a", "none", "null", "nan", "-"):
+        return 0.0
+    m = re.search(r"[-+]?\d*\.?\d+", s)
+    if m:
+        try:
+            return float(m.group(0))
+        except (ValueError, TypeError):
+            return 0.0
+    return 0.0
 
 
 class ServiceRRDTracker:
@@ -48,21 +136,21 @@ class ServiceRRDTracker:
 
     def record_sample(
         self,
-        cpu: float,
-        ram: float,
-        fps: float,
-        bitrate: float,
-        speed: float,
+        cpu: Any,
+        ram: Any,
+        fps: Any,
+        bitrate: Any,
+        speed: Any,
         timestamp: Optional[float] = None,
     ) -> None:
         """Record a live 5-second sample and downsample across tiers."""
         ts = float(timestamp if timestamp is not None else time.time())
         sample = {
-            "cpu": float(cpu or 0.0),
-            "ram": float(ram or 0.0),
-            "fps": float(fps or 0.0),
-            "bitrate": float(bitrate or 0.0),
-            "speed": float(speed or 0.0),
+            "cpu": parse_metric_float(cpu),
+            "ram": parse_metric_float(ram),
+            "fps": parse_metric_float(fps),
+            "bitrate": parse_bitrate_kbps(bitrate),
+            "speed": parse_speed_ratio(speed),
         }
 
         with self._lock:
@@ -238,11 +326,11 @@ class VolatileRRDStore:
     def record_service_sample(
         self,
         service_id: int,
-        cpu: float,
-        ram: float,
-        fps: float,
-        bitrate: float,
-        speed: float,
+        cpu: Any,
+        ram: Any,
+        fps: Any,
+        bitrate: Any,
+        speed: Any,
         timestamp: Optional[float] = None,
     ) -> None:
         tracker = self.get_or_create(service_id)

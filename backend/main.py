@@ -3816,11 +3816,12 @@ def get_prometheus_metrics(request: Request, db: Session = Depends(get_db)):
         status_code = 1 if s.status == "running" else (-1 if s.status == "error" else 0)
         lines.append(f'ffmpeg_gui_service_status{{id="{s_id}",name="{s_name}",type="{s_type}"}} {status_code}')
 
-        cpu_val = float(s.cpu_usage or 0.0)
-        ram_val = float(s.ram_usage or 0.0)
-        bitrate_val = float(s.bitrate or 0.0)
-        fps_val = float(s.fps or 0.0)
-        speed_val = float(s.speed or 0.0)
+        from core.rrd_store import parse_metric_float, parse_bitrate_kbps, parse_speed_ratio
+        cpu_val = parse_metric_float(s.cpu_usage)
+        ram_val = parse_metric_float(s.ram_usage)
+        bitrate_val = parse_bitrate_kbps(s.bitrate)
+        fps_val = parse_metric_float(s.fps)
+        speed_val = parse_speed_ratio(s.speed)
 
         lines.append(f'ffmpeg_gui_service_cpu_percent{{id="{s_id}",name="{s_name}"}} {cpu_val}')
         lines.append(f'ffmpeg_gui_service_ram_percent{{id="{s_id}",name="{s_name}"}} {ram_val}')
@@ -3898,21 +3899,24 @@ async def telemetry_broadcast_loop():
                     sparkline = []
                     has_outlier = False
                     if p.status == 'running':
-                        from core.rrd_store import volatile_rrd_store
-                        volatile_rrd_store.record_service_sample(
-                            service_id=p.id,
-                            cpu=p.cpu_usage or 0.0,
-                            ram=p.ram_usage or 0.0,
-                            fps=p.fps or 0.0,
-                            bitrate=p.bitrate or 0.0,
-                            speed=p.speed or 0.0,
-                        )
-                        tracker = volatile_rrd_store.get(p.id)
-                        if tracker:
-                            m_choice = "bitrate" if (getattr(p, "service_type", "ffmpeg_stream") or "ffmpeg_stream") == "ffmpeg_stream" else "cpu"
-                            sparkline = tracker.get_sparkline(metric=m_choice, count=24)
-                            series_info = tracker.get_series(metric=m_choice, range="24h")
-                            has_outlier = series_info.get("anomaly_summary", {}).get("has_outliers", False)
+                        try:
+                            from core.rrd_store import volatile_rrd_store
+                            volatile_rrd_store.record_service_sample(
+                                service_id=p.id,
+                                cpu=p.cpu_usage,
+                                ram=p.ram_usage,
+                                fps=p.fps,
+                                bitrate=p.bitrate,
+                                speed=p.speed,
+                            )
+                            tracker = volatile_rrd_store.get(p.id)
+                            if tracker:
+                                m_choice = "bitrate" if (getattr(p, "service_type", "ffmpeg_stream") or "ffmpeg_stream") == "ffmpeg_stream" else "cpu"
+                                sparkline = tracker.get_sparkline(metric=m_choice, count=24)
+                                series_info = tracker.get_series(metric=m_choice, range="24h")
+                                has_outlier = series_info.get("anomaly_summary", {}).get("has_outliers", False)
+                        except Exception as rrd_err:
+                            logger.warning(f"Error updating volatile RRD metrics for service {p.id}: {rrd_err}")
 
                     processes_data.append({
                         "id": p.id,

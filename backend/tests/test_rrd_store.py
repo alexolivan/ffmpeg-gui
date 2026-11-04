@@ -112,3 +112,54 @@ def test_volatile_rrd_store_singleton():
 
     store.remove(10)
     assert store.get(10) is None
+
+
+def test_rrd_tracker_handles_string_metrics():
+    """Verify tracker resiliently parses string telemetry from FFmpeg, PipeWire, Icecast (e.g. 'N/A', '128.0kbits/s', '1.0x')."""
+    from core.rrd_store import parse_bitrate_kbps, parse_speed_ratio, parse_metric_float
+
+    # Test standalone helper functions
+    assert parse_bitrate_kbps("N/A") == 0.0
+    assert parse_bitrate_kbps("0 kb/s") == 0.0
+    assert parse_bitrate_kbps("0.0kbits/s") == 0.0
+    assert parse_bitrate_kbps("128.0kbits/s") == 128.0
+    assert parse_bitrate_kbps("2.5Mbits/s") == 2500.0
+    assert parse_bitrate_kbps(None) == 0.0
+    assert parse_bitrate_kbps(3500.0) == 3500.0
+
+    assert parse_speed_ratio("1.02x") == 1.02
+    assert parse_speed_ratio("0x") == 0.0
+    assert parse_speed_ratio("N/A") == 0.0
+    assert parse_speed_ratio(None) == 0.0
+
+    assert parse_metric_float("25.0") == 25.0
+    assert parse_metric_float("15.5%") == 15.5
+    assert parse_metric_float("N/A") == 0.0
+    assert parse_metric_float(None) == 0.0
+
+    # Test tracker end-to-end with string inputs
+    tracker = ServiceRRDTracker(service_id=99)
+    tracker.record_sample(
+        cpu="15.5%",
+        ram="250.0 MB",
+        fps="N/A",
+        bitrate="N/A",
+        speed="1.0x",
+    )
+    t1 = tracker.get_series("bitrate", "30m")
+    assert len(t1["timestamps"]) == 1
+    assert t1["avg"][0] == 0.0
+
+    tracker.record_sample(
+        cpu=None,
+        ram=None,
+        fps="25.0",
+        bitrate="128.0kbits/s",
+        speed="0x",
+    )
+    t1_fps = tracker.get_series("fps", "30m")
+    assert t1_fps["avg"][1] == 25.0
+
+    t1_br = tracker.get_series("bitrate", "30m")
+    assert t1_br["avg"][1] == 128.0
+

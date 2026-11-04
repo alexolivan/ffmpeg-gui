@@ -90,10 +90,24 @@ def test_prometheus_metrics_service_gauges(client):
             fps=50.0,
             speed=1.002,
         )
+        svc_na = Service(
+            name="Audio Only PCM Service",
+            service_type="ffmpeg_stream",
+            status="running",
+            config={},
+            cpu_usage=5.0,
+            ram_usage=40.0,
+            bitrate="N/A",
+            fps="N/A",
+            speed="1.0x",
+        )
         db.add(svc)
+        db.add(svc_na)
         db.commit()
         db.refresh(svc)
+        db.refresh(svc_na)
         svc_id = svc.id
+        svc_na_id = svc_na.id
 
     try:
         resp = client.get("/api/metrics?token=my_token")
@@ -104,7 +118,12 @@ def test_prometheus_metrics_service_gauges(client):
         assert f'ffmpeg_gui_service_bitrate_kbps{{id="{svc_id}",name="Exporter Stream Test"}} 4500' in text
         assert f'ffmpeg_gui_service_fps{{id="{svc_id}",name="Exporter Stream Test"}} 50' in text
 
+        # Verify string metrics like "N/A" and "1.0x" converted safely without ValueError
+        assert f'ffmpeg_gui_service_bitrate_kbps{{id="{svc_na_id}",name="Audio Only PCM Service"}} 0.0' in text
+        assert f'ffmpeg_gui_service_fps{{id="{svc_na_id}",name="Audio Only PCM Service"}} 0.0' in text
+        assert f'ffmpeg_gui_service_speed_ratio{{id="{svc_na_id}",name="Audio Only PCM Service"}} 1.0' in text
+
     finally:
         with SessionLocal() as db:
-            db.query(Service).filter(Service.id == svc_id).delete()
+            db.query(Service).filter(Service.id.in_([svc_id, svc_na_id])).delete()
             db.commit()
