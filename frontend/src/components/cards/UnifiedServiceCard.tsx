@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatInputDesc, formatOutputDesc } from '../../utils/formatters';
 import { 
@@ -15,6 +15,8 @@ import {
   PowerIcon
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
+import { MicroSparkline } from '../common/MicroSparkline';
+import { ServiceRRDDrawer } from './ServiceRRDDrawer';
 
 export interface ServiceItem {
   id: number;
@@ -29,6 +31,8 @@ export interface ServiceItem {
   bitrate?: string | null;
   fps?: string | null;
   speed?: string | null;
+  sparkline?: number[] | null;
+  has_rrd_outlier?: boolean;
   ffmpeg_build_id?: number | null;
   input_config?: any;
   output_config?: any;
@@ -131,6 +135,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   API = ''
 }) => {
   const { t } = useTranslation();
+  const [isRrdExpanded, setIsRrdExpanded] = useState(false);
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
   const isPending = !!actionPending;
@@ -142,6 +147,8 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   const fps = telemetryItem?.fps || service.fps || '0';
   const speed = telemetryItem?.speed || service.speed || '0x';
   const pid = telemetryItem?.pid || service.pid;
+  const sparkline = telemetryItem?.sparkline || service.sparkline || [];
+  const hasRrdOutlier = telemetryItem?.has_rrd_outlier ?? service.has_rrd_outlier ?? false;
 
   const serviceType = service.service_type || 'ffmpeg_stream';
   const isFfmpegStream = serviceType === 'ffmpeg_stream';
@@ -152,7 +159,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   return (
     <div 
       onClick={() => onSelectedProcess(service)}
-      className={`group relative flex flex-col lg:flex-row lg:items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+      className={`group relative flex flex-col p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
         isRunning 
           ? 'bg-brand-lime/5 border-brand-lime/20 hover:bg-brand-lime/10 hover:border-brand-lime/40' 
           : isError
@@ -160,6 +167,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           : 'bg-white/2 hover:bg-white/5 border-[var(--glass-border)] opacity-85 hover:opacity-100'
       }`}
     >
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
       {/* Left Info Column */}
       <div className="flex flex-col gap-1.5 min-w-0 flex-1 pr-4">
         {/* Title & Badges Row */}
@@ -340,6 +348,17 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               <span>Speed: <strong className="text-[var(--text-primary)]">{speed}</strong></span>
             </>
           )}
+          {isRunning && (
+            <>
+              <span className="opacity-20">|</span>
+              <MicroSparkline
+                data={sparkline}
+                hasOutlier={hasRrdOutlier}
+                isExpanded={isRrdExpanded}
+                onToggle={() => setIsRrdExpanded((prev) => !prev)}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -477,6 +496,15 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           <TrashIcon size={16} />
         </button>
       </div>
+      </div>
+
+      {/* Expandable Volatile RRD Metrics Drawer */}
+      <ServiceRRDDrawer
+        serviceId={service.id}
+        isOpen={isRrdExpanded}
+        hasVideo={hasVideo(service)}
+        onClose={() => setIsRrdExpanded(false)}
+      />
     </div>
   );
 };

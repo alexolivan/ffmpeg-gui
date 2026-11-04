@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   PlayIcon,
@@ -12,6 +12,8 @@ import {
   LightningIcon,
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
+import { MicroSparkline } from '../common/MicroSparkline';
+import { ServiceRRDDrawer } from './ServiceRRDDrawer';
 import type { ServiceItem } from './UnifiedServiceCard';
 
 interface KioskServiceCardProps {
@@ -60,6 +62,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
   API = '',
 }) => {
   const { t } = useTranslation();
+  const [isRrdExpanded, setIsRrdExpanded] = useState(false);
 
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
@@ -73,6 +76,8 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
   const cpu = telemetryItem?.cpu_usage ?? telemetryItem?.cpu ?? service.cpu ?? 0;
   const ram = telemetryItem?.ram_usage ?? telemetryItem?.ram ?? service.ram ?? 0;
   const pid = telemetryItem?.pid || service.pid;
+  const sparkline = telemetryItem?.sparkline || service.sparkline || [];
+  const hasRrdOutlier = telemetryItem?.has_rrd_outlier ?? service.has_rrd_outlier ?? false;
 
   const kCfg = service.config?.kiosk_config || (service as any).kiosk_config || {};
   const engineId = (kCfg.engine_id || 'chromium').toLowerCase();
@@ -84,7 +89,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
   return (
     <div
       onClick={() => onSelectedProcess(service)}
-      className={`group relative flex flex-col lg:flex-row lg:items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+      className={`group relative flex flex-col p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
         isRunning
           ? 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10 hover:border-amber-500/40'
           : isError
@@ -92,6 +97,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
           : 'bg-white/2 hover:bg-white/5 border-[var(--glass-border)] opacity-85 hover:opacity-100'
       }`}
     >
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
       {/* Left Info Column */}
       <div className="flex flex-col gap-1.5 min-w-0 flex-1 pr-4">
         {/* Title & Badges Row */}
@@ -224,6 +230,17 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
           <span>
             RAM: <strong className="text-[var(--text-primary)]">{isRunning ? `${ram} MB` : '-'}</strong>
           </span>
+          {isRunning && (
+            <>
+              <span className="opacity-20">|</span>
+              <MicroSparkline
+                data={sparkline}
+                hasOutlier={hasRrdOutlier}
+                isExpanded={isRrdExpanded}
+                onToggle={() => setIsRrdExpanded((prev) => !prev)}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -318,6 +335,15 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
           <TrashIcon size={16} />
         </button>
       </div>
+      </div>
+
+      {/* Expandable Volatile RRD Metrics Drawer */}
+      <ServiceRRDDrawer
+        serviceId={service.id}
+        isOpen={isRrdExpanded}
+        hasVideo={false}
+        onClose={() => setIsRrdExpanded(false)}
+      />
     </div>
   );
 };
