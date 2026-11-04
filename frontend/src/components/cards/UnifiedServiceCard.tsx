@@ -32,6 +32,7 @@ export interface ServiceItem {
   fps?: string | null;
   speed?: string | null;
   sparkline?: number[] | null;
+  sparkline_metric?: string | null;
   has_rrd_outlier?: boolean;
   ffmpeg_build_id?: number | null;
   input_config?: any;
@@ -107,16 +108,35 @@ export const hasVideo = (proc: ServiceItem): boolean => {
     const codecCfg = typeof proc.codec_config === 'string' 
       ? JSON.parse(proc.codec_config) 
       : (proc.codec_config || proc.config?.codec_config || {});
+    if (codecCfg.vcodec === 'none') return false;
     if (codecCfg.vcodec && codecCfg.vcodec !== 'none') return true;
+
     const inputCfg = typeof proc.input_config === 'string' 
       ? JSON.parse(proc.input_config) 
       : (proc.input_config || proc.config?.input_config || {});
-    if (inputCfg.has_video === true) return true;
     if (inputCfg.has_video === false) return false;
+    if (inputCfg.has_video === true) return true;
+
+    // Check if input is audio-only device or type
+    const inType = (inputCfg.type || proc.type || '').toLowerCase();
+    if (['alsa', 'pulseaudio', 'jack', 'sndio', 'audio'].includes(inType)) {
+      return false;
+    }
+
+    const outCfg = typeof proc.output_config === 'string'
+      ? JSON.parse(proc.output_config)
+      : (proc.output_config || proc.config?.output_config || {});
+    if (outCfg.has_video === false) return false;
+
+    // If fps is reported and > 0, it is video
+    if (proc.fps && parseFloat(proc.fps) > 0) return true;
+
+    // If audio codec is specified without any video codec
+    if (codecCfg.acodec && !codecCfg.vcodec) return false;
   } catch (e) {
     // Ignore parse errors
   }
-  return true;
+  return false;
 };
 
 export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
@@ -499,12 +519,16 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
       </div>
 
       {/* Expandable Volatile RRD Metrics Drawer */}
-      <ServiceRRDDrawer
-        serviceId={service.id}
-        isOpen={isRrdExpanded}
-        hasVideo={hasVideo(service)}
-        onClose={() => setIsRrdExpanded(false)}
-      />
+      <div onClick={(e) => e.stopPropagation()}>
+        <ServiceRRDDrawer
+          serviceId={service.id}
+          isOpen={isRrdExpanded}
+          hasVideo={hasVideo(service)}
+          serviceType={service.service_type || 'ffmpeg_stream'}
+          initialMetric={(telemetryItem?.sparkline_metric || service.sparkline_metric || (hasVideo(service) ? 'bitrate' : 'cpu')) as any}
+          onClose={() => setIsRrdExpanded(false)}
+        />
+      </div>
     </div>
   );
 };

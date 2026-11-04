@@ -338,12 +338,16 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
       </div>
 
       {/* Expandable Volatile RRD Metrics Drawer */}
-      <ServiceRRDDrawer
-        serviceId={service.id}
-        isOpen={isRrdExpanded}
-        hasVideo={false}
-        onClose={() => setIsRrdExpanded(false)}
-      />
+      <div onClick={(e) => e.stopPropagation()}>
+        <ServiceRRDDrawer
+          serviceId={service.id}
+          isOpen={isRrdExpanded}
+          hasVideo={false}
+          serviceType="kiosk_browser"
+          initialMetric="cpu"
+          onClose={() => setIsRrdExpanded(false)}
+        />
+      </div>
     </div>
   );
 };

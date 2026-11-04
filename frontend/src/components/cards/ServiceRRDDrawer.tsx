@@ -6,6 +6,8 @@ interface ServiceRRDDrawerProps {
   serviceId: number;
   isOpen: boolean;
   hasVideo?: boolean;
+  serviceType?: string;
+  initialMetric?: MetricKey;
   onClose?: () => void;
 }
 
@@ -47,13 +49,56 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
   serviceId,
   isOpen,
   hasVideo = true,
+  serviceType = 'ffmpeg_stream',
+  initialMetric,
   onClose,
 }) => {
   const { t } = useTranslation();
   const [tier, setTier] = useState<RRDTier>('30m');
-  const [selectedMetric, setSelectedMetric] = useState<MetricKey>(hasVideo ? 'bitrate' : 'cpu');
+
+  const isAuxiliary = ['icecast_server', 'mediamtx_hub', 'pipewire_hub', 'desktop', 'kiosk_browser'].includes(serviceType);
+
+  const availableMetrics: { key: MetricKey; label: string; unit: string }[] = useMemo(() => {
+    if (isAuxiliary) {
+      return [
+        { key: 'cpu', label: t('services.rrd.metricCpu', 'CPU'), unit: '%' },
+        { key: 'ram', label: t('services.rrd.metricRam', 'RAM'), unit: 'MB' },
+      ];
+    }
+    if (hasVideo) {
+      return [
+        { key: 'bitrate', label: t('services.rrd.metricBitrate', 'Bitrate'), unit: 'kbps' },
+        { key: 'fps', label: t('services.rrd.metricFps', 'FPS'), unit: 'fps' },
+        { key: 'speed', label: t('services.rrd.metricSpeed', 'Speed'), unit: 'x' },
+        { key: 'cpu', label: t('services.rrd.metricCpu', 'CPU'), unit: '%' },
+        { key: 'ram', label: t('services.rrd.metricRam', 'RAM'), unit: 'MB' },
+      ];
+    }
+    // Audio-only stream: CPU, RAM, Speed, Bitrate (Never show non-existent FPS)
+    return [
+      { key: 'cpu', label: t('services.rrd.metricCpu', 'CPU'), unit: '%' },
+      { key: 'ram', label: t('services.rrd.metricRam', 'RAM'), unit: 'MB' },
+      { key: 'speed', label: t('services.rrd.metricSpeed', 'Speed'), unit: 'x' },
+      { key: 'bitrate', label: t('services.rrd.metricBitrate', 'Bitrate'), unit: 'kbps' },
+    ];
+  }, [isAuxiliary, hasVideo, t]);
+
+  const defaultMetric = initialMetric && availableMetrics.some(m => m.key === initialMetric)
+    ? initialMetric
+    : availableMetrics[0].key;
+
+  const [selectedMetric, setSelectedMetric] = useState<MetricKey>(defaultMetric);
   const [rrdData, setRrdData] = useState<RRDSeriesData | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  // Sync selected metric when initialMetric changes or if current selection is invalid for this service
+  useEffect(() => {
+    if (initialMetric && availableMetrics.some(m => m.key === initialMetric)) {
+      setSelectedMetric(initialMetric);
+    } else if (!availableMetrics.some(m => m.key === selectedMetric)) {
+      setSelectedMetric(availableMetrics[0].key);
+    }
+  }, [initialMetric, availableMetrics]);
 
   // Clear hover and data on tier/metric change
   useEffect(() => {
@@ -180,19 +225,6 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
     setHoverIndex(null);
   };
 
-  const availableMetrics: { key: MetricKey; label: string; unit: string }[] = hasVideo
-    ? [
-        { key: 'bitrate', label: t('services.rrd.metricBitrate', 'Bitrate'), unit: 'kbps' },
-        { key: 'fps', label: t('services.rrd.metricFps', 'FPS'), unit: 'fps' },
-        { key: 'speed', label: t('services.rrd.metricSpeed', 'Speed'), unit: 'x' },
-        { key: 'cpu', label: t('services.rrd.metricCpu', 'CPU'), unit: '%' },
-        { key: 'ram', label: t('services.rrd.metricRam', 'RAM'), unit: 'MB' },
-      ]
-    : [
-        { key: 'cpu', label: t('services.rrd.metricCpu', 'CPU'), unit: '%' },
-        { key: 'ram', label: t('services.rrd.metricRam', 'RAM'), unit: 'MB' },
-      ];
-
   const tierOptions: { key: RRDTier; label: string; subtitle: string }[] = [
     { key: '30m', label: '30m', subtitle: '5s' },
     { key: '6h', label: '6h', subtitle: '1m' },
@@ -202,7 +234,10 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="w-full mt-3 pt-3 border-t border-white/10 bg-black/15 -mx-4 px-4 pb-2 rounded-b-xl transition-all">
+    <div 
+      className="w-full mt-3 pt-3 border-t border-white/10 bg-black/15 -mx-4 px-4 pb-2 rounded-b-xl transition-all"
+      onClick={(e) => e.stopPropagation()}
+    >
       {/* Header bar: Metric selectors + Tier toggles */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -213,7 +248,10 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
             <button
               key={m.key}
               type="button"
-              onClick={() => setSelectedMetric(m.key)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedMetric(m.key);
+              }}
               className={`px-2 py-0.5 rounded text-[11px] font-mono font-medium transition-all ${
                 selectedMetric === m.key
                   ? 'bg-brand-lime text-black font-bold shadow-sm shadow-brand-lime/20'
@@ -241,7 +279,10 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
               <button
                 key={tOpt.key}
                 type="button"
-                onClick={() => setTier(tOpt.key)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setTier(tOpt.key);
+                }}
                 className={`px-2 py-0.5 rounded-md font-mono text-[10px] font-semibold transition-all ${
                   tier === tOpt.key
                     ? 'bg-white/20 text-white shadow-xs'
@@ -256,7 +297,10 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
           {onClose && (
             <button
               type="button"
-              onClick={onClose}
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
               className="text-xs text-[var(--text-secondary)] hover:text-white px-1.5 py-0.5 rounded hover:bg-white/5"
               title={t('common.close', 'Close')}
             >

@@ -21,7 +21,12 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
   strokeColor = 'var(--brand-lime, #84cc16)',
   title,
 }) => {
-  const points = data && data.length > 0 ? data : [];
+  const uniqueId = React.useId().replace(/:/g, '_');
+  const gradId = `sparkline-grad-${uniqueId}`;
+
+  const rawPoints = data && data.length > 0 ? data : [];
+  // If exactly 1 point has arrived so far, duplicate it to immediately render an active flat segment
+  const points = rawPoints.length === 1 ? [rawPoints[0], rawPoints[0]] : rawPoints;
   const valid = points.length >= 2;
 
   let polylineCoords = '';
@@ -39,7 +44,7 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
 
     const coords = points.map((val, idx) => {
       const x = padX + (idx / (points.length - 1)) * effWidth;
-      const normalized = range > 0 ? (val - min) / range : (max > 0 ? 0.5 : 0.15);
+      const normalized = range > 0 ? (val - min) / range : (max > 0 ? 0.5 : 0.2);
       const y = padY + effHeight - normalized * effHeight;
       return [x.toFixed(1), y.toFixed(1)];
     });
@@ -76,7 +81,7 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
         className="overflow-visible block"
       >
         <defs>
-          <linearGradient id={`sparkline-grad-${width}`} x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={strokeColor} stopOpacity="0.35" />
             <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
           </linearGradient>
@@ -84,7 +89,7 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
 
         {valid ? (
           <>
-            <path d={areaCoords} fill={`url(#sparkline-grad-${width})`} />
+            <path d={areaCoords} fill={`url(#${gradId})`} />
             <polyline
               points={polylineCoords}
               fill="none"

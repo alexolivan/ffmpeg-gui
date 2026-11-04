@@ -3897,8 +3897,10 @@ async def telemetry_broadcast_loop():
 
                     # Feed volatile RRD store if service is running
                     sparkline = []
+                    m_choice = "bitrate"
                     has_outlier = False
-                    if p.status == 'running':
+                    is_running = (p.status == 'running') or (p.id in process_manager.processes)
+                    if is_running:
                         try:
                             from core.rrd_store import volatile_rrd_store
                             volatile_rrd_store.record_service_sample(
@@ -3912,12 +3914,17 @@ async def telemetry_broadcast_loop():
                             tracker = volatile_rrd_store.get(p.id)
                             if tracker:
                                 br_spark = tracker.get_sparkline(metric="bitrate", count=24)
+                                cpu_spark = tracker.get_sparkline(metric="cpu", count=24)
+                                ram_spark = tracker.get_sparkline(metric="ram", count=24)
                                 if any(v > 0 for v in br_spark):
                                     sparkline = br_spark
                                     m_choice = "bitrate"
-                                else:
-                                    sparkline = tracker.get_sparkline(metric="cpu", count=24)
+                                elif any(v > 0 for v in cpu_spark):
+                                    sparkline = cpu_spark
                                     m_choice = "cpu"
+                                else:
+                                    sparkline = ram_spark
+                                    m_choice = "ram"
                                 series_info = tracker.get_series(metric=m_choice, range="24h")
                                 has_outlier = series_info.get("anomaly_summary", {}).get("has_outliers", False)
                         except Exception as rrd_err:
@@ -3969,6 +3976,7 @@ async def telemetry_broadcast_loop():
                         "allow_peer_lease": bool(p.allow_peer_lease),
                         "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
                         "sparkline": sparkline,
+                        "sparkline_metric": m_choice,
                         "has_rrd_outlier": has_outlier,
                     })
 

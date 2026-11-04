@@ -4112,7 +4112,7 @@ class ProcessManager:
                                 media_proc.fps = fps if fps is not None else "0"
                                 media_proc.bitrate = bitrate if bitrate is not None else "0 kb/s"
                                 media_proc.speed = speed if speed is not None else "0x"
-                            media_proc.cpu_usage = int(cpu)
+                            media_proc.cpu_usage = round(cpu, 1) if cpu < 10 else int(cpu)
                             media_proc.ram_usage = int(mem)
                             session.commit()
 

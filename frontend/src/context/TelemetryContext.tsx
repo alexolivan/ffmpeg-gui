@@ -16,6 +16,7 @@ export interface ProcessItem {
   speed?: string | null;
   ffmpeg_build_id?: number | null;
   sparkline?: number[] | null;
+  sparkline_metric?: string | null;
   has_rrd_outlier?: boolean;
   input_config?: any;
   output_config?: any;
