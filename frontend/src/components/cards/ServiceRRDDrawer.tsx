@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTelemetrySubscription } from '../../context/TelemetryContext';
 
@@ -18,16 +18,28 @@ interface MetricSeries {
   max: number[];
 }
 
-interface RRDDataSnapshot {
-  service_id: number;
-  tier: RRDTier;
-  resolution_seconds: number;
+interface RRDSeriesData {
+  service_id?: number;
+  metric?: string;
+  range?: string;
+  tier?: RRDTier;
+  resolution_seconds?: number;
   timestamps: number[];
+  avg?: number[];
+  min?: number[];
+  max?: number[];
   bitrate?: MetricSeries;
   fps?: MetricSeries;
   speed?: MetricSeries;
   cpu?: MetricSeries;
   ram?: MetricSeries;
+  anomaly_summary?: {
+    min_value: number;
+    min_timestamp: number | null;
+    max_value: number;
+    max_timestamp: number | null;
+    has_outliers: boolean;
+  };
   has_outliers?: boolean;
 }
 
@@ -40,27 +52,51 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
   const { t } = useTranslation();
   const [tier, setTier] = useState<RRDTier>('30m');
   const [selectedMetric, setSelectedMetric] = useState<MetricKey>(hasVideo ? 'bitrate' : 'cpu');
-  const [rrdData, setRrdData] = useState<RRDDataSnapshot | null>(null);
+  const [rrdData, setRrdData] = useState<RRDSeriesData | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  // Clear hover and data on tier/metric change
+  useEffect(() => {
+    setHoverIndex(null);
+  }, [tier, selectedMetric]);
 
   // Subscribe to WebSocket RRD telemetry stream when expanded
   useTelemetrySubscription(
     'service_metrics_rrd',
     isOpen ? serviceId : undefined,
     (msg: any) => {
-      if (msg.type === 'service_metrics_rrd' && msg.service_id === serviceId && msg.tier === tier) {
-        setRrdData(msg.rrd as RRDDataSnapshot);
+      const targetId = msg.id ?? msg.service_id ?? msg.data?.service_id;
+      if (msg.type === 'service_metrics_rrd' && targetId === serviceId) {
+        const payload = msg.data || msg.rrd;
+        if (payload) {
+          const payloadRange = payload.range || payload.tier;
+          if (!payloadRange || payloadRange === tier) {
+            setRrdData(payload as RRDSeriesData);
+          }
+        }
       }
     },
-    useMemo(() => ({ tier }), [tier])
+    useMemo(() => ({ range: tier, metric: selectedMetric }), [tier, selectedMetric])
   );
 
-  if (!isOpen) return null;
+  const currentSeries: MetricSeries | undefined = useMemo(() => {
+    if (!rrdData) return undefined;
+    if (Array.isArray(rrdData.avg) && rrdData.avg.length > 0) {
+      return {
+        avg: rrdData.avg,
+        min: rrdData.min || rrdData.avg,
+        max: rrdData.max || rrdData.avg,
+      };
+    }
+    if ((rrdData as any)[selectedMetric]) {
+      return (rrdData as any)[selectedMetric];
+    }
+    return undefined;
+  }, [rrdData, selectedMetric]);
 
-  const currentSeries: MetricSeries | undefined = rrdData ? (rrdData as any)[selectedMetric] : undefined;
   const timestamps = rrdData?.timestamps || [];
   const pointCount = timestamps.length;
-  const hasPoints = pointCount >= 2 && currentSeries && currentSeries.avg.length === pointCount;
+  const hasPoints = pointCount >= 2 && !!currentSeries && currentSeries.avg.length === pointCount;
 
   // Formatting helper based on metric
   const formatVal = (val: number | undefined | null) => {
@@ -90,7 +126,7 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
 
   // Compute min, max and path strings
   const chartGeometry = useMemo(() => {
-    if (!hasPoints || !currentSeries) return null;
+    if (!isOpen || !hasPoints || !currentSeries) return null;
 
     let globalMin = Math.min(...currentSeries.min);
     let globalMax = Math.max(...currentSeries.max);
@@ -129,7 +165,7 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
       avgPolyline,
       corridorPoints,
     };
-  }, [hasPoints, currentSeries, pointCount, chartW, chartH, padLeft, padTop]);
+  }, [isOpen, hasPoints, currentSeries, pointCount, chartW, chartH, padLeft, padTop]);
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!hasPoints) return;
@@ -163,6 +199,8 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
     { key: '24h', label: '24h', subtitle: '5m' },
   ];
 
+  if (!isOpen) return null;
+
   return (
     <div className="w-full mt-3 pt-3 border-t border-white/10 bg-black/15 -mx-4 px-4 pb-2 rounded-b-xl transition-all">
       {/* Header bar: Metric selectors + Tier toggles */}
@@ -188,7 +226,7 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          {rrdData?.has_outliers && (
+          {(rrdData?.anomaly_summary?.has_outliers || rrdData?.has_outliers) && (
             <span
               className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1 animate-pulse"
               title={t('services.rrd.outlierNotice', 'Significant drop or deviation recorded in this timeframe')}

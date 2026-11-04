@@ -251,8 +251,11 @@ class WebSocketSubscriptionHub:
                 from core.rrd_store import volatile_rrd_store
                 target_id = int(item_id) if (isinstance(item_id, (int, str)) and str(item_id).isdigit()) else item_id
                 tracker = volatile_rrd_store.get(target_id)
-                range_val = str(options.get("range", "24h")) if options else "24h"
-                metric_val = str(options.get("metric", "bitrate")) if options else "bitrate"
+                opts_dict = options if isinstance(options, dict) else {}
+                if isinstance(opts_dict.get("options"), dict):
+                    opts_dict = {**opts_dict, **opts_dict["options"]}
+                range_val = str(opts_dict.get("range", "24h"))
+                metric_val = str(opts_dict.get("metric", "bitrate"))
 
                 if tracker:
                     series = tracker.get_series(metric=metric_val, range=range_val)
@@ -393,9 +396,12 @@ class WebSocketSubscriptionHub:
 
                     dead_clients = []
                     for ws in list(subscribers):
-                        opts = self._client_options.get((ws, "service_metrics_rrd", s_id), {})
-                        range_val = opts.get("range", "24h")
-                        metric_val = opts.get("metric", "bitrate")
+                        raw_opts = self._client_options.get((ws, "service_metrics_rrd", s_id), {})
+                        opts_dict = raw_opts if isinstance(raw_opts, dict) else {}
+                        if isinstance(opts_dict.get("options"), dict):
+                            opts_dict = {**opts_dict, **opts_dict["options"]}
+                        range_val = str(opts_dict.get("range", "24h"))
+                        metric_val = str(opts_dict.get("metric", "bitrate"))
                         series = tracker.get_series(metric=metric_val, range=range_val)
                         try:
                             await ws.send_json({

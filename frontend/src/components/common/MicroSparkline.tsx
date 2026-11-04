@@ -30,7 +30,7 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
   if (valid) {
     const min = Math.min(...points);
     const max = Math.max(...points);
-    const range = max - min > 0 ? max - min : 1;
+    const range = max - min;
 
     const padX = 2;
     const padY = 2;
@@ -39,7 +39,7 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
 
     const coords = points.map((val, idx) => {
       const x = padX + (idx / (points.length - 1)) * effWidth;
-      const normalized = (val - min) / range;
+      const normalized = range > 0 ? (val - min) / range : (max > 0 ? 0.5 : 0.15);
       const y = padY + effHeight - normalized * effHeight;
       return [x.toFixed(1), y.toFixed(1)];
     });

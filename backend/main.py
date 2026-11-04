@@ -3911,8 +3911,13 @@ async def telemetry_broadcast_loop():
                             )
                             tracker = volatile_rrd_store.get(p.id)
                             if tracker:
-                                m_choice = "bitrate" if (getattr(p, "service_type", "ffmpeg_stream") or "ffmpeg_stream") == "ffmpeg_stream" else "cpu"
-                                sparkline = tracker.get_sparkline(metric=m_choice, count=24)
+                                br_spark = tracker.get_sparkline(metric="bitrate", count=24)
+                                if any(v > 0 for v in br_spark):
+                                    sparkline = br_spark
+                                    m_choice = "bitrate"
+                                else:
+                                    sparkline = tracker.get_sparkline(metric="cpu", count=24)
+                                    m_choice = "cpu"
                                 series_info = tracker.get_series(metric=m_choice, range="24h")
                                 has_outlier = series_info.get("anomaly_summary", {}).get("has_outliers", False)
                         except Exception as rrd_err:
