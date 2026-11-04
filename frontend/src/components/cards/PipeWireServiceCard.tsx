@@ -252,6 +252,18 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
 
         {/* Compact Telemetry Strip */}
         <div className="flex gap-x-3 gap-y-1 mt-0.5 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
+          {isRunning && (
+            <>
+              <MicroSparkline
+                data={sparkline}
+                label="CPU"
+                hasOutlier={hasRrdOutlier}
+                isExpanded={isRrdExpanded}
+                onToggle={() => setIsRrdExpanded((prev) => !prev)}
+              />
+              <span className="opacity-20">|</span>
+            </>
+          )}
           <span>
             PID:{' '}
             <strong className={isRunning && pid ? 'text-[var(--text-primary)] font-bold' : 'text-zinc-500 font-normal'}>
@@ -273,17 +285,6 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
           <span>
             RAM: <strong className="text-[var(--text-primary)]">{isRunning ? `${ram} MB` : '-'}</strong>
           </span>
-          {isRunning && (
-            <>
-              <span className="opacity-20">|</span>
-              <MicroSparkline
-                data={sparkline}
-                hasOutlier={hasRrdOutlier}
-                isExpanded={isRrdExpanded}
-                onToggle={() => setIsRrdExpanded((prev) => !prev)}
-              />
-            </>
-          )}
         </div>
       </div>
 

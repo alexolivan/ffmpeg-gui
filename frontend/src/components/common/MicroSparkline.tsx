@@ -2,6 +2,7 @@ import React from 'react';
 
 interface MicroSparklineProps {
   data?: number[] | null;
+  label?: string;
   hasOutlier?: boolean;
   isExpanded?: boolean;
   onToggle?: () => void;
@@ -13,11 +14,12 @@ interface MicroSparklineProps {
 
 export const MicroSparkline: React.FC<MicroSparklineProps> = ({
   data,
+  label = 'CPU',
   hasOutlier = false,
   isExpanded = false,
   onToggle,
-  width = 84,
-  height = 20,
+  width = 68,
+  height = 18,
   strokeColor = 'var(--brand-lime, #84cc16)',
   title,
 }) => {
@@ -58,7 +60,7 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
 
   const tooltipText = title || (hasOutlier 
     ? 'Drop/Outlier detected. Click to view 24h RRD metrics.' 
-    : 'Live telemetry sparkline. Click to view 24h RRD metrics.');
+    : 'Live CPU telemetry sparkline. Click to view 24h RRD metrics.');
 
   return (
     <button
@@ -70,10 +72,15 @@ export const MicroSparkline: React.FC<MicroSparklineProps> = ({
       className={`relative inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded transition-all cursor-pointer border ${
         isExpanded 
           ? 'bg-white/10 border-brand-lime/40 ring-1 ring-brand-lime/30' 
-          : 'bg-black/20 hover:bg-white/5 border-white/10 hover:border-white/20'
+          : 'bg-black/30 hover:bg-white/10 border-white/10 hover:border-white/20'
       }`}
       title={tooltipText}
     >
+      {label && (
+        <span className="text-[10px] font-mono font-bold text-brand-lime tracking-tight select-none">
+          {label}
+        </span>
+      )}
       <svg
         width={width}
         height={height}

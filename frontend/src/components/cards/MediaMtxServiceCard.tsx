@@ -249,6 +249,18 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
 
         {/* Compact Telemetry Strip */}
         <div className="flex gap-x-3 gap-y-1 mt-0.5 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
+          {isRunning && (
+            <>
+              <MicroSparkline
+                data={sparkline}
+                label="CPU"
+                hasOutlier={hasRrdOutlier}
+                isExpanded={isRrdExpanded}
+                onToggle={() => setIsRrdExpanded((prev) => !prev)}
+              />
+              <span className="opacity-20">|</span>
+            </>
+          )}
           <span>PID: <strong className={isRunning && pid ? "text-[var(--text-primary)] font-bold" : "text-zinc-500 font-normal"}>{isRunning && pid ? pid : t('common.offline', 'OFFLINE')}</strong></span>
           <span className="opacity-20">|</span>
           <span>Uptime: <strong className="text-[var(--text-primary)]">{formatUptime(service.last_start, isRunning)}</strong></span>
@@ -256,17 +268,6 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
           <span>CPU: <strong className={isRunning && cpu > 80 ? 'text-red-400 font-bold' : 'text-[var(--text-primary)]'}>{isRunning ? `${cpu}%` : '-'}</strong></span>
           <span className="opacity-20">|</span>
           <span>RAM: <strong className="text-[var(--text-primary)]">{isRunning ? `${ram} MB` : '-'}</strong></span>
-          {isRunning && (
-            <>
-              <span className="opacity-20">|</span>
-              <MicroSparkline
-                data={sparkline}
-                hasOutlier={hasRrdOutlier}
-                isExpanded={isRrdExpanded}
-                onToggle={() => setIsRrdExpanded((prev) => !prev)}
-              />
-            </>
-          )}
         </div>
       </div>
 
