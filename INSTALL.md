@@ -183,3 +183,12 @@ chmod +x uninstall.sh
 ./uninstall.sh
 ```
 *Note: This will stop any active systemd units and remove the local SQLite database. Ensure you have backed up any configurations via the Settings panel before running this.*
+
+---
+
+## 8. Prometheus & OpenMetrics Exporter
+
+`ffmpeg-gui` includes a pass-through OpenMetrics scraper endpoint served on the main application port:
+- **Endpoints**: `/api/metrics` and `/metrics`
+- **Security**: Disabled by default. Can be enabled in Settings (`Network -> Prometheus & OpenMetrics Exporter`) with Bearer token authentication and CIDR IP whitelisting.
+- **Storage Impact**: Zero disk writes. All metrics are collected dynamically from process execution state and volatile in-memory RRD buffers, making it suitable for SATADom or flash-memory installations.

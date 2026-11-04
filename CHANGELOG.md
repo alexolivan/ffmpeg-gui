@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.57.0] - 2026-11-04
+
+### Added
+- **Volatile In-Memory RRD Engine (`backend/core/rrd_store.py`)**:
+  - Implemented multi-tier circular ring buffer tracker (`30m` @ 5s, `6h` @ 60s, `24h` @ 300s) storing telemetry metrics (bitrate, fps, speed, cpu, ram) completely in volatile RAM (< 100 KB per service) with zero writes to disk, protecting SATADom and flash-based appliances against storage degradation.
+  - Preserved brief anomalies (e.g. bitrate dropping to 0 for 5s) across 24h retention through continuous Min/Max/Avg bucket envelopes rather than lossy averaging.
+- **WebSocket On-Demand RRD Subscription Protocol (`backend/core/websocket_subscription_hub.py`, `backend/main.py`)**:
+  - Added `service_metrics_rrd` WebSocket topic support, pushing initial historical snapshots on demand and broadcasting live metric updates to open cards without polling HTTP endpoints.
+- **Micro-Sparklines & Collapsible RRD Drawers (`frontend/src/components/common/MicroSparkline.tsx`, `frontend/src/components/cards/ServiceRRDDrawer.tsx`)**:
+  - Designed lightweight SVG micro-sparklines (~84×20px) embedded in live telemetry strips with anomaly pulse indicator dots.
+  - Implemented expandable card drawers rendering 24h interactive SVG histograms with shaded Min/Max corridors, continuous average lines, hover crosshairs, and time range toggles across all 5 UI themes.
+  - Integrated across all service cards (`UnifiedServiceCard`, `FfmpegServiceCard`, `DesktopServiceCard`, `KioskServiceCard`, `IcecastServiceCard`, `MediaMtxServiceCard`, `PipeWireServiceCard`).
+- **Authenticated Prometheus & OpenMetrics Exporter (`backend/main.py`, `frontend/src/components/views/settings/MetricsExporterSettingsCard.tsx`)**:
+  - Added pass-through `/api/metrics` and `/metrics` OpenMetrics HTTP scraping endpoints exposing system and per-service gauges (uptime, cpu, ram, pid, bitrate, fps, speed, watchdog restarts).
+  - Configurable in Settings with master toggle, secret Bearer token authentication, IP/CIDR whitelist restriction, and copyable `prometheus.yml` scrape target configuration.
+- **Internationalization (i18n)**:
+  - Added full localization for all RRD and Prometheus exporter strings across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+
 ## [2.56.5] - 2026-11-03
 
 ### Fixed

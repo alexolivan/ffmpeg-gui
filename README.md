@@ -227,6 +227,12 @@ sudo fail2ban-client reload
 - **Zero-Knowledge Single Sign-On (SSO)**: Ephemeral HMAC-SHA256 signed assertions grant instant operator access without sharing local passwords.
 - **1-Click Token Enrollment**: Simple enrollment flow from the Network settings card with live vitality telemetry streaming.
 
+### 📊 22. Volatile 24h RRD Metrics & Prometheus / OpenMetrics Exporter
+- **Zero Disk Writes (Flash/SATADom Friendly)**: Pure in-memory multi-tier circular buffers (`30m` @ 5s, `6h` @ 60s, `24h` @ 300s) storing live telemetry (bitrate, fps, speed, cpu, ram) under 100 KB RAM per service with zero flash storage writes.
+- **Min/Max Outlier Envelope Retention**: Brief drops (such as bitrate falling to 0 for a few seconds) remain visible over 24h via shaded corridor envelopes rather than disappearing into averaged lines.
+- **In-Card Micro-Sparklines & Expandable Histograms**: Compact sparklines in service cards with anomaly indicators and expandable interactive SVG drawer histograms with hover tooltips and crosshairs across all 5 visual themes.
+- **Authenticated Prometheus / OpenMetrics HTTP Endpoint**: Standard `/api/metrics` and `/metrics` scraper endpoints exposing node and service metrics, configurable in Settings with Bearer token authentication, IP/CIDR filtering, and copyable `prometheus.yml` scrape configs.
+
 ---
 
 ## Architecture
