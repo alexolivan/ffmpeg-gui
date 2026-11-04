@@ -22,11 +22,14 @@ class WebSocketSubscriptionHub:
             "task_logs": {},
             "pipewire_graph": {},
             "resource_locks": {},
+            "service_metrics_rrd": {},
         }
         # Reverse mapping: WebSocket -> Set[(topic, item_id)]
         self._client_subs: Dict[Any, Set[Tuple[str, Any]]] = {}
         # Client position tracking: (WebSocket, topic, item_id) -> last_seen_index/timestamp
         self._client_offsets: Dict[Tuple[Any, str, Any], int] = {}
+        # Client options tracking: (WebSocket, topic, item_id) -> dict(range, metric, etc.)
+        self._client_options: Dict[Tuple[Any, str, Any], Dict[str, Any]] = {}
         # Cache for diffing changes
         self._last_resource_locks: Optional[List[Any]] = None
 
@@ -52,6 +55,7 @@ class WebSocketSubscriptionHub:
             offset_key = (ws, topic, item_id)
             if offset_key in self._client_offsets:
                 del self._client_offsets[offset_key]
+            self._client_options.pop(offset_key, None)
 
         del self._client_subs[ws]
         logger.debug(f"Unregistered WebSocket client subscriptions: {len(subs)} topics cleared")
@@ -84,7 +88,7 @@ class WebSocketSubscriptionHub:
             return
 
         if action == "subscribe":
-            await self._handle_subscribe(ws, topic, item_id, process_manager, db_session_factory)
+            await self._handle_subscribe(ws, topic, item_id, process_manager, db_session_factory, options=payload)
         elif action == "unsubscribe":
             self._handle_unsubscribe(ws, topic, item_id)
 
@@ -94,7 +98,8 @@ class WebSocketSubscriptionHub:
         topic: str,
         item_id: Any,
         process_manager: Any,
-        db_session_factory: Any
+        db_session_factory: Any,
+        options: Optional[Dict[str, Any]] = None,
     ) -> None:
         if topic not in self._topics:
             self._topics[topic] = {}
@@ -107,8 +112,11 @@ class WebSocketSubscriptionHub:
             self._client_subs[ws] = set()
         self._client_subs[ws].add((topic, item_id))
 
+        if options:
+            self._client_options[(ws, topic, item_id)] = options
+
         # Immediately send initial snapshot for the subscribed topic
-        await self._send_initial_snapshot(ws, topic, item_id, process_manager, db_session_factory)
+        await self._send_initial_snapshot(ws, topic, item_id, process_manager, db_session_factory, options=options)
 
     def _handle_unsubscribe(self, ws: Any, topic: str, item_id: Any) -> None:
         if topic in self._topics and item_id in self._topics[topic]:
@@ -122,6 +130,7 @@ class WebSocketSubscriptionHub:
         offset_key = (ws, topic, item_id)
         if offset_key in self._client_offsets:
             del self._client_offsets[offset_key]
+        self._client_options.pop(offset_key, None)
 
     async def _send_initial_snapshot(
         self,
@@ -129,7 +138,8 @@ class WebSocketSubscriptionHub:
         topic: str,
         item_id: Any,
         process_manager: Any,
-        db_session_factory: Any
+        db_session_factory: Any,
+        options: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Send current state / logs upon subscription so client has immediate data."""
         try:
@@ -237,6 +247,38 @@ class WebSocketSubscriptionHub:
                     "locks": locks
                 })
 
+            elif topic == "service_metrics_rrd" and item_id is not None:
+                from core.rrd_store import volatile_rrd_store
+                target_id = int(item_id) if (isinstance(item_id, (int, str)) and str(item_id).isdigit()) else item_id
+                tracker = volatile_rrd_store.get(target_id)
+                range_val = str(options.get("range", "24h")) if options else "24h"
+                metric_val = str(options.get("metric", "bitrate")) if options else "bitrate"
+
+                if tracker:
+                    series = tracker.get_series(metric=metric_val, range=range_val)
+                else:
+                    series = {
+                        "metric": metric_val,
+                        "range": range_val,
+                        "service_id": target_id,
+                        "timestamps": [],
+                        "avg": [],
+                        "min": [],
+                        "max": [],
+                        "anomaly_summary": {
+                            "min_value": 0.0,
+                            "min_timestamp": None,
+                            "max_value": 0.0,
+                            "max_timestamp": None,
+                            "has_outliers": False,
+                        },
+                    }
+                await ws.send_json({
+                    "type": "service_metrics_rrd",
+                    "id": target_id,
+                    "data": series,
+                })
+
         except Exception as err:
             logger.debug(f"Failed to send initial snapshot for {topic}:{item_id}: {err}")
 
@@ -335,6 +377,39 @@ class WebSocketSubscriptionHub:
                         self.unregister_client(dead)
             except Exception:
                 pass
+
+        # 3. Service RRD metrics deltas (if subscribed)
+        active_rrd_subs = self._topics.get("service_metrics_rrd", {})
+        if active_rrd_subs:
+            try:
+                from core.rrd_store import volatile_rrd_store
+                for s_id, subscribers in list(active_rrd_subs.items()):
+                    if not subscribers:
+                        continue
+                    target_id = int(s_id) if (isinstance(s_id, (int, str)) and str(s_id).isdigit()) else s_id
+                    tracker = volatile_rrd_store.get(target_id)
+                    if not tracker:
+                        continue
+
+                    dead_clients = []
+                    for ws in list(subscribers):
+                        opts = self._client_options.get((ws, "service_metrics_rrd", s_id), {})
+                        range_val = opts.get("range", "24h")
+                        metric_val = opts.get("metric", "bitrate")
+                        series = tracker.get_series(metric=metric_val, range=range_val)
+                        try:
+                            await ws.send_json({
+                                "type": "service_metrics_rrd",
+                                "id": target_id,
+                                "data": series,
+                            })
+                        except Exception:
+                            dead_clients.append(ws)
+
+                    for dead in dead_clients:
+                        self.unregister_client(dead)
+            except Exception as e:
+                logger.debug(f"Error broadcasting RRD deltas: {e}")
 
 
 # Global singleton instance
