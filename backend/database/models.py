@@ -510,6 +510,11 @@ class SystemSettings(Base):
     cloudhub_org_name = Column(String, nullable=True)
     cloudhub_group_name = Column(String, nullable=True)
 
+    # Metrics Exporter (Prometheus / OpenMetrics) Settings
+    metrics_exporter_enabled = Column(Boolean, default=False)
+    metrics_exporter_token = Column(String, nullable=True)
+    metrics_exporter_allowed_ips = Column(Text, nullable=True)
+
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
 

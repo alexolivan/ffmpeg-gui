@@ -604,6 +604,9 @@ class SettingsResponse(BaseModel):
     cloudhub_sso_enabled: Optional[bool] = True
     cloudhub_org_name: Optional[str] = None
     cloudhub_group_name: Optional[str] = None
+    metrics_exporter_enabled: Optional[bool] = False
+    metrics_exporter_token: Optional[str] = None
+    metrics_exporter_allowed_ips: Optional[str] = None
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -654,6 +657,9 @@ class SettingsUpdate(BaseModel):
     cloudhub_enabled: Optional[bool] = None
     cloudhub_url: Optional[str] = None
     cloudhub_sso_enabled: Optional[bool] = None
+    metrics_exporter_enabled: Optional[bool] = None
+    metrics_exporter_token: Optional[str] = None
+    metrics_exporter_allowed_ips: Optional[str] = None
 
 
     @validator('brute_force_whitelist')
@@ -1565,6 +1571,11 @@ def update_settings(settings_in: SettingsUpdate, request: Request, db: Session =
     if settings_in.cloudhub_url is not None:
         settings.cloudhub_url = settings_in.cloudhub_url.strip().rstrip("/") if settings_in.cloudhub_url else None
     if settings_in.cloudhub_sso_enabled is not None: settings.cloudhub_sso_enabled = settings_in.cloudhub_sso_enabled
+    if settings_in.metrics_exporter_enabled is not None: settings.metrics_exporter_enabled = settings_in.metrics_exporter_enabled
+    if settings_in.metrics_exporter_token is not None:
+        settings.metrics_exporter_token = settings_in.metrics_exporter_token.strip() if settings_in.metrics_exporter_token else None
+    if settings_in.metrics_exporter_allowed_ips is not None:
+        settings.metrics_exporter_allowed_ips = settings_in.metrics_exporter_allowed_ips.strip() if settings_in.metrics_exporter_allowed_ips else None
 
     db.commit()
     db.refresh(settings)

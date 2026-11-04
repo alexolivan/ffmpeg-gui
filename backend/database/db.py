@@ -308,6 +308,12 @@ def init_db():
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_org_name TEXT DEFAULT NULL"))
             if "cloudhub_group_name" not in settings_columns:
                 conn.execute(text("ALTER TABLE system_settings ADD COLUMN cloudhub_group_name TEXT DEFAULT NULL"))
+            if "metrics_exporter_enabled" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN metrics_exporter_enabled BOOLEAN DEFAULT 0"))
+            if "metrics_exporter_token" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN metrics_exporter_token TEXT DEFAULT NULL"))
+            if "metrics_exporter_allowed_ips" not in settings_columns:
+                conn.execute(text("ALTER TABLE system_settings ADD COLUMN metrics_exporter_allowed_ips TEXT DEFAULT NULL"))
 
             # Storages table migrations
 
