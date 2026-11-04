@@ -3782,6 +3782,27 @@ async def telemetry_broadcast_loop():
                         p_deps.append(fed_dep)
                     raw_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
                     p_leases = [resolve_lease_display_name(l, services_lookup, tasks_lookup) for l in raw_leases]
+
+                    # Feed volatile RRD store if service is running
+                    sparkline = []
+                    has_outlier = False
+                    if p.status == 'running':
+                        from core.rrd_store import volatile_rrd_store
+                        volatile_rrd_store.record_service_sample(
+                            service_id=p.id,
+                            cpu=p.cpu_usage or 0.0,
+                            ram=p.ram_usage or 0.0,
+                            fps=p.fps or 0.0,
+                            bitrate=p.bitrate or 0.0,
+                            speed=p.speed or 0.0,
+                        )
+                        tracker = volatile_rrd_store.get(p.id)
+                        if tracker:
+                            m_choice = "bitrate" if (getattr(p, "service_type", "ffmpeg_stream") or "ffmpeg_stream") == "ffmpeg_stream" else "cpu"
+                            sparkline = tracker.get_sparkline(metric=m_choice, count=24)
+                            series_info = tracker.get_series(metric=m_choice, range="24h")
+                            has_outlier = series_info.get("anomaly_summary", {}).get("has_outliers", False)
+
                     processes_data.append({
                         "id": p.id,
                         "name": p.name,
@@ -3827,6 +3848,8 @@ async def telemetry_broadcast_loop():
                         "is_shared_with_peers": bool(p.is_shared_with_peers),
                         "allow_peer_lease": bool(p.allow_peer_lease),
                         "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
+                        "sparkline": sparkline,
+                        "has_rrd_outlier": has_outlier,
                     })
 
                 active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
@@ -5819,6 +5842,9 @@ async def delete_process(process_id: int, request: Request, db: Session = Depend
 
     db.delete(db_proc)
     db.commit()
+
+    from core.rrd_store import volatile_rrd_store
+    volatile_rrd_store.remove(process_id)
 
     return {"status": "deleted", "process_id": process_id}
 
