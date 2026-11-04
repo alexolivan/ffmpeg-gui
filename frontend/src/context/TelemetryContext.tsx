@@ -15,6 +15,8 @@ export interface ProcessItem {
   fps?: number | null;
   speed?: string | null;
   ffmpeg_build_id?: number | null;
+  sparkline?: number[] | null;
+  has_rrd_outlier?: boolean;
   input_config?: any;
   output_config?: any;
   codec_config?: any;
@@ -39,8 +41,8 @@ export interface TelemetryContextType {
   resourceLocks: any[];
   actionPending: ActionPendingState;
   setActionPending: React.Dispatch<React.SetStateAction<ActionPendingState>>;
-  subscribe: (topic: string, id: number | string | undefined, callback: (data: any) => void) => () => void;
-  sendSubscription: (action: 'subscribe' | 'unsubscribe', topic: string, id?: number | string) => void;
+  subscribe: (topic: string, id: number | string | undefined, callback: (data: any) => void, options?: any) => () => void;
+  sendSubscription: (action: 'subscribe' | 'unsubscribe', topic: string, id?: number | string, options?: any) => void;
 }
 
 const TelemetryContext = createContext<TelemetryContextType | null>(null);
@@ -70,20 +72,23 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const wsRef = useRef<WebSocket | null>(null);
   const subscribersRef = useRef<Map<string, Set<(data: any) => void>>>(new Map());
   const activeSubsRef = useRef<Set<string>>(new Set());
+  const activeSubsOptionsRef = useRef<Map<string, any>>(new Map());
 
   const getSubKey = (topic: string, id?: number | string) => (id !== undefined ? `${topic}:${id}` : topic);
 
-  const sendSubscription = useCallback((action: 'subscribe' | 'unsubscribe', topic: string, id?: number | string) => {
+  const sendSubscription = useCallback((action: 'subscribe' | 'unsubscribe', topic: string, id?: number | string, options?: any) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
-        wsRef.current.send(JSON.stringify({ action, topic, id }));
+        const payload: any = { action, topic, id };
+        if (options) payload.options = options;
+        wsRef.current.send(JSON.stringify(payload));
       } catch (e) {
         console.error('Failed to send subscription frame', e);
       }
     }
   }, []);
 
-  const subscribe = useCallback((topic: string, id: number | string | undefined, callback: (data: any) => void) => {
+  const subscribe = useCallback((topic: string, id: number | string | undefined, callback: (data: any) => void, options?: any) => {
     const key = getSubKey(topic, id);
     if (!subscribersRef.current.has(key)) {
       subscribersRef.current.set(key, new Set());
@@ -92,7 +97,10 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     // Always send subscribe frame to ensure fresh initial snapshot delivery to the new subscriber
     activeSubsRef.current.add(key);
-    sendSubscription('subscribe', topic, id);
+    if (options) {
+      activeSubsOptionsRef.current.set(key, options);
+    }
+    sendSubscription('subscribe', topic, id, options);
 
     return () => {
       const set = subscribersRef.current.get(key);
@@ -101,6 +109,7 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (set.size === 0) {
           subscribersRef.current.delete(key);
           activeSubsRef.current.delete(key);
+          activeSubsOptionsRef.current.delete(key);
           sendSubscription('unsubscribe', topic, id);
         }
       }
@@ -122,13 +131,14 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         // Resubscribe active subscriptions upon (re)connect
         activeSubsRef.current.forEach(key => {
           const colonIdx = key.indexOf(':');
+          const opts = activeSubsOptionsRef.current.get(key);
           if (colonIdx === -1) {
-            sendSubscription('subscribe', key, undefined);
+            sendSubscription('subscribe', key, undefined, opts);
           } else {
             const topic = key.slice(0, colonIdx);
             const rawId = key.slice(colonIdx + 1);
             const numId = parseInt(rawId, 10);
-            sendSubscription('subscribe', topic, isNaN(numId) ? rawId : numId);
+            sendSubscription('subscribe', topic, isNaN(numId) ? rawId : numId, opts);
           }
         });
       };
@@ -204,6 +214,13 @@ export const TelemetryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
             if (callbacks) {
               callbacks.forEach(cb => cb(msg.graph));
             }
+          } else if (msg.type === 'service_metrics_rrd') {
+            const serviceId = msg.service_id ?? msg.id;
+            const key = getSubKey('service_metrics_rrd', serviceId);
+            const callbacks = subscribersRef.current.get(key);
+            if (callbacks) {
+              callbacks.forEach(cb => cb(msg));
+            }
           }
         } catch (e) {
           console.error('Error parsing telemetry WebSocket frame', e);
@@ -263,12 +280,13 @@ export const useTelemetry = (): TelemetryContextType => {
 export const useTelemetrySubscription = (
   topic: string,
   id: number | undefined,
-  onData: (data: any) => void
+  onData: (data: any) => void,
+  options?: any
 ) => {
   const { subscribe } = useTelemetry();
 
   useEffect(() => {
-    if (id === undefined && topic === 'process_logs') return;
-    return subscribe(topic, id, onData);
-  }, [topic, id, onData, subscribe]);
+    if (id === undefined && (topic === 'process_logs' || topic === 'service_metrics_rrd')) return;
+    return subscribe(topic, id, onData, options);
+  }, [topic, id, onData, subscribe, JSON.stringify(options)]);
 };
