@@ -132,6 +132,21 @@
     "refCount": "Consumers",
     "logsHistory": "Logs & Event History",
     "viewLogs": "View Event Logs",
+    "rrd": {
+      "title": "24h Volatile Metrics",
+      "metricsTitle": "Histogram",
+      "zeroDisk": "Volatile RAM • Zero flash wear",
+      "outlierAlert": "Drop Detected",
+      "outlierNotice": "Significant drop or deviation recorded in this timeframe",
+      "metricBitrate": "Bitrate",
+      "metricFps": "FPS",
+      "metricSpeed": "Speed",
+      "metricCpu": "CPU",
+      "metricRam": "RAM",
+      "collectingBuffer": "Buffering volatile metrics...",
+      "collectingDetail": "Zero disk writes • Updates every 5s",
+      "envelopeLegend": "Min/Max corridor envelope with continuous average"
+    },
     "mediamtx": {
       "aliasHelp": "Short identifier for LCD panel and compact badges (max 12 chars)",
       "generalConfig": "1. General & Binary Build",
@@ -723,6 +738,25 @@
       "cliAlternative": "Prefer terminal? Run this command on the appliance:",
       "enrollSuccess": "Appliance successfully enrolled to CloudHub",
       "enrollFailed": "Enrollment failed"
+    },
+    "metricsExporter": {
+      "title": "PROMETHEUS & OPENMETRICS EXPORTER",
+      "subtitle": "Secure real-time metrics HTTP scraper endpoint for Prometheus, InfluxDB, VictoriaMetrics, and Grafana Agent. Pure volatile RAM with zero flash storage wear.",
+      "enabledLabel": "Enable Metrics Exporter (/api/metrics)",
+      "tokenLabel": "Bearer Authentication Token",
+      "generateToken": "Generate Random Token",
+      "tokenPlaceholder": "Enter secret bearer token or click generate",
+      "tokenHelp": "Scrapers authenticate using 'Authorization: Bearer <token>' header or '?token=<token>' query parameter.",
+      "allowedIpsLabel": "Allowed Scraper IPs / Subnets",
+      "allowedIpsPlaceholder": "127.0.0.1, 192.168.1.0/24 (leave empty to allow all authorized IPs)",
+      "allowedIpsHelp": "Comma-separated IP addresses or CIDR blocks permitted to scrape metrics. Leave blank to accept any authenticated source IP.",
+      "endpointLabel": "Endpoint URL",
+      "copyUrl": "Copy URL",
+      "copied": "Copied!",
+      "prometheusConfigTitle": "Prometheus Scrape Configuration (prometheus.yml)",
+      "copyConfig": "Copy Config",
+      "saveSettings": "Save Exporter Settings",
+      "savedSuccess": "Metrics exporter settings saved successfully."
     },
     "lcd": {
       "title": "LCD display & Serial Driver",

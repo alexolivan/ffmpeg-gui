@@ -132,6 +132,21 @@
     "refCount": "Consumidores",
     "logsHistory": "Histórico de Logs y Eventos",
     "viewLogs": "Ver Registros de Eventos",
+    "rrd": {
+      "title": "Métricas Volátiles 24h",
+      "metricsTitle": "Histograma",
+      "zeroDisk": "RAM Volátil • Cero desgaste flash",
+      "outlierAlert": "Caída Detectada",
+      "outlierNotice": "Caída o desviación significativa registrada en este intervalo",
+      "metricBitrate": "Bitrate",
+      "metricFps": "FPS",
+      "metricSpeed": "Velocidad",
+      "metricCpu": "CPU",
+      "metricRam": "RAM",
+      "collectingBuffer": "Búfer de métricas volátiles en recolección...",
+      "collectingDetail": "Cero escrituras en disco • Actualización cada 5s",
+      "envelopeLegend": "Corredor Min/Max con media continua"
+    },
     "mediamtx": {
       "aliasHelp": "Identificador corto para panel LCD y tarjetas compactas (máx. 12 caracteres)",
       "generalConfig": "1. General y Binario de Ejecución",
@@ -723,6 +738,25 @@
       "cliAlternative": "¿Prefieres la terminal? Ejecuta este comando en el appliance:",
       "enrollSuccess": "Dispositivo enrolado en CloudHub correctamente",
       "enrollFailed": "Error durante el enrolamiento"
+    },
+    "metricsExporter": {
+      "title": "EXPORTADOR PROMETHEUS Y OPENMETRICS",
+      "subtitle": "Punto de enlace HTTP seguro para Prometheus, InfluxDB, VictoriaMetrics y Grafana Agent. Métricas puramente volátiles en memoria sin desgaste de disco flash.",
+      "enabledLabel": "Activar Exportador de Métricas (/api/metrics)",
+      "tokenLabel": "Token de Autenticación Bearer",
+      "generateToken": "Generar Token Aleatorio",
+      "tokenPlaceholder": "Introduce token secreto o pulsa generar",
+      "tokenHelp": "Los recolectores se autentican mediante cabecera 'Authorization: Bearer <token>' o parámetro '?token=<token>'.",
+      "allowedIpsLabel": "IPs / Subredes de Recolección Permitidas",
+      "allowedIpsPlaceholder": "127.0.0.1, 192.168.1.0/24 (dejar vacío para permitir todas las IPs con token)",
+      "allowedIpsHelp": "Direcciones IP o bloques CIDR separados por comas autorizados para recolectar métricas. Dejar en blanco para aceptar cualquier IP autenticada.",
+      "endpointLabel": "URL del Endpoint",
+      "copyUrl": "Copiar URL",
+      "copied": "¡Copiado!",
+      "prometheusConfigTitle": "Configuración de Scraping para Prometheus (prometheus.yml)",
+      "copyConfig": "Copiar Configuración",
+      "saveSettings": "Guardar Configuración del Exportador",
+      "savedSuccess": "Configuración del exportador de métricas guardada correctamente."
     },
     "lcd": {
       "title": "Pantalla LCD y Driver Serie",

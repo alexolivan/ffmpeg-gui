@@ -12,6 +12,7 @@ import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 import { FirewallPortMatrixCard } from './settings/FirewallPortMatrixCard';
 import { CloudHubSettingsCard } from './settings/CloudHubSettingsCard';
+import { MetricsExporterSettingsCard } from './settings/MetricsExporterSettingsCard';
 import { AuditLogCard } from './settings/AuditLogCard';
 
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
@@ -2392,6 +2393,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* CARD: CLOUDHUB REVERSE TUNNEL CONNECTOR */}
             <CloudHubSettingsCard API={API} />
+
+            {/* CARD: PROMETHEUS & OPENMETRICS EXPORTER */}
+            <MetricsExporterSettingsCard
+              settings={settings}
+              onUpdateSettings={onUpdateSettings}
+              API={API}
+            />
 
             {/* CARD 5: EMAIL NOTIFICATIONS & ALERTING */}
             <div className="glass-card p-5 !rounded-2xl space-y-5">
