@@ -3728,6 +3728,117 @@ def resolve_lease_display_name(token: str, services_lookup: dict, tasks_lookup: 
             pass
     return token
 
+def is_ip_allowed_for_metrics(client_ip: str, allowed_ips_str: Optional[str]) -> bool:
+    if not allowed_ips_str or not allowed_ips_str.strip():
+        return True
+    if client_ip in ("testclient", "localhost"):
+        client_ip = "127.0.0.1"
+    import ipaddress
+    try:
+        client_addr = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return False
+
+    for item in allowed_ips_str.split(","):
+        token = item.strip()
+        if not token:
+            continue
+        try:
+            if "/" in token:
+                net = ipaddress.ip_network(token, strict=False)
+                if client_addr in net:
+                    return True
+            else:
+                addr = ipaddress.ip_address(token)
+                if client_addr == addr:
+                    return True
+        except ValueError:
+            pass
+    return False
+
+
+@app.get("/api/metrics")
+@app.get("/metrics")
+def get_prometheus_metrics(request: Request, db: Session = Depends(get_db)):
+    from database.models import SystemSettings, MediaProcess
+    settings = db.query(SystemSettings).first()
+    if not settings or not settings.metrics_exporter_enabled:
+        raise HTTPException(status_code=404, detail="Metrics exporter is disabled")
+
+    # Client IP validation
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    if not is_ip_allowed_for_metrics(client_ip, settings.metrics_exporter_allowed_ips):
+        raise HTTPException(status_code=403, detail="Forbidden: IP address not allowed to scrape metrics")
+
+    # Authentication token validation
+    auth_header = request.headers.get("authorization", "")
+    token = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+    if not token:
+        token = request.query_params.get("token")
+
+    expected_token = settings.metrics_exporter_token or ""
+    if not token or not expected_token or not secrets.compare_digest(token, expected_token):
+        raise HTTPException(status_code=401, detail="Unauthorized metrics access: Invalid or missing token")
+
+    # Build OpenMetrics 0.0.4 lines
+    lines = [
+        "# HELP ffmpeg_gui_system_cpu_percent Overall system host CPU usage percentage",
+        "# TYPE ffmpeg_gui_system_cpu_percent gauge",
+        f"ffmpeg_gui_system_cpu_percent {psutil.cpu_percent(interval=None)}",
+        "# HELP ffmpeg_gui_system_ram_percent Overall system host RAM usage percentage",
+        "# TYPE ffmpeg_gui_system_ram_percent gauge",
+        f"ffmpeg_gui_system_ram_percent {psutil.virtual_memory().percent}",
+        "# HELP ffmpeg_gui_service_status Operational status of service (1=running, 0=stopped, -1=error)",
+        "# TYPE ffmpeg_gui_service_status gauge",
+        "# HELP ffmpeg_gui_service_cpu_percent Service CPU usage percentage",
+        "# TYPE ffmpeg_gui_service_cpu_percent gauge",
+        "# HELP ffmpeg_gui_service_ram_percent Service RAM usage in MB",
+        "# TYPE ffmpeg_gui_service_ram_percent gauge",
+        "# HELP ffmpeg_gui_service_bitrate_kbps Service output stream bitrate in kbps",
+        "# TYPE ffmpeg_gui_service_bitrate_kbps gauge",
+        "# HELP ffmpeg_gui_service_fps Service encoding frames per second",
+        "# TYPE ffmpeg_gui_service_fps gauge",
+        "# HELP ffmpeg_gui_service_speed_ratio Service encoding speed ratio relative to real-time",
+        "# TYPE ffmpeg_gui_service_speed_ratio gauge",
+        "# HELP ffmpeg_gui_service_uptime_seconds Service uptime in seconds",
+        "# TYPE ffmpeg_gui_service_uptime_seconds counter",
+    ]
+
+    now_utc = datetime.datetime.utcnow()
+    services = db.query(MediaProcess).all()
+    for s in services:
+        s_id = s.id
+        s_name = (getattr(s, "alias", None) or "").strip() or s.name
+        s_type = getattr(s, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+
+        status_code = 1 if s.status == "running" else (-1 if s.status == "error" else 0)
+        lines.append(f'ffmpeg_gui_service_status{{id="{s_id}",name="{s_name}",type="{s_type}"}} {status_code}')
+
+        cpu_val = float(s.cpu_usage or 0.0)
+        ram_val = float(s.ram_usage or 0.0)
+        bitrate_val = float(s.bitrate or 0.0)
+        fps_val = float(s.fps or 0.0)
+        speed_val = float(s.speed or 0.0)
+
+        lines.append(f'ffmpeg_gui_service_cpu_percent{{id="{s_id}",name="{s_name}"}} {cpu_val}')
+        lines.append(f'ffmpeg_gui_service_ram_percent{{id="{s_id}",name="{s_name}"}} {ram_val}')
+        lines.append(f'ffmpeg_gui_service_bitrate_kbps{{id="{s_id}",name="{s_name}"}} {bitrate_val}')
+        lines.append(f'ffmpeg_gui_service_fps{{id="{s_id}",name="{s_name}"}} {fps_val}')
+        lines.append(f'ffmpeg_gui_service_speed_ratio{{id="{s_id}",name="{s_name}"}} {speed_val}')
+
+        uptime_sec = 0
+        if s.status == "running" and s.last_start:
+            uptime_sec = max(0, int((now_utc - s.last_start).total_seconds()))
+        lines.append(f'ffmpeg_gui_service_uptime_seconds{{id="{s_id}",name="{s_name}"}} {uptime_sec}')
+
+    return Response(
+        content="\n".join(lines) + "\n",
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+
+
 async def telemetry_broadcast_loop():
     gpu_sensor = GPUSensor()
     psutil.cpu_percent(interval=None)

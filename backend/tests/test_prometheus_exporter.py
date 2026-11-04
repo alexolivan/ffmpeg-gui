@@ -1,0 +1,110 @@
+import pytest
+from starlette.testclient import TestClient
+from main import app
+from database.db import SessionLocal
+from database.models import SystemSettings, Service
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+def test_prometheus_metrics_disabled(client):
+    with SessionLocal() as db:
+        settings = db.query(SystemSettings).first()
+        if not settings:
+            settings = SystemSettings()
+            db.add(settings)
+        settings.metrics_exporter_enabled = False
+        db.commit()
+
+    resp = client.get("/api/metrics")
+    assert resp.status_code == 404
+
+    resp_root = client.get("/metrics")
+    assert resp_root.status_code == 404
+
+
+def test_prometheus_metrics_auth_and_ip_validation(client):
+    with SessionLocal() as db:
+        settings = db.query(SystemSettings).first()
+        if not settings:
+            settings = SystemSettings()
+            db.add(settings)
+        settings.metrics_exporter_enabled = True
+        settings.metrics_exporter_token = "secret_metrics_token_999"
+        settings.metrics_exporter_allowed_ips = "127.0.0.1, 10.0.0.0/8"
+        db.commit()
+
+    # 1. Missing token -> 401
+    resp = client.get("/api/metrics")
+    assert resp.status_code == 401
+
+    # 2. Invalid token -> 401
+    resp = client.get("/api/metrics?token=wrong_token")
+    assert resp.status_code == 401
+
+    # 3. Valid token query param, client IP 127.0.0.1 -> 200
+    resp = client.get("/api/metrics?token=secret_metrics_token_999")
+    assert resp.status_code == 200
+    assert "version=0.0.4" in resp.headers["content-type"]
+    assert "ffmpeg_gui_system_cpu_percent" in resp.text
+
+    # 4. Valid Bearer header -> 200
+    resp = client.get(
+        "/api/metrics",
+        headers={"Authorization": "Bearer secret_metrics_token_999"}
+    )
+    assert resp.status_code == 200
+
+    # 5. IP restriction check with forbidden IP
+    with SessionLocal() as db:
+        settings = db.query(SystemSettings).first()
+        settings.metrics_exporter_allowed_ips = "192.168.200.1"  # Not 127.0.0.1
+        db.commit()
+
+    resp = client.get(
+        "/api/metrics",
+        headers={"Authorization": "Bearer secret_metrics_token_999"}
+    )
+    assert resp.status_code == 403
+
+
+def test_prometheus_metrics_service_gauges(client):
+    with SessionLocal() as db:
+        settings = db.query(SystemSettings).first()
+        settings.metrics_exporter_enabled = True
+        settings.metrics_exporter_token = "my_token"
+        settings.metrics_exporter_allowed_ips = None
+
+        # Add test running service
+        svc = Service(
+            name="Exporter Stream Test",
+            service_type="ffmpeg_stream",
+            status="running",
+            config={},
+            cpu_usage=18.5,
+            ram_usage=95.0,
+            bitrate=4500.0,
+            fps=50.0,
+            speed=1.002,
+        )
+        db.add(svc)
+        db.commit()
+        db.refresh(svc)
+        svc_id = svc.id
+
+    try:
+        resp = client.get("/api/metrics?token=my_token")
+        assert resp.status_code == 200
+        text = resp.text
+
+        assert f'ffmpeg_gui_service_status{{id="{svc_id}",name="Exporter Stream Test",type="ffmpeg_stream"}} 1' in text
+        assert f'ffmpeg_gui_service_bitrate_kbps{{id="{svc_id}",name="Exporter Stream Test"}} 4500' in text
+        assert f'ffmpeg_gui_service_fps{{id="{svc_id}",name="Exporter Stream Test"}} 50' in text
+
+    finally:
+        with SessionLocal() as db:
+            db.query(Service).filter(Service.id == svc_id).delete()
+            db.commit()
