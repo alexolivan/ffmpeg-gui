@@ -701,7 +701,12 @@ class CloudTunnelClient:
                         "is_binary": False,
                         "data": text,
                     }
-                    await ws.send(json.dumps(out))
+                    try:
+                        await ws.send(json.dumps(out))
+                    except Exception:
+                        # Reverse tunnel socket closed or restarting; disconnect in-memory queue
+                        await queue.put(None)
+                        raise
                 elif bytes_data is not None:
                     out = {
                         "type": "ws_frame",
@@ -709,14 +714,21 @@ class CloudTunnelClient:
                         "is_binary": True,
                         "data": encode_body(bytes_data),
                     }
-                    await ws.send(json.dumps(out))
+                    try:
+                        await ws.send(json.dumps(out))
+                    except Exception:
+                        await queue.put(None)
+                        raise
             elif msg_type == "websocket.close":
                 out = {
                     "type": "ws_close",
                     "stream_id": stream_id,
                     "code": message.get("code", 1000),
                 }
-                await ws.send(json.dumps(out))
+                try:
+                    await ws.send(json.dumps(out))
+                except Exception:
+                    pass
 
         try:
             await self.app(scope, receive, send)
