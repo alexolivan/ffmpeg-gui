@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.58.1] - 2026-11-05
+
+### Fixed
+- **PipeWire Sidecar Tab Visibility & Log Counts Cleanup (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Enforced strict backend telemetry liveness for `ptp4l` and `phc2sys` tabs when service is in `RUNNING` state, preventing `phc2sys` from appearing on machines without hardware PTP support or inactive daemons.
+  - Retained stopped-service fallback visibility strictly when historical log captures exist on disk.
+  - Removed misleading line count badges from `Console & Logs`, `PTP Clock (ptp4l)`, and `HW Sync (phc2sys)` tabs, aligning with application-wide preview modal standards.
+
 ## [2.58.0] - 2026-11-05
 
 ### Added
