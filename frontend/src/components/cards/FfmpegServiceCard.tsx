@@ -172,6 +172,9 @@ export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
 
   const serviceType = service.service_type || 'ffmpeg_stream';
   const isFfmpegStream = serviceType === 'ffmpeg_stream';
+  const isVideo = hasVideo(service);
+  const hasBitrate = Boolean(bitrate && bitrate !== 'N/A' && bitrate !== '0 kb/s' && bitrate !== '0.0kbits/s' && bitrate !== '0');
+  const hasFps = Boolean(isVideo && fps && fps !== '0' && fps !== 'N/A');
 
   const inputCfg = service.input_config || service.config?.input_config;
   const outputCfg = service.output_config || service.config?.output_config;
@@ -494,9 +497,11 @@ export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
         <ServiceRRDDrawer
           serviceId={service.id}
           isOpen={isRrdExpanded}
-          hasVideo={hasVideo(service)}
+          hasVideo={isVideo}
+          hasBitrate={hasBitrate}
+          hasFps={hasFps}
           serviceType="ffmpeg_stream"
-          initialMetric={(telemetryItem?.sparkline_metric || service.sparkline_metric || (hasVideo(service) ? 'bitrate' : 'cpu')) as any}
+          initialMetric="cpu"
           onClose={() => setIsRrdExpanded(false)}
         />
       </div>

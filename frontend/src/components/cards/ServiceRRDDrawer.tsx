@@ -6,6 +6,8 @@ interface ServiceRRDDrawerProps {
   serviceId: number;
   isOpen: boolean;
   hasVideo?: boolean;
+  hasBitrate?: boolean;
+  hasFps?: boolean;
   serviceType?: string;
   initialMetric?: MetricKey;
   onClose?: () => void;
@@ -49,6 +51,8 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
   serviceId,
   isOpen,
   hasVideo = true,
+  hasBitrate,
+  hasFps,
   serviceType = 'ffmpeg_stream',
   initialMetric,
   onClose,
@@ -59,29 +63,35 @@ export const ServiceRRDDrawer: React.FC<ServiceRRDDrawerProps> = ({
   const isAuxiliary = ['icecast_server', 'mediamtx_hub', 'pipewire_hub', 'desktop', 'kiosk_browser'].includes(serviceType);
 
   const availableMetrics: { key: MetricKey; label: string; unit: string }[] = useMemo(() => {
-    if (isAuxiliary) {
-      return [
-        { key: 'cpu', label: t('services.rrd.metricCpu', 'CPU'), unit: '%' },
-        { key: 'ram', label: t('services.rrd.metricRam', 'RAM'), unit: 'MB' },
-      ];
-    }
-    if (hasVideo) {
-      return [
-        { key: 'bitrate', label: t('services.rrd.metricBitrate', 'Bitrate'), unit: 'kbps' },
-        { key: 'fps', label: t('services.rrd.metricFps', 'FPS'), unit: 'fps' },
-        { key: 'speed', label: t('services.rrd.metricSpeed', 'Speed'), unit: 'x' },
-        { key: 'cpu', label: t('services.rrd.metricCpu', 'CPU'), unit: '%' },
-        { key: 'ram', label: t('services.rrd.metricRam', 'RAM'), unit: 'MB' },
-      ];
-    }
-    // Audio-only stream: CPU, RAM, Speed, Bitrate (Never show non-existent FPS)
-    return [
+    // Universal metrics for all services: CPU and RAM always come first
+    const metrics: { key: MetricKey; label: string; unit: string }[] = [
       { key: 'cpu', label: t('services.rrd.metricCpu', 'CPU'), unit: '%' },
       { key: 'ram', label: t('services.rrd.metricRam', 'RAM'), unit: 'MB' },
-      { key: 'speed', label: t('services.rrd.metricSpeed', 'Speed'), unit: 'x' },
-      { key: 'bitrate', label: t('services.rrd.metricBitrate', 'Bitrate'), unit: 'kbps' },
     ];
-  }, [isAuxiliary, hasVideo, t]);
+
+    if (isAuxiliary) {
+      return metrics;
+    }
+
+    // Bitrate: only included if hasBitrate is explicitly true (or if not provided, fallback to hasVideo)
+    const showBitrate = hasBitrate !== undefined ? hasBitrate : hasVideo;
+    if (showBitrate) {
+      metrics.push({ key: 'bitrate', label: t('services.rrd.metricBitrate', 'Bitrate'), unit: 'kbps' });
+    }
+
+    // FPS: only included if stream has video AND hasFps is true (or undefined fallback)
+    const showFps = hasVideo && (hasFps !== undefined ? hasFps : true);
+    if (showFps) {
+      metrics.push({ key: 'fps', label: t('services.rrd.metricFps', 'FPS'), unit: 'fps' });
+    }
+
+    // Speed: only for ffmpeg encoding streams
+    if (serviceType === 'ffmpeg_stream') {
+      metrics.push({ key: 'speed', label: t('services.rrd.metricSpeed', 'Speed'), unit: 'x' });
+    }
+
+    return metrics;
+  }, [isAuxiliary, hasVideo, hasBitrate, hasFps, serviceType, t]);
 
   const defaultMetric = initialMetric && availableMetrics.some(m => m.key === initialMetric)
     ? initialMetric

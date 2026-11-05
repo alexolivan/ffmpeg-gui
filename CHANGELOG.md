@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.57.1] - 2026-11-05
+
+### Fixed
+- **Service RRD Drawer Metric Filtering & Tab Ordering Consistency (`frontend/src/components/cards/ServiceRRDDrawer.tsx`, `FfmpegServiceCard.tsx`, `UnifiedServiceCard.tsx`)**:
+  - Dynamically filtered histogram tabs based on real telemetry data (`hasBitrate`, `hasFps`), completely omitting `Bitrate` for uncompressed audio services (ALSA, raw RTP) and omitting `FPS` for audio-only streams.
+  - Standardized tab ordering across all service cards to consistently begin with universal metrics (`CPU`, `RAM`), followed by active stream metrics (`Bitrate`, `FPS`, `Speed`).
+  - Ensured drawer opens directly to `CPU` matching the clicked `[ CPU ∿∿∿ ▼ ]` micro-sparkline, preventing jarring reordering and blank initial charts.
+
 ## [2.57.0] - 2026-11-04
 
 ### Added
