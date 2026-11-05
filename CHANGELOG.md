@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.58.3] - 2026-11-05
+
+### Changed
+- **PTP Summary Log Cadence (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Relaxed `summary_interval` in `ptp4l.conf` from `1` ($2^1 = 2$ seconds) to `3` ($2^3 = 8$ seconds), significantly cutting down stdout/stderr log spam without altering PTP synchronization or packet exchange intervals (`logSyncInterval`, `logMinDelayReqInterval`).
+
 ## [2.58.2] - 2026-11-05
 
 ### Fixed

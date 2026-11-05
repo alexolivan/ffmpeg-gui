@@ -624,7 +624,7 @@ class PipeWireConfigGenerator:
             f"dscp_general            {dscp_general}",
             f"time_stamping           {ts_mode}",
             "tx_timestamp_timeout    10",
-            "summary_interval        1",
+            "summary_interval        3",
             "",
             f"[{clean_iface}]",
             "network_transport       UDPv4",
