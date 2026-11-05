@@ -333,6 +333,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("dscp_event              46", conf)
         self.assertIn("dscp_general            34", conf)
         self.assertIn("time_stamping           software", conf)
+        self.assertIn("summary_interval        3", conf)
         self.assertIn("[enp9s0]", conf)
         self.assertIn("network_transport       UDPv4", conf)
 
