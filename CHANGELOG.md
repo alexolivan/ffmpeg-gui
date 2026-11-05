@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.58.0] - 2026-11-05
+
+### Added
+- **Reactive WebSocket PipeWire Graph Telemetry (`backend/core/websocket_subscription_hub.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Implemented initial snapshots and throttled diff-based broadcasts (2.5s) for the `pipewire_graph` WebSocket topic, streaming audio nodes, links, and discovery state exclusively to open preview modals without client-side HTTP polling.
+  - Added volatile field masking (`last_seen`, `timestamp`) to prevent spurious socket spam when network audio topology is unchanged.
+  - Added `invalidate_pipewire_graph` hook in `AoIpDiscoverySupervisor` to push instant WebSocket updates upon discovery, deletion, or expiry of SAP/SDP streams.
+- **AES67 Organization-Local Multicast Group Discovery (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Joined `239.192.255.255` alongside `239.255.255.255`, `224.0.0.56`, and `224.2.127.254` conforming to AES67-2018 §8.2 / RFC 2365 for broad compatibility with virtual soundcards and radio routing software.
+- **Hitless PipeWire Sidecar Reattachment & Self-Healing Watchdog (`backend/core/process_manager.py`)**:
+  - Extended `find_auxiliary_pids` to discover running `ptp4l` and `phc2sys` processes by service configuration tokens.
+  - Implemented `_ensure_pipewire_sidecars` to reattach live PTP daemons and log tailers upon system restart (`update.sh` / `systemctl restart ffmpeg-gui`) without dropping clock mastership, and automatically respawn dead sidecars in `_watchdog`.
+  - Exposed live `sidecars: { ptp4l_active, phc2sys_active }` flags in PipeWire telemetry.
+
+### Fixed
+- **Stopped Sidecar Log History AttributeError (`backend/main.py`, `backend/core/websocket_subscription_hub.py`)**:
+  - Fixed `AttributeError: module 'datetime' has no attribute 'utcnow'` on `GET /api/services/{id}/sidecar-logs/{sidecar}` when in-memory buffers are empty and historical logs exist on disk.
+  - Added disk-based log history fallback in `WebSocketSubscriptionHub` for `sidecar_logs` initial snapshots.
+- **AoIP Radar UX & Multi-Theme Design Tokens (`frontend/src/components/modals/PipeWirePreviewModal.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - Replaced confusing static single-IP text (`Listening on 224.2.127.254...`) with clear scanning states (`Scanning LAN for AoIP streams...`, `Escaneando red en busca de flujos AoIP...`) and interface badges.
+  - Removed deprecated `autoRefresh` polling checkbox in favor of native WebSocket streaming.
+  - Synchronized `ptp4l` and `phc2sys` tab visibility with backend sidecar telemetry and localized all table headers across English, Spanish, and Catalan.
+
 ## [2.57.1] - 2026-11-05
 
 ### Fixed
