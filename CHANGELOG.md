@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.58.2] - 2026-11-05
+
+### Fixed
+- **WebSocket Broadcast Dead Connection Pruning (`backend/main.py`, `backend/core/cloud_tunnel_client.py`)**:
+  - Implemented auto-pruning in `ConnectionManager.broadcast`: dead or terminated sockets (e.g. reverse CloudHub tunnels restarting with code `1012`) are caught, gracefully removed from `active_connections`, and unregistered from `subscription_hub` without crashing the global `telemetry_broadcast_loop`.
+  - Added tunnel disconnect signaling (`queue.put(None)`) in `cloud_tunnel_client.py` when outbound frame transmissions fail during tunnel reconnections.
+
 ## [2.58.1] - 2026-11-05
 
 ### Fixed

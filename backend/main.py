@@ -3559,11 +3559,22 @@ class ConnectionManager:
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
     async def broadcast(self, message: dict):
-        for connection in self.active_connections:
-            await connection.send_json(message)
+        dead_connections = []
+        for connection in list(self.active_connections):
+            try:
+                await connection.send_json(message)
+            except Exception:
+                dead_connections.append(connection)
+
+        if dead_connections:
+            from core.websocket_subscription_hub import subscription_hub
+            for dead in dead_connections:
+                self.disconnect(dead)
+                subscription_hub.unregister_client(dead)
 
 manager = ConnectionManager()
 
