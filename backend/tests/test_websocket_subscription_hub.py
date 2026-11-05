@@ -148,6 +148,94 @@ class TestWebSocketSubscriptionHub(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sent["lines"][1]["message"], "ptp4l sidecar disk line 2")
             self.assertTrue(sent["reset"])
 
+    async def test_subscribe_pipewire_graph_sends_initial_snapshot(self):
+        mock_proc_manager = MagicMock()
+        mock_proc_manager.get_pipewire_telemetry = AsyncMock(return_value={
+            "active": True,
+            "nodes": [{"id": 1, "name": "dummy_node"}],
+            "links": [],
+            "aoip_discovery": {"discovered_streams": []}
+        })
+
+        msg = json.dumps({"action": "subscribe", "topic": "pipewire_graph", "id": 7})
+        await self.hub.handle_client_message(self.mock_ws, msg, process_manager=mock_proc_manager)
+
+        self.assertTrue(self.hub.has_subscribers("pipewire_graph", 7))
+        self.mock_ws.send_json.assert_called_once()
+        sent = self.mock_ws.send_json.call_args[0][0]
+        self.assertEqual(sent["type"], "pipewire_graph")
+        self.assertEqual(sent["id"], 7)
+        self.assertEqual(sent["graph"]["nodes"][0]["name"], "dummy_node")
+
+    async def test_broadcast_pipewire_graph_throttles_and_ignores_ephemeral_last_seen(self):
+        mock_proc_manager = MagicMock()
+        mock_proc_manager.get_pipewire_telemetry = AsyncMock(side_effect=[
+            {
+                "active": True,
+                "nodes": [{"id": 1}],
+                "aoip_discovery": {"discovered_streams": [{"multicast_ip": "239.1.1.1", "last_seen": 100.0}]}
+            },
+            {
+                "active": True,
+                "nodes": [{"id": 1}],
+                "aoip_discovery": {"discovered_streams": [{"multicast_ip": "239.1.1.1", "last_seen": 102.5}]}
+            },
+            {
+                "active": True,
+                "nodes": [{"id": 1}, {"id": 2}],
+                "aoip_discovery": {"discovered_streams": [{"multicast_ip": "239.1.1.1", "last_seen": 105.0}]}
+            }
+        ])
+
+        # Subscribe
+        await self.hub.handle_client_message(
+            self.mock_ws,
+            json.dumps({"action": "subscribe", "topic": "pipewire_graph", "id": 7}),
+            process_manager=mock_proc_manager
+        )
+        self.mock_ws.send_json.reset_mock()
+
+        # Immediate broadcast should be throttled (< 2.5s)
+        await self.hub.broadcast_deltas(process_manager=mock_proc_manager)
+        self.mock_ws.send_json.assert_not_called()
+
+        # Simulate 2.5s elapsed, but graph only changed last_seen -> should NOT push
+        self.hub._last_pipewire_poll_ts[7] -= 3.0
+        await self.hub.broadcast_deltas(process_manager=mock_proc_manager)
+        self.mock_ws.send_json.assert_not_called()
+
+        # Simulate 2.5s elapsed, topology changed (new node id 2) -> SHOULD push
+        self.hub._last_pipewire_poll_ts[7] -= 3.0
+        await self.hub.broadcast_deltas(process_manager=mock_proc_manager)
+        self.mock_ws.send_json.assert_called_once()
+        sent = self.mock_ws.send_json.call_args[0][0]
+        self.assertEqual(len(sent["graph"]["nodes"]), 2)
+
+    async def test_invalidate_pipewire_graph_forces_broadcast_and_unsubscribe_cleans_state(self):
+        mock_proc_manager = MagicMock()
+        mock_proc_manager.get_pipewire_telemetry = AsyncMock(return_value={"nodes": []})
+
+        await self.hub.handle_client_message(
+            self.mock_ws,
+            json.dumps({"action": "subscribe", "topic": "pipewire_graph", "id": 8}),
+            process_manager=mock_proc_manager
+        )
+        self.mock_ws.send_json.reset_mock()
+
+        # Invalidate forces poll timestamp reset
+        self.hub.invalidate_pipewire_graph(8)
+        self.assertEqual(self.hub._last_pipewire_poll_ts.get(8), 0.0)
+
+        # Unsubscribe cleans state
+        await self.hub.handle_client_message(
+            self.mock_ws,
+            json.dumps({"action": "unsubscribe", "topic": "pipewire_graph", "id": 8}),
+            process_manager=mock_proc_manager
+        )
+        self.assertFalse(self.hub.has_subscribers("pipewire_graph", 8))
+        self.assertNotIn(8, self.hub._last_pipewire_graph_sig)
+        self.assertNotIn(8, self.hub._last_pipewire_poll_ts)
+
 
 if __name__ == "__main__":
     unittest.main()
