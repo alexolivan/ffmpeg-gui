@@ -117,6 +117,10 @@ interface GraphTelemetryData {
   links: TelemetryLink[];
   matrix?: MatrixTelemetry | null;
   aoip_discovery?: AoIpTelemetry | null;
+  sidecars?: {
+    ptp4l_active?: boolean;
+    phc2sys_active?: boolean;
+  } | null;
   remote_sinks?: any[];
   raw_summary: {
     nodes_count: number;
@@ -145,7 +149,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
   const [graphData, setGraphData] = useState<GraphTelemetryData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
   const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw' | 'aoip' | 'ptp4l' | 'phc2sys'>('nodes');
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [ptpLogs, setPtpLogs] = useState<any[]>([]);
@@ -199,6 +202,20 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   }, [currentProcess.id, isRunning]);
 
   const { subscribe } = useTelemetry();
+
+  // Subscribe to live PipeWire graph updates via WebSocket
+  useEffect(() => {
+    if (!isRunning) return;
+
+    const unsub = subscribe('pipewire_graph', currentProcess.id, (graph: any) => {
+      if (graph) {
+        setGraphData(graph);
+        setLoading(false);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, isRunning, subscribe]);
 
   // Subscribe to daemon execution logs via WebSocket on-demand and fetch history when console tab is active
   useEffect(() => {
@@ -343,12 +360,26 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const isAes67Enabled = Boolean(pwConfig.aes67_network?.enabled);
   const showAoIpTab = isAes67Enabled || remoteSinks.length > 0;
   const ptpConfig = pwConfig.aes67_network?.ptp || {};
-  const showPtpTab = Boolean(isAes67Enabled && (ptpConfig.enabled ?? true));
+  const showPtpTab = Boolean(isAes67Enabled && (Boolean(ptpConfig.enabled) || graphData?.sidecars?.ptp4l_active || ptpLogs.length > 0));
   const showPhc2sysTab = Boolean(
     showPtpTab &&
-    (pwConfig.aoip_profile === 'dante' || ptpConfig.aoip_profile === 'dante') &&
-    !ptpConfig.force_local_master
+    (graphData?.sidecars?.phc2sys_active || phcLogs.length > 0 || (
+      (pwConfig.aoip_profile === 'dante' || ptpConfig.aoip_profile === 'dante') &&
+      !ptpConfig.force_local_master &&
+      Boolean(ptpConfig.enabled)
+    ))
   );
+
+  // Auto-redirect active tab if the selected sub-service tab is hidden
+  useEffect(() => {
+    if (activeTab === 'ptp4l' && !showPtpTab) {
+      setActiveTab('nodes');
+    } else if (activeTab === 'phc2sys' && !showPhc2sysTab) {
+      setActiveTab('nodes');
+    } else if (activeTab === 'aoip' && !showAoIpTab) {
+      setActiveTab('nodes');
+    }
+  }, [activeTab, showPtpTab, showPhc2sysTab, showAoIpTab]);
 
   const handleConfigureStreamInHub = (stream: AoIpStream | any) => {
     const rawName = stream.session_name || stream.sap_name || stream.name || 'Remote AoIP Stream';
@@ -607,19 +638,10 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  className="rounded border-[var(--glass-border)] text-brand-lime"
-                />
-                <span>{t('common.autoRefresh', 'Auto-refresh (3s)')}</span>
-              </label>
               <button
                 onClick={() => fetchGraphTelemetry(true)}
                 disabled={loading || !isRunning}
-                className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 text-[var(--text-primary)] disabled:opacity-30"
+                className="w-7 h-7 rounded-lg bg-[var(--input-bg)] hover:bg-white/10 flex items-center justify-center border border-[var(--glass-border)] text-[var(--text-primary)] disabled:opacity-30 transition-colors"
                 title={t('common.refresh', 'Refresh')}
               >
                 <RefreshIcon size={12} className={loading ? 'animate-spin' : ''} />
@@ -1263,22 +1285,41 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
                 {(!graphData?.aoip_discovery?.discovered_streams || graphData.aoip_discovery.discovered_streams.length === 0) ? (
                   <div className="py-6 text-center text-xs text-[var(--text-secondary)]">
-                    <div className="inline-block p-2 rounded-full bg-white/5 border border-white/10 mb-2">
-                      <span className="animate-spin inline-block text-brand-lime">↻</span>
-                    </div>
-                    <p>{t('services.pipewire.noLanStreamsDiscovered', 'Listening on 224.0.0.56 / 224.2.127.254:9875... No SAP announcements detected yet.')}</p>
+                    {isRunning ? (
+                      <>
+                        <div className="inline-block p-2 rounded-full bg-[var(--input-bg)] border border-[var(--glass-border)] mb-2">
+                          <span className="animate-spin inline-block text-brand-lime">↻</span>
+                        </div>
+                        <p className="font-semibold text-[var(--text-primary)]">
+                          {t('services.pipewire.scanningLanStreams', 'Scanning LAN for AoIP streams...')}
+                        </p>
+                        <p className="text-[11px] text-[var(--text-secondary)] mt-1 font-mono">
+                          {t('services.pipewire.aoipListeningHint', {
+                            defaultValue: 'Listening passively for SAP/SDP announcements on {{iface}}',
+                            iface: graphData?.aoip_discovery?.interface || currentProcess.config?.pipewire_config?.aes67_network?.interface || 'network'
+                          })}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="inline-block p-2 rounded-full bg-[var(--input-bg)] border border-[var(--glass-border)] mb-2 text-zinc-500">
+                          <span>⏸</span>
+                        </div>
+                        <p>{t('services.pipewire.aoipDiscoveryOffline', 'AoIP stream scanner is idle. Start this PipeWire service to scan the network.')}</p>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
                     <table className="w-full text-left text-xs font-mono">
-                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                      <thead className="bg-[var(--input-bg)] border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                         <tr>
                           <th className="py-2 px-3">{t('services.pipewire.remoteSinkName', 'Session / Stream Name')}</th>
-                          <th className="py-2 px-3">Multicast Endpoint</th>
-                          <th className="py-2 px-3">Audio Profile</th>
+                          <th className="py-2 px-3">{t('services.pipewire.multicastEndpoint', 'Multicast Endpoint')}</th>
+                          <th className="py-2 px-3">{t('services.pipewire.audioProfile', 'Audio Profile')}</th>
                           <th className="py-2 px-3">{t('services.pipewire.streamOrigin', 'Origin')}</th>
                           <th className="py-2 px-3">{t('services.pipewire.streamClock', 'PTP Clock')}</th>
-                          <th className="py-2 px-3 text-right">Action / State</th>
+                          <th className="py-2 px-3 text-right">{t('services.pipewire.actionState', 'Action / State')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--glass-border)]">
