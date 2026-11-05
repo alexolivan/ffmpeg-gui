@@ -197,6 +197,42 @@ class WebSocketSubscriptionHub:
                     if item_id in process_manager.sidecar_log_buffers:
                         lines = list(process_manager.sidecar_log_buffers[item_id])
 
+                # If no in-memory buffer, check if sidecar log file exists on disk
+                if not lines and db_session_factory and process_manager and ":" in str(item_id):
+                    try:
+                        svc_part, sidecar_name = str(item_id).split(":", 1)
+                        if svc_part.isdigit() and sidecar_name in ("ptp4l", "phc2sys"):
+                            target_svc_id = int(svc_part)
+                            with db_session_factory() as session:
+                                try:
+                                    from database.models import MediaProcess
+                                except ImportError:
+                                    from backend.database.models import MediaProcess
+                                proc = session.get(MediaProcess, target_svc_id) if hasattr(session, "get") else session.query(MediaProcess).get(target_svc_id)
+                                if proc:
+                                    log_storage_id = (proc.config or {}).get("log_storage_id")
+                                    logs_dir = process_manager.get_process_log_storage_path(
+                                        process_id=target_svc_id, log_storage_id=log_storage_id, session=session
+                                    )
+                                    sidecar_log_file = os.path.join(logs_dir, f"{sidecar_name}_{target_svc_id}.log")
+                                    if os.path.exists(sidecar_log_file):
+                                        f_size = os.path.getsize(sidecar_log_file)
+                                        with open(sidecar_log_file, "rb") as f:
+                                            if f_size > 65536:
+                                                f.seek(f_size - 65536)
+                                            chunk = f.read().decode("utf-8", errors="replace")
+                                        raw_lines = [l.strip() for l in chunk.splitlines() if l.strip()][-100:]
+                                        lines = [
+                                            {
+                                                "timestamp": "",
+                                                "level": "ERROR" if any(kw in l.lower() for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else ("WARN" if "warn" in l.lower() else "INFO"),
+                                                "message": l
+                                            }
+                                            for l in raw_lines
+                                        ]
+                    except Exception as e:
+                        logger.error(f"Error fetching initial sidecar log file for {item_id}: {e}")
+
                 self._client_offsets[(ws, topic, item_id)] = len(lines)
                 await ws.send_json({
                     "type": "sidecar_logs",

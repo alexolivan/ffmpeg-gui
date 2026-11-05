@@ -101,6 +101,53 @@ class TestWebSocketSubscriptionHub(unittest.IsolatedAsyncioTestCase):
         await self.hub.handle_client_message(self.mock_ws, "not-a-json")
         self.mock_ws.send_json.assert_not_called()
 
+    async def test_subscribe_sidecar_logs_falls_back_to_disk_when_buffer_empty(self):
+        import tempfile
+        import os
+
+        mock_proc_manager = MagicMock()
+        mock_proc_manager.sidecar_log_buffers = {}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_file = os.path.join(tmpdir, "ptp4l_5.log")
+            with open(log_file, "w") as f:
+                f.write("ptp4l sidecar disk line 1\nptp4l sidecar disk line 2\n")
+
+            mock_proc_manager.get_process_log_storage_path.return_value = tmpdir
+
+            mock_session = MagicMock()
+            mock_proc = MagicMock()
+            mock_proc.config = {"log_storage_id": None}
+            mock_session.get.return_value = mock_proc
+            mock_session.query.return_value.get.return_value = mock_proc
+
+            class DummySessionFactory:
+                def __enter__(self):
+                    return mock_session
+                def __exit__(self, *args):
+                    pass
+                def __call__(self):
+                    return self
+
+            db_factory = DummySessionFactory()
+
+            msg = json.dumps({"action": "subscribe", "topic": "sidecar_logs", "id": "5:ptp4l"})
+            await self.hub.handle_client_message(
+                self.mock_ws,
+                msg,
+                process_manager=mock_proc_manager,
+                db_session_factory=db_factory
+            )
+
+            self.mock_ws.send_json.assert_called_once()
+            sent = self.mock_ws.send_json.call_args[0][0]
+            self.assertEqual(sent["type"], "sidecar_logs")
+            self.assertEqual(sent["id"], "5:ptp4l")
+            self.assertEqual(len(sent["lines"]), 2)
+            self.assertEqual(sent["lines"][0]["message"], "ptp4l sidecar disk line 1")
+            self.assertEqual(sent["lines"][1]["message"], "ptp4l sidecar disk line 2")
+            self.assertTrue(sent["reset"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -7330,7 +7330,7 @@ def get_service_sidecar_logs(service_id: int, sidecar_name: str, limit: int = 10
         lower = line_str.lower()
         level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else ("WARN" if "warn" in lower else "INFO")
         parsed_logs.append({
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
             "level": level,
             "message": line_str
         })
