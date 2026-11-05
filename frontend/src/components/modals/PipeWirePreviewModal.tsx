@@ -360,15 +360,17 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const isAes67Enabled = Boolean(pwConfig.aes67_network?.enabled);
   const showAoIpTab = isAes67Enabled || remoteSinks.length > 0;
   const ptpConfig = pwConfig.aes67_network?.ptp || {};
-  const showPtpTab = Boolean(isAes67Enabled && (Boolean(ptpConfig.enabled) || graphData?.sidecars?.ptp4l_active || ptpLogs.length > 0));
-  const showPhc2sysTab = Boolean(
-    showPtpTab &&
-    (graphData?.sidecars?.phc2sys_active || phcLogs.length > 0 || (
-      (pwConfig.aoip_profile === 'dante' || ptpConfig.aoip_profile === 'dante') &&
-      !ptpConfig.force_local_master &&
-      Boolean(ptpConfig.enabled)
-    ))
-  );
+
+  // PTP and phc2sys tabs:
+  // When running: strictly visible only if the sidecar process is active in backend telemetry.
+  // When stopped: visible if configured or if historical logs were captured before stop.
+  const showPtpTab = isRunning
+    ? Boolean(graphData?.sidecars?.ptp4l_active)
+    : Boolean(isAes67Enabled && (Boolean(ptpConfig.enabled) || ptpLogs.length > 0));
+
+  const showPhc2sysTab = isRunning
+    ? Boolean(graphData?.sidecars?.phc2sys_active)
+    : Boolean(showPtpTab && phcLogs.length > 0);
 
   // Auto-redirect active tab if the selected sub-service tab is hidden
   useEffect(() => {
@@ -587,7 +589,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
                 }`}
               >
-                {t('services.pipewire.consoleTab', 'Console & Logs')} ({activeDaemonLogs.length})
+                {t('services.pipewire.consoleTab', 'Console & Logs')}
               </button>
               {showPtpTab && (
                 <button
@@ -598,7 +600,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
                   }`}
                 >
-                  ⏱️ {t('services.pipewire.ptp4lTab', 'PTP Clock (ptp4l)')} ({ptpLogs.length})
+                  ⏱️ {t('services.pipewire.ptp4lTab', 'PTP Clock (ptp4l)')}
                 </button>
               )}
               {showPhc2sysTab && (
@@ -610,7 +612,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
                   }`}
                 >
-                  🔄 {t('services.pipewire.phc2sysTab', 'HW Sync (phc2sys)')} ({phcLogs.length})
+                  🔄 {t('services.pipewire.phc2sysTab', 'HW Sync (phc2sys)')}
                 </button>
               )}
               {showAoIpTab && (
