@@ -24,6 +24,19 @@ from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("AoIpDiscoverySupervisor")
 
+# Multicast groups joined for SAP / SDP announcements:
+# - 239.255.255.255: Dante / SAP Admin local scope
+# - 239.192.255.255: AES67 Organization-Local SAP (AES67-2018 §8.2 / RFC 2365)
+# - 224.0.0.56: Link-Local multicast SAP (used by default by AES67 senders)
+# - 224.2.127.254: Standard global SAP (RFC 2974)
+SAP_MULTICAST_GROUPS: Tuple[str, ...] = (
+    "239.255.255.255",
+    "239.192.255.255",
+    "224.0.0.56",
+    "224.2.127.254"
+)
+
+
 
 def parse_sap_packet(data: bytes, sender_ip: str = "") -> Optional[Dict[str, Any]]:
     """
@@ -302,6 +315,11 @@ class AoIpDiscoverySupervisor:
                 removed = self._streams_cache.pop(stream_key, None)
                 if removed:
                     logger.info(f"[AoIpDiscovery #{self.hub_id}] SAP deletion received for stream '{stream_key}' ({removed.get('session_name')})")
+                    try:
+                        from core.websocket_subscription_hub import subscription_hub
+                        subscription_hub.invalidate_pipewire_graph(self.hub_id)
+                    except Exception:
+                        pass
             else:
                 now = time.time()
                 is_local = (parsed["origin_ip"] == self.nic_ip) if self.nic_ip else (parsed["origin_ip"] in ("127.0.0.1", "0.0.0.0"))
@@ -315,6 +333,11 @@ class AoIpDiscoverySupervisor:
                         f"on {parsed['multicast_ip']}:{parsed['rtp_port']} "
                         f"({parsed['channels']}ch, {parsed['rate']}Hz, {parsed['format']}) from {parsed['origin_ip']}"
                     )
+                    try:
+                        from core.websocket_subscription_hub import subscription_hub
+                        subscription_hub.invalidate_pipewire_graph(self.hub_id)
+                    except Exception:
+                        pass
         except Exception as e:
             logger.warning(f"[AoIpDiscovery #{self.hub_id}] Error processing incoming SAP packet: {e}")
 
@@ -378,8 +401,8 @@ class AoIpDiscoverySupervisor:
             sock.setblocking(False)
             sock.bind(("0.0.0.0", 9875))
 
-            # Multicast groups to join: Dante / Admin AES67 (239.255.255.255), Link-Local AES67 (224.0.0.56) and Standard SAP (224.2.127.254)
-            groups = ["239.255.255.255", "224.0.0.56", "224.2.127.254"]
+            # Multicast groups to join: Dante / Admin AES67, AES67 Org-Local, Link-Local and Standard SAP
+            groups = list(SAP_MULTICAST_GROUPS)
             for grp in groups:
                 joined = False
                 # 1. Prefer struct ip_mreqn with interface index
@@ -438,7 +461,7 @@ class AoIpDiscoverySupervisor:
                 self._sap_transport = transport
                 logger.info(
                     f"[AoIpDiscovery #{self.hub_id}] SAP multicast listener active on {self.interface or 'default'} "
-                    f"({self.nic_ip or 'all'}) for 224.0.0.56 / 224.2.127.254 : 9875"
+                    f"({self.nic_ip or 'all'}) for {' / '.join(SAP_MULTICAST_GROUPS)} : 9875"
                 )
 
                 while self._running and not transport.is_closing():
@@ -526,8 +549,14 @@ class AoIpDiscoverySupervisor:
             # Prune expired streams (no SAP announce for 120 seconds)
             now = time.time()
             expired_keys = [k for k, v in self._streams_cache.items() if now - v.get("last_seen", 0) > 120.0]
-            for k in expired_keys:
-                self._streams_cache.pop(k, None)
+            if expired_keys:
+                for k in expired_keys:
+                    self._streams_cache.pop(k, None)
+                try:
+                    from core.websocket_subscription_hub import subscription_hub
+                    subscription_hub.invalidate_pipewire_graph(self.hub_id)
+                except Exception:
+                    pass
 
             await asyncio.sleep(5.0)
 

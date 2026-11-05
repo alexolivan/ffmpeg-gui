@@ -32,6 +32,36 @@ class WebSocketSubscriptionHub:
         self._client_options: Dict[Tuple[Any, str, Any], Dict[str, Any]] = {}
         # Cache for diffing changes
         self._last_resource_locks: Optional[List[Any]] = None
+        # PipeWire Graph subscription cache & rate limiting
+        self._last_pipewire_graph_sig: Dict[int, str] = {}
+        self._last_pipewire_poll_ts: Dict[int, float] = {}
+
+    def invalidate_pipewire_graph(self, hub_id: int) -> None:
+        """Forces immediate re-evaluation and broadcast on next cycle for hub_id."""
+        target_id = int(hub_id) if (isinstance(hub_id, (int, str)) and str(hub_id).isdigit()) else hub_id
+        if target_id is not None:
+            self._last_pipewire_poll_ts[target_id] = 0.0
+
+    @staticmethod
+    def _compute_pipewire_graph_signature(graph: Any) -> str:
+        """
+        Computes a stable hash signature of the pipewire graph for change detection,
+        ignoring volatile timestamps like 'last_seen'.
+        """
+        import hashlib
+        def _strip_volatile(obj):
+            if isinstance(obj, dict):
+                return {k: _strip_volatile(v) for k, v in obj.items() if k not in ("last_seen", "timestamp")}
+            elif isinstance(obj, list):
+                return [_strip_volatile(item) for item in obj]
+            return obj
+
+        clean = _strip_volatile(graph)
+        try:
+            dumped = json.dumps(clean, sort_keys=True, default=str)
+            return hashlib.md5(dumped.encode("utf-8")).hexdigest()
+        except Exception:
+            return ""
 
     def has_subscribers(self, topic: str, item_id: Any = None) -> bool:
         """Check if any client is currently subscribed to topic and item_id."""
@@ -56,6 +86,12 @@ class WebSocketSubscriptionHub:
             if offset_key in self._client_offsets:
                 del self._client_offsets[offset_key]
             self._client_options.pop(offset_key, None)
+
+        # Cleanup pipewire caches for hubs that have no more subscribers
+        for hub_id in list(self._last_pipewire_poll_ts.keys()):
+            if not self.has_subscribers("pipewire_graph", hub_id):
+                self._last_pipewire_graph_sig.pop(hub_id, None)
+                self._last_pipewire_poll_ts.pop(hub_id, None)
 
         del self._client_subs[ws]
         logger.debug(f"Unregistered WebSocket client subscriptions: {len(subs)} topics cleared")
@@ -132,6 +168,12 @@ class WebSocketSubscriptionHub:
             del self._client_offsets[offset_key]
         self._client_options.pop(offset_key, None)
 
+        if topic == "pipewire_graph" and item_id is not None:
+            target_id = int(item_id) if (isinstance(item_id, (int, str)) and str(item_id).isdigit()) else item_id
+            if not self.has_subscribers("pipewire_graph", target_id):
+                self._last_pipewire_graph_sig.pop(target_id, None)
+                self._last_pipewire_poll_ts.pop(target_id, None)
+
     async def _send_initial_snapshot(
         self,
         ws: Any,
@@ -196,6 +238,42 @@ class WebSocketSubscriptionHub:
                 if process_manager and hasattr(process_manager, "sidecar_log_buffers"):
                     if item_id in process_manager.sidecar_log_buffers:
                         lines = list(process_manager.sidecar_log_buffers[item_id])
+
+                # If no in-memory buffer, check if sidecar log file exists on disk
+                if not lines and db_session_factory and process_manager and ":" in str(item_id):
+                    try:
+                        svc_part, sidecar_name = str(item_id).split(":", 1)
+                        if svc_part.isdigit() and sidecar_name in ("ptp4l", "phc2sys"):
+                            target_svc_id = int(svc_part)
+                            with db_session_factory() as session:
+                                try:
+                                    from database.models import MediaProcess
+                                except ImportError:
+                                    from backend.database.models import MediaProcess
+                                proc = session.get(MediaProcess, target_svc_id) if hasattr(session, "get") else session.query(MediaProcess).get(target_svc_id)
+                                if proc:
+                                    log_storage_id = (proc.config or {}).get("log_storage_id")
+                                    logs_dir = process_manager.get_process_log_storage_path(
+                                        process_id=target_svc_id, log_storage_id=log_storage_id, session=session
+                                    )
+                                    sidecar_log_file = os.path.join(logs_dir, f"{sidecar_name}_{target_svc_id}.log")
+                                    if os.path.exists(sidecar_log_file):
+                                        f_size = os.path.getsize(sidecar_log_file)
+                                        with open(sidecar_log_file, "rb") as f:
+                                            if f_size > 65536:
+                                                f.seek(f_size - 65536)
+                                            chunk = f.read().decode("utf-8", errors="replace")
+                                        raw_lines = [l.strip() for l in chunk.splitlines() if l.strip()][-100:]
+                                        lines = [
+                                            {
+                                                "timestamp": "",
+                                                "level": "ERROR" if any(kw in l.lower() for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else ("WARN" if "warn" in l.lower() else "INFO"),
+                                                "message": l
+                                            }
+                                            for l in raw_lines
+                                        ]
+                    except Exception as e:
+                        logger.error(f"Error fetching initial sidecar log file for {item_id}: {e}")
 
                 self._client_offsets[(ws, topic, item_id)] = len(lines)
                 await ws.send_json({
@@ -281,6 +359,26 @@ class WebSocketSubscriptionHub:
                     "id": target_id,
                     "data": series,
                 })
+
+            elif topic == "pipewire_graph" and item_id is not None and process_manager:
+                target_id = int(item_id) if (isinstance(item_id, (int, str)) and str(item_id).isdigit()) else item_id
+                graph_data = None
+                if hasattr(process_manager, "get_pipewire_telemetry"):
+                    try:
+                        graph_data = await process_manager.get_pipewire_telemetry(target_id)
+                    except Exception as e:
+                        logger.debug(f"Error fetching initial pipewire graph for #{target_id}: {e}")
+
+                if graph_data:
+                    import time
+                    sig = self._compute_pipewire_graph_signature(graph_data)
+                    self._last_pipewire_graph_sig[target_id] = sig
+                    self._last_pipewire_poll_ts[target_id] = time.time()
+                    await ws.send_json({
+                        "type": "pipewire_graph",
+                        "id": target_id,
+                        "graph": graph_data
+                    })
 
         except Exception as err:
             logger.debug(f"Failed to send initial snapshot for {topic}:{item_id}: {err}")
@@ -416,6 +514,48 @@ class WebSocketSubscriptionHub:
                         self.unregister_client(dead)
             except Exception as e:
                 logger.debug(f"Error broadcasting RRD deltas: {e}")
+
+        # 4. PipeWire Graph deltas (if subscribed and throttled at 2.5s)
+        active_pw_subs = self._topics.get("pipewire_graph", {})
+        if active_pw_subs and process_manager and hasattr(process_manager, "get_pipewire_telemetry"):
+            import time
+            now = time.time()
+            for s_id, subscribers in list(active_pw_subs.items()):
+                if not subscribers:
+                    continue
+                target_id = int(s_id) if (isinstance(s_id, (int, str)) and str(s_id).isdigit()) else s_id
+                last_poll = self._last_pipewire_poll_ts.get(target_id, 0.0)
+                if now - last_poll < 2.5:
+                    continue
+
+                self._last_pipewire_poll_ts[target_id] = now
+                try:
+                    graph = await process_manager.get_pipewire_telemetry(target_id)
+                except Exception as e:
+                    logger.debug(f"Error polling pipewire telemetry for #{target_id}: {e}")
+                    continue
+
+                if not graph:
+                    continue
+
+                new_sig = self._compute_pipewire_graph_signature(graph)
+                old_sig = self._last_pipewire_graph_sig.get(target_id)
+
+                if new_sig != old_sig:
+                    self._last_pipewire_graph_sig[target_id] = new_sig
+                    dead_clients = []
+                    for ws in list(subscribers):
+                        try:
+                            await ws.send_json({
+                                "type": "pipewire_graph",
+                                "id": target_id,
+                                "graph": graph
+                            })
+                        except Exception:
+                            dead_clients.append(ws)
+
+                    for dead in dead_clients:
+                        self.unregister_client(dead)
 
 
 # Global singleton instance

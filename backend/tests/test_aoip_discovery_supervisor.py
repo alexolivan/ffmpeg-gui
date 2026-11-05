@@ -31,6 +31,42 @@ def build_raw_sap_packet(
 
 
 class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
+    def test_sap_multicast_groups_include_aes67_org_local(self):
+        from core.aoip_discovery_supervisor import SAP_MULTICAST_GROUPS
+        self.assertIn("239.255.255.255", SAP_MULTICAST_GROUPS)
+        self.assertIn("239.192.255.255", SAP_MULTICAST_GROUPS)
+        self.assertIn("224.0.0.56", SAP_MULTICAST_GROUPS)
+        self.assertIn("224.2.127.254", SAP_MULTICAST_GROUPS)
+
+    def test_new_or_deleted_sap_stream_invalidates_ws_pipewire_graph(self):
+        mock_pm = MagicMock()
+        mock_pm.db_session_factory = MagicMock()
+
+        supervisor = AoIpDiscoverySupervisor(14, mock_pm)
+        supervisor.interface = "enp9s0"
+        supervisor.nic_ip = "192.168.99.11"
+
+        with patch("core.websocket_subscription_hub.subscription_hub.invalidate_pipewire_graph") as mock_inval:
+            sdp = (
+                "v=0\r\n"
+                "s=Test AES Stream\r\n"
+                "c=IN IP4 239.192.1.1\r\n"
+                "m=audio 5004 RTP/AVP 96\r\n"
+            )
+            raw = build_raw_sap_packet(sdp, origin_ip="192.168.99.100")
+            supervisor.handle_sap_packet(raw, ("192.168.99.100", 9875))
+            mock_inval.assert_called_with(14)
+            mock_inval.reset_mock()
+
+            # Repeat packet shouldn't invalidate if not new and not deleted
+            supervisor.handle_sap_packet(raw, ("192.168.99.100", 9875))
+            mock_inval.assert_not_called()
+
+            # Deletion packet should invalidate
+            raw_del = build_raw_sap_packet(sdp, origin_ip="192.168.99.100", is_deletion=True)
+            supervisor.handle_sap_packet(raw_del, ("192.168.99.100", 9875))
+            mock_inval.assert_called_with(14)
+
     def test_parse_valid_l24_sap_packet(self):
         sdp = (
             "v=0\r\n"

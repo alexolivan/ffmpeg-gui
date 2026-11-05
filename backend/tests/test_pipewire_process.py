@@ -1227,6 +1227,75 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(phc_logs), 1)
         self.assertEqual(phc_logs[0]["level"], "WARN")
 
+    async def test_get_pipewire_telemetry_exposes_sidecar_active_flags(self):
+        with self.Session() as s:
+            svc = Service(
+                name="PW Hub Sidecar Telemetry",
+                service_type="pipewire_hub",
+                config={"pipewire_config": {}}
+            )
+            s.add(svc)
+            s.commit()
+            s_id = svc.id
+
+        with patch.object(self.pm, "_get_pipewire_sidecar_status", return_value={"ptp4l_active": True, "phc2sys_active": False}):
+            with patch("asyncio.create_subprocess_exec") as mock_exec:
+                mock_proc = MagicMock()
+                mock_proc.communicate = AsyncMock(return_value=(b"[]", b""))
+                mock_proc.returncode = 0
+                mock_exec.return_value = mock_proc
+
+                res = await self.pm.get_pipewire_telemetry(s_id)
+                self.assertIn("sidecars", res)
+                self.assertTrue(res["sidecars"]["ptp4l_active"])
+                self.assertFalse(res["sidecars"]["phc2sys_active"])
+
+    async def test_ensure_pipewire_sidecars_reattaches_live_ptp4l_without_killing(self):
+        with self.Session() as s:
+            svc = Service(
+                name="PW Reattach Hub",
+                service_type="pipewire_hub",
+                config={"pipewire_config": {"aes67_network": {"enabled": True, "interface": "enp6s0", "ptp": {"enabled": True}}}}
+            )
+            s.add(svc)
+            s.commit()
+            s_id = svc.id
+
+        # Mock find_auxiliary_pids returns alive ptp4l PID 9999
+        self.pm.find_auxiliary_pids = MagicMock(return_value=[9999])
+        mock_proc = MagicMock()
+        mock_proc.cmdline.return_value = ["/usr/sbin/ptp4l", "-f", f"/dev/shm/ptp4l_{s_id}.conf", "-i", "enp6s0"]
+
+        with patch("psutil.pid_exists", return_value=True):
+            with patch("psutil.Process", return_value=mock_proc):
+                with patch.object(self.pm, "_start_ptp4l_sidecar", new_callable=AsyncMock) as mock_start:
+                    with patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock) as mock_tailer:
+                        await self.pm._ensure_pipewire_sidecars(s_id)
+                        # Shouldn't restart because PID 9999 is already alive
+                        mock_start.assert_not_called()
+                        self.assertIn(9999, self.pm.auxiliary_pids.get(s_id, []))
+
+    async def test_ensure_pipewire_sidecars_respawns_dead_ptp4l_when_enabled(self):
+        with self.Session() as s:
+            svc = Service(
+                name="PW Respawn Hub",
+                service_type="pipewire_hub",
+                config={"pipewire_config": {"aes67_network": {"enabled": True, "interface": "enp6s0", "ptp": {"enabled": True}}}}
+            )
+            s.add(svc)
+            s.commit()
+            s_id = svc.id
+
+        self.pm.find_auxiliary_pids = MagicMock(return_value=[])
+        self.pm.auxiliary_pids[s_id] = []
+        with patch.object(self.pm, "_start_ptp4l_sidecar", new_callable=AsyncMock) as mock_start:
+            await self.pm._ensure_pipewire_sidecars(s_id)
+            mock_start.assert_called_once()
+            args, kwargs = mock_start.call_args
+            self.assertEqual(args[0], s_id)
+            self.assertEqual(args[1], "enp6s0")
+            self.assertTrue(kwargs.get("is_restart", False))
+
 
 if __name__ == "__main__":
     unittest.main()

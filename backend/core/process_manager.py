@@ -2485,6 +2485,92 @@ class ProcessManager:
                 except Exception as e:
                     self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch phc2sys companion daemon: {e}")
 
+    def _get_pipewire_sidecar_status(self, process_id: int) -> Dict[str, bool]:
+        """Returns live status of auxiliary ptp4l and phc2sys sidecars for a PipeWire Hub."""
+        ptp4l_active = False
+        phc2sys_active = False
+        pids = list(self.auxiliary_pids.get(process_id, []))
+        for aux in self.auxiliary_processes.get(process_id, []):
+            if aux and aux.pid and aux.pid not in pids:
+                pids.append(aux.pid)
+
+        ptp_token = f"ptp4l_{process_id}.conf"
+        for pid in pids:
+            try:
+                if psutil.pid_exists(pid):
+                    p = psutil.Process(pid)
+                    cmdline = " ".join(p.cmdline() or [])
+                    if "ptp4l" in cmdline and ptp_token in cmdline:
+                        ptp4l_active = True
+                    elif "phc2sys" in cmdline:
+                        phc2sys_active = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return {"ptp4l_active": ptp4l_active, "phc2sys_active": phc2sys_active}
+
+    async def _ensure_pipewire_sidecars(self, process_id: int):
+        """
+        Ensures that ptp4l (and phc2sys if configured) sidecars are active and attached for
+        a running PipeWire Hub service without killing healthy running processes.
+        """
+        if not self.db_session_factory:
+            return
+
+        with self.db_session_factory() as session:
+            from database.models import Service
+            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+            if not media_proc or getattr(media_proc, "service_type", None) != "pipewire_hub":
+                return
+            cfg = media_proc.config or {}
+            pw_cfg = cfg.get("pipewire_config", cfg)
+            aes_net = pw_cfg.get("aes67_network", {})
+            if not aes_net.get("enabled"):
+                return
+
+            iface = aes_net.get("interface")
+            ptp_cfg = aes_net.get("ptp", {})
+            if not ptp_cfg.get("enabled"):
+                return
+            log_storage_id = cfg.get("log_storage_id")
+            logs_dir = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
+
+        # Look for running auxiliary PIDs in OS
+        found_pids = self.find_auxiliary_pids(process_id, svc_type="pipewire_hub")
+        existing_pids = self.auxiliary_pids.setdefault(process_id, [])
+
+        ptp_alive = False
+        phc_alive = False
+        ptp_token = f"ptp4l_{process_id}.conf"
+
+        for apid in found_pids:
+            if apid not in existing_pids:
+                existing_pids.append(apid)
+            try:
+                if psutil.pid_exists(apid):
+                    p = psutil.Process(apid)
+                    cmdline = " ".join(p.cmdline() or [])
+                    if "ptp4l" in cmdline and ptp_token in cmdline:
+                        ptp_alive = True
+                        ptp_key = f"{process_id}:ptp4l"
+                        if ptp_key not in self.sidecar_log_buffers:
+                            self.sidecar_log_buffers[ptp_key] = collections.deque(maxlen=100)
+                            ptp_log = os.path.join(logs_dir, f"ptp4l_{process_id}.log")
+                            asyncio.create_task(self._file_log_tailer(process_id, ptp_log, pid=apid, sidecar_name="ptp4l"))
+                    elif "phc2sys" in cmdline and (not iface or f"-s {iface}" in cmdline):
+                        phc_alive = True
+                        phc_key = f"{process_id}:phc2sys"
+                        if phc_key not in self.sidecar_log_buffers:
+                            self.sidecar_log_buffers[phc_key] = collections.deque(maxlen=100)
+                            phc_log = os.path.join(logs_dir, f"phc2sys_{process_id}.log")
+                            asyncio.create_task(self._file_log_tailer(process_id, phc_log, pid=apid, sidecar_name="phc2sys"))
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        # If ptp4l is not alive but enabled in configuration, launch it
+        if not ptp_alive and iface:
+            self.logger.info(f"[PipeWire Hub #{process_id}] ptp4l sidecar not running. Spawning managed sidecar...")
+            await self._start_ptp4l_sidecar(process_id, iface, ptp_cfg, logs_dir, is_restart=True)
+
     def _get_pipewire_tool_binary(self, hub_service_id: int, tool_name: str = "pw-link") -> Tuple[Optional[str], Optional[str]]:
         """Resolves binary path and install_dir for PipeWire CLI tools (pw-link, pw-dump, pw-cli)."""
         tool_bin = None
@@ -2527,6 +2613,7 @@ class ProcessManager:
                 "ports": [],
                 "links": [],
                 "streams": [],
+                "sidecars": self._get_pipewire_sidecar_status(process_id),
                 "raw_summary": empty_summary,
                 "error": "Service is not running"
             }
@@ -2539,6 +2626,7 @@ class ProcessManager:
                 "ports": [],
                 "links": [],
                 "streams": [],
+                "sidecars": self._get_pipewire_sidecar_status(process_id),
                 "raw_summary": empty_summary,
                 "error": "pw-dump binary not found"
             }
@@ -2728,6 +2816,8 @@ class ProcessManager:
             aoip_sup = self.get_or_create_aoip_discovery_supervisor(process_id)
             aoip_data = aoip_sup.get_discovery_status() if aoip_sup else None
 
+            sidecar_status = self._get_pipewire_sidecar_status(process_id)
+
             return {
                 "active": True,
                 "nodes": nodes,
@@ -2736,6 +2826,7 @@ class ProcessManager:
                 "streams": nodes,
                 "matrix": matrix_data,
                 "aoip_discovery": aoip_data,
+                "sidecars": sidecar_status,
                 "raw_summary": {
                     "nodes_count": len(nodes),
                     "ports_count": len(ports),
@@ -3450,11 +3541,45 @@ class ProcessManager:
 
     def find_auxiliary_pids(self, process_id: int, svc_type: str = "desktop") -> List[int]:
         """
-        Discovers active auxiliary OS processes associated with this service ID (e.g. x11vnc, browser).
-        Only applicable to multi-process services (e.g. desktop).
+        Discovers active auxiliary OS processes associated with this service ID (e.g. x11vnc, browser for desktop,
+        or ptp4l, phc2sys for pipewire_hub).
         """
-        if svc_type != "desktop":
+        if svc_type not in ("desktop", "pipewire_hub"):
             return []
+
+        if svc_type == "pipewire_hub":
+            aux_pids = []
+            ptp_token = f"ptp4l_{process_id}.conf"
+            # Look up interface for phc2sys matching if applicable
+            target_iface = None
+            if self.db_session_factory:
+                try:
+                    with self.db_session_factory() as session:
+                        from database.models import Service
+                        s_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                        if s_proc:
+                            cfg = s_proc.config or {}
+                            pw_cfg = cfg.get("pipewire_config", cfg)
+                            aes_net = pw_cfg.get("aes67_network", {})
+                            if aes_net.get("enabled"):
+                                target_iface = aes_net.get("interface")
+                except Exception:
+                    pass
+
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    pid = proc.info['pid']
+                    cmdline = proc.info.get('cmdline') or []
+                    cmd_str = " ".join(cmdline)
+                    if "ptp4l" in cmd_str and ptp_token in cmd_str:
+                        if pid not in aux_pids:
+                            aux_pids.append(pid)
+                    elif target_iface and "phc2sys" in cmd_str and f"-s {target_iface}" in cmd_str:
+                        if pid not in aux_pids:
+                            aux_pids.append(pid)
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+            return aux_pids
 
         with self.db_session_factory() as session:
             from database.models import Service
@@ -3980,10 +4105,11 @@ class ProcessManager:
                         self.auxiliary_processes[process_id] = [ap for ap in self.auxiliary_processes.get(process_id, []) if ap.returncode is None and psutil.pid_exists(ap.pid)]
                         await self._ensure_desktop_vnc(process_id)
                     elif _svc_type == "pipewire_hub":
-                        self.logger.warning(f"[PipeWire Hub #{process_id}] Auxiliary sidecar process terminated unexpectedly.")
+                        self.logger.warning(f"[PipeWire Hub #{process_id}] Auxiliary sidecar process terminated unexpectedly. Attempting self-healing respawn...")
                         # Prune dead auxiliary references so watchdog continues monitoring the healthy main PipeWire process
                         self.auxiliary_pids[process_id] = [ap for ap in self.auxiliary_pids.get(process_id, []) if psutil.pid_exists(ap)]
                         self.auxiliary_processes[process_id] = [ap for ap in self.auxiliary_processes.get(process_id, []) if ap.returncode is None and psutil.pid_exists(ap.pid)]
+                        await self._ensure_pipewire_sidecars(process_id)
                     else:
                         self.logger.warning(f"Auxiliary process for service {process_id} terminated unexpectedly.")
                         break
@@ -4474,7 +4600,7 @@ class ProcessManager:
         self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
 
-        # Discover and register auxiliary processes (e.g. x11vnc, browser)
+        # Discover and register auxiliary processes (e.g. x11vnc, browser for desktop, or ptp4l/phc2sys for pipewire)
         if svc_type == "desktop":
             found_aux = self.find_auxiliary_pids(process_id, svc_type=svc_type)
             self.auxiliary_pids[process_id] = list(found_aux)
@@ -4490,6 +4616,10 @@ class ProcessManager:
             if not has_x11vnc:
                 self.logger.warning(f"Reattached desktop service {process_id} is missing x11vnc. Scheduling auto-spawn.")
                 asyncio.create_task(self._ensure_desktop_vnc(process_id, log_path))
+        elif svc_type == "pipewire_hub":
+            found_aux = self.find_auxiliary_pids(process_id, svc_type=svc_type)
+            self.auxiliary_pids[process_id] = list(found_aux)
+            asyncio.create_task(self._ensure_pipewire_sidecars(process_id))
         else:
             self.auxiliary_pids[process_id] = []
 
@@ -4499,6 +4629,7 @@ class ProcessManager:
 
         if svc_type == "pipewire_hub":
             self.get_or_create_pipewire_supervisor(process_id)
+            self.get_or_create_aoip_discovery_supervisor(process_id)
 
         # Re-register with dependency manager as pinned and restore active leases
         try:
