@@ -423,6 +423,15 @@ class CloudTunnelClient:
                     node_name = sys_settings.node_name if sys_settings else None
                     logo_text = sys_settings.logo_text if sys_settings else None
                     logo_path = sys_settings.logo_path if sys_settings else None
+                    lcd_enabled = bool(sys_settings.lcd_enabled) if sys_settings else False
+                    lcd_alias = (sys_settings.lcd_alias or "").strip() if sys_settings else ""
+                    lcd_model = (sys_settings.lcd_model or "cfa635").strip() if sys_settings else "cfa635"
+
+                import sys
+                main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
+                lcd_mgr = getattr(main_mod, "lcd_manager", None) if main_mod else None
+                lcd_connected = bool(lcd_mgr and getattr(lcd_mgr, "_running", False))
+                locator_active = bool(getattr(lcd_mgr, "locator_active", False)) if lcd_connected else False
 
                 payload = {
                     "type": "heartbeat",
@@ -430,6 +439,13 @@ class CloudTunnelClient:
                     "node_name": node_name,
                     "logo_text": logo_text,
                     "logo_path": logo_path,
+                    "lcd": {
+                        "enabled": lcd_enabled,
+                        "connected": lcd_connected,
+                        "alias": lcd_alias or None,
+                        "model": lcd_model,
+                        "locator_active": locator_active,
+                    },
                     "system": {
                         "cpu_percent": cpu,
                         "memory_percent": ram,

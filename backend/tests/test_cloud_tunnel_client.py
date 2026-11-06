@@ -276,6 +276,35 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
         sent_data = json.loads(mock_ws.send.call_args[0][0])
         self.assertEqual(sent_data["type"], "unlink_notify")
 
+    async def test_heartbeat_worker_includes_lcd_telemetry(self):
+        """Verify _heartbeat_worker constructs and sends lcd capability details."""
+        with self.Session() as session:
+            settings = session.query(SystemSettings).first()
+            settings.lcd_enabled = True
+            settings.lcd_alias = "RACK-ENC-01"
+            settings.lcd_model = "cfa635"
+            session.commit()
+
+        mock_ws = MagicMock()
+        sent_frames = []
+
+        async def fake_send(data):
+            sent_frames.append(json.loads(data))
+            raise asyncio.CancelledError()
+
+        mock_ws.send = fake_send
+
+        with patch("asyncio.sleep", return_value=None):
+            await self.client._heartbeat_worker(mock_ws, "node_edge_test", "test_super_secret_key_12345")
+
+        self.assertEqual(len(sent_frames), 1)
+        payload = sent_frames[0]
+        self.assertIn("lcd", payload)
+        self.assertTrue(payload["lcd"]["enabled"])
+        self.assertEqual(payload["lcd"]["alias"], "RACK-ENC-01")
+        self.assertEqual(payload["lcd"]["model"], "cfa635")
+        self.assertIn("locator_active", payload["lcd"])
+
 
 if __name__ == "__main__":
     unittest.main()
