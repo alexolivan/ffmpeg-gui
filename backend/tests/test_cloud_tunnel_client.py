@@ -304,6 +304,10 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["lcd"]["alias"], "RACK-ENC-01")
         self.assertEqual(payload["lcd"]["model"], "cfa635")
         self.assertIn("locator_active", payload["lcd"])
+        self.assertIn("leds", payload["lcd"])
+        self.assertEqual(len(payload["lcd"]["leds"]), 4)
+        self.assertEqual(payload["lcd"]["leds"][0], "blink_green")
+        self.assertEqual(payload["lcd"]["leds"][3], "green")
 
 
 if __name__ == "__main__":

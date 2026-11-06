@@ -432,6 +432,17 @@ class CloudTunnelClient:
                 lcd_mgr = getattr(main_mod, "lcd_manager", None) if main_mod else None
                 lcd_connected = bool(lcd_mgr and getattr(lcd_mgr, "_running", False))
                 locator_active = bool(getattr(lcd_mgr, "locator_active", False)) if lcd_connected else False
+                if lcd_connected and hasattr(lcd_mgr, "get_led_states_snapshot"):
+                    lcd_leds = lcd_mgr.get_led_states_snapshot()
+                elif lcd_enabled:
+                    lcd_leds = [
+                        "blink_green",
+                        "red" if error_services > 0 else ("green" if running_services > 0 else "off"),
+                        "off",
+                        "red" if (cpu > 90 or ram > 90) else "green",
+                    ]
+                else:
+                    lcd_leds = ["off", "off", "off", "off"]
 
                 payload = {
                     "type": "heartbeat",
@@ -445,6 +456,7 @@ class CloudTunnelClient:
                         "alias": lcd_alias or None,
                         "model": lcd_model,
                         "locator_active": locator_active,
+                        "leds": lcd_leds,
                     },
                     "system": {
                         "cpu_percent": cpu,
