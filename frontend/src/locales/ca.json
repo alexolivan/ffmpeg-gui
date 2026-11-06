@@ -614,7 +614,9 @@
       "networkWaitTimeout": "Temps Màxim d'Espera de Xarxa (seg)",
       "networkWaitTimeoutHelp": "Espera màxima per disposar de ruta de xarxa/DNS al boot",
       "watchdogMaxBackoff": "Backoff Màxim del Watchdog (seg)",
-      "watchdogMaxBackoffHelp": "Límit màxim per a l'interval d'espera entre reintents"
+      "watchdogMaxBackoffHelp": "Límit màxim per a l'interval d'espera entre reintents",
+      "hardMemoryLimit": "Límit Hard de RAM (MB)",
+      "hardMemoryLimitHelp": "Sostre de seguretat de l'amfitrió. El procés es liquida si la RAM supera aquest límit"
     },
     "thermal": {
       "title": "MONITORATGE TÈRMIC I PROTECCIÓ HARDWARE",
@@ -1064,6 +1066,8 @@
       "cannotDeleteInUse": "No es pot eliminar mentre estigui en ús per serveis",
       "errorUpdatingConfig": "Error en actualitzar la configuració de motors",
       "configUpdated": "Configuració de motors actualitzada correctament.",
+      "hardMemoryLimit": "Sostre Hard de RAM al Watchdog",
+      "hardMemoryLimitDesc": "Límit màxim de RAM per a instàncies FFmpeg abans que el watchdog finalitzi el procés per protegir la memòria de l'amfitrió.",
       "errorTogglingInstalled": "Error en commutar binari instal·lat",
       "installedRegistered": "Binari del sistema registrat com a build.",
       "installedUnregistered": "Binari del sistema desregistrat.",
@@ -1926,6 +1930,7 @@
     "infiniteRetriesDesc": "Continuar intentant reiniciar el procés indefinidament.",
     "maxRetries": "Màxim de reintents consecutius:",
     "minSpeed": "Velocitat Mínima:",
+    "maxMemory": "RAM Màxima (MB):",
     "tolerance": "Tolerància (s):",
     "debugMode": "Mode Debug (Consola en Directe)",
     "debugModeDesc": "Habilita lectura interactiva de registres. Sensible a reinicis del panell.",

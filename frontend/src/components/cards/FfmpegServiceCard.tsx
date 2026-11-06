@@ -47,6 +47,8 @@ export interface ServiceItem {
   watchdog_retries?: number;
   watchdog_min_speed?: number | null;
   watchdog_min_speed_duration?: number;
+  watchdog_max_memory_mb?: number | null;
+  watchdog_max_memory_duration?: number;
   pending_changes?: boolean;
   last_start?: string | null;
   last_stop?: string | null;

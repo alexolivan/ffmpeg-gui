@@ -93,6 +93,8 @@ interface ProcessConfig {
   watchdog_circuit_breaker?: boolean;
   watchdog_min_speed: number | null;
   watchdog_min_speed_duration: number;
+  watchdog_max_memory_mb: number | null;
+  watchdog_max_memory_duration: number;
   allow_auto_start_deps?: boolean;
   allow_auto_stop_deps?: boolean;
 
@@ -487,6 +489,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         watchdog_circuit_breaker: initialConfig.watchdog_circuit_breaker !== undefined ? !!initialConfig.watchdog_circuit_breaker : true,
         watchdog_min_speed: initialConfig.watchdog_min_speed !== undefined ? initialConfig.watchdog_min_speed : null,
         watchdog_min_speed_duration: initialConfig.watchdog_min_speed_duration ?? 30,
+        watchdog_max_memory_mb: initialConfig.watchdog_max_memory_mb !== undefined ? initialConfig.watchdog_max_memory_mb : null,
+        watchdog_max_memory_duration: initialConfig.watchdog_max_memory_duration ?? 30,
         schedule_type: initialConfig.schedule_type || 'manual',
         schedule_cron: initialConfig.schedule_cron || '*/30 * * * *',
         schedule_datetime: initialConfig.schedule_datetime ? initialConfig.schedule_datetime.substring(0, 16) : '',
@@ -541,6 +545,8 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       watchdog_circuit_breaker: true,
       watchdog_min_speed: null,
       watchdog_min_speed_duration: 30,
+      watchdog_max_memory_mb: null,
+      watchdog_max_memory_duration: 30,
       schedule_type: 'manual',
       schedule_cron: '*/30 * * * *',
       schedule_datetime: '',
@@ -769,6 +775,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         watchdog_circuit_breaker: config.watchdog_circuit_breaker ?? true,
         watchdog_min_speed: config.watchdog_min_speed,
         watchdog_min_speed_duration: config.watchdog_min_speed_duration,
+        watchdog_max_memory_mb: config.watchdog_max_memory_mb,
+        watchdog_max_memory_duration: config.watchdog_max_memory_duration,
         allow_auto_start_deps: config.allow_auto_start_deps ?? true,
         allow_auto_stop_deps: config.allow_auto_stop_deps ?? true,
       })
@@ -1766,6 +1774,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   watchdog_circuit_breaker={config.watchdog_circuit_breaker ?? true}
                   watchdog_min_speed={config.watchdog_min_speed}
                   watchdog_min_speed_duration={config.watchdog_min_speed_duration}
+                  watchdog_max_memory_mb={config.watchdog_max_memory_mb}
+                  watchdog_max_memory_duration={config.watchdog_max_memory_duration}
                   debug_mode={config.debug_mode}
                   log_storage_id={config.log_storage_id}
                   logsStorages={storages.filter((s: any) => s.type === 'logs')}

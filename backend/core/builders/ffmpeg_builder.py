@@ -789,6 +789,11 @@ class FFmpegCommandBuilder:
         if limit_sec is not None and int(limit_sec) > 0:
             cmd += ["-t", str(int(limit_sec))]
 
+        # Guardrail: Enforce muxing queue ceiling to prevent runaway RAM buffering
+        # when a stream becomes desynchronized or drops out (e.g. PipeWire restart)
+        if "-max_muxing_queue_size" not in cmd:
+            cmd += ["-max_muxing_queue_size", "1024"]
+
         if output_type == 'file':
             path = output_cfg.get('path', 'output.mp4')
             if is_mpegts:

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.59.0] - 2026-11-06
+
+### Added
+- **Two-Tier Watchdog RAM Guardrail (`backend/core/process_manager.py`, `backend/database/models.py`, `backend/main.py`)**:
+  - Implemented proactive memory runaway protection for streaming services. The watchdog continuously monitors real RSS against an effective threshold (`min(soft_limit, hard_limit)`). If RAM exceeds this ceiling for longer than the configured duration (default 30s), the watchdog terminates the process cleanly (`SIGTERM` -> `SIGKILL`) to protect host memory and schedules automatic backoff restart.
+  - Added service-level soft limit parameters: `watchdog_max_memory_mb` and `watchdog_max_memory_duration` in service models, schemas, and lifecycle form.
+  - Added global system hard RAM cap: `watchdog_hard_memory_limit_mb` (default 4096 MB) in `WatchdogSettings` and `config.ini`, editable both in Settings (General Watchdog) and in the Software Engines FFmpeg card.
+- **FFmpeg Muxing Queue Ceiling Guardrail (`backend/core/builders/ffmpeg_builder.py`)**:
+  - Injected `-max_muxing_queue_size 1024` on all live, network, and hardware outputs (DeckLink, NDI, RTMP, SRT, UDP, PipeWire, ALSA, etc.). This ensures that asymmetrical stream desynchronizations (e.g. PipeWire audio disconnect with continuous X11 video capture) quickly trigger clean FFmpeg aborts within 10-15 seconds rather than buffering gigabytes of uncompressed frames in memory.
+- **UI & Multi-Language Support (`frontend/src/`)**:
+  - Added `Max RAM (MB)` and `Tolerance (s)` inputs in `LifecycleFormSection.tsx` alongside minimum speed controls.
+  - Added `Hard RAM Limit (MB)` in `SettingsView.tsx` (Watchdog & Startup Timing card) and in `SoftwareEngineCard.tsx` (FFmpeg engine card).
+  - Complete i18n localization in `en.json`, `es.json`, and `ca.json`.
+
 ## [2.58.3] - 2026-11-05
 
 ### Changed

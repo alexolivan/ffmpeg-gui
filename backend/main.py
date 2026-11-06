@@ -370,6 +370,8 @@ class ProcessCreate(BaseModel):
     watchdog_circuit_breaker: Optional[bool] = True
     watchdog_min_speed: Optional[float] = None
     watchdog_min_speed_duration: Optional[int] = 30
+    watchdog_max_memory_mb: Optional[int] = None
+    watchdog_max_memory_duration: Optional[int] = 30
     alias: Optional[str] = None
     network_timeout: Optional[int] = 15
     debug_mode: Optional[bool] = False
@@ -408,6 +410,8 @@ class ProcessUpdate(BaseModel):
     watchdog_circuit_breaker: Optional[bool] = None
     watchdog_min_speed: Optional[float] = None
     watchdog_min_speed_duration: Optional[int] = None
+    watchdog_max_memory_mb: Optional[int] = None
+    watchdog_max_memory_duration: Optional[int] = None
     alias: Optional[str] = None
     network_timeout: Optional[int] = None
     debug_mode: Optional[bool] = None
@@ -534,11 +538,13 @@ class WatchdogSettings(BaseModel):
     startup_grace_delay: int = 10
     network_wait_timeout: int = 60
     watchdog_max_backoff: int = 30
+    watchdog_hard_memory_limit_mb: int = 4096
 
 class WatchdogSettingsUpdate(BaseModel):
     startup_grace_delay: Optional[int] = None
     network_wait_timeout: Optional[int] = None
     watchdog_max_backoff: Optional[int] = None
+    watchdog_hard_memory_limit_mb: Optional[int] = None
 
 class SettingsResponse(BaseModel):
     id: Optional[int] = None
@@ -825,6 +831,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
         "startup_grace_delay": 10,
         "network_wait_timeout": 60,
         "watchdog_max_backoff": 30,
+        "watchdog_hard_memory_limit_mb": 4096,
     }
 
     if config_path and os.path.exists(config_path):
@@ -944,6 +951,8 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 try: watchdog_data["network_wait_timeout"] = wd_cfg.getint("network_wait_timeout", fallback=60)
                 except ValueError: pass
                 try: watchdog_data["watchdog_max_backoff"] = wd_cfg.getint("watchdog_max_backoff", fallback=30)
+                except ValueError: pass
+                try: watchdog_data["watchdog_hard_memory_limit_mb"] = wd_cfg.getint("watchdog_hard_memory_limit_mb", fallback=4096)
                 except ValueError: pass
         except Exception as e:
             logger.error(f"Error reading settings from config file: {e}")
@@ -1826,6 +1835,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "watchdog_circuit_breaker": getattr(p, "watchdog_circuit_breaker", True),
                 "watchdog_min_speed": p.watchdog_min_speed,
                 "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+                "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
+                "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
                 "alias": p.alias,
                 "network_timeout": p.network_timeout,
                 "debug_mode": p.debug_mode,
@@ -2274,6 +2285,8 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     watchdog_circuit_breaker=p_data.get("watchdog_circuit_breaker", True),
                     watchdog_min_speed=p_data.get("watchdog_min_speed", 0.85),
                     watchdog_min_speed_duration=p_data.get("watchdog_min_speed_duration", 30),
+                    watchdog_max_memory_mb=p_data.get("watchdog_max_memory_mb"),
+                    watchdog_max_memory_duration=p_data.get("watchdog_max_memory_duration", 30),
                     alias=p_data.get("alias"),
                     network_timeout=p_data.get("network_timeout", 30),
                     debug_mode=p_data.get("debug_mode", False),
@@ -3957,6 +3970,8 @@ async def telemetry_broadcast_loop():
                         "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
                         "watchdog_min_speed": p.watchdog_min_speed,
                         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+                        "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
+                        "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
                         "pending_changes": p.pending_changes,
                         "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
                         "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
@@ -5599,6 +5614,8 @@ def list_processes(db: Session = Depends(get_db)):
             "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
             "watchdog_min_speed": p.watchdog_min_speed,
             "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+            "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
+            "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
             "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
             "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
             "active_leases": p_leases,
@@ -5697,6 +5714,8 @@ def create_process(proc_in: ProcessCreate, request: Request, db: Session = Depen
         watchdog_circuit_breaker=proc_in.watchdog_circuit_breaker if proc_in.watchdog_circuit_breaker is not None else True,
         watchdog_min_speed=proc_in.watchdog_min_speed,
         watchdog_min_speed_duration=proc_in.watchdog_min_speed_duration if proc_in.watchdog_min_speed_duration is not None else 30,
+        watchdog_max_memory_mb=proc_in.watchdog_max_memory_mb,
+        watchdog_max_memory_duration=proc_in.watchdog_max_memory_duration if proc_in.watchdog_max_memory_duration is not None else 30,
         alias=proc_in.alias,
         network_timeout=proc_in.network_timeout if proc_in.network_timeout is not None else 15,
         debug_mode=proc_in.debug_mode if proc_in.debug_mode is not None else False,
@@ -5855,6 +5874,8 @@ def update_process(process_id: int, proc_in: ProcessUpdate, request: Request, db
     if proc_in.watchdog_circuit_breaker is not None: db_proc.watchdog_circuit_breaker = proc_in.watchdog_circuit_breaker
     if proc_in.watchdog_min_speed is not None: db_proc.watchdog_min_speed = proc_in.watchdog_min_speed
     if proc_in.watchdog_min_speed_duration is not None: db_proc.watchdog_min_speed_duration = proc_in.watchdog_min_speed_duration
+    if proc_in.watchdog_max_memory_mb is not None: db_proc.watchdog_max_memory_mb = proc_in.watchdog_max_memory_mb
+    if proc_in.watchdog_max_memory_duration is not None: db_proc.watchdog_max_memory_duration = proc_in.watchdog_max_memory_duration
     if proc_in.alias is not None: db_proc.alias = proc_in.alias
     if proc_in.network_timeout is not None: db_proc.network_timeout = proc_in.network_timeout
     if proc_in.debug_mode is not None: db_proc.debug_mode = proc_in.debug_mode
@@ -6156,6 +6177,8 @@ def clone_process(process_id: int, db: Session = Depends(get_db)):
         watchdog_circuit_breaker=getattr(db_proc, 'watchdog_circuit_breaker', True),
         watchdog_min_speed=db_proc.watchdog_min_speed,
         watchdog_min_speed_duration=db_proc.watchdog_min_speed_duration,
+        watchdog_max_memory_mb=db_proc.watchdog_max_memory_mb,
+        watchdog_max_memory_duration=db_proc.watchdog_max_memory_duration,
         network_timeout=db_proc.network_timeout,
         debug_mode=db_proc.debug_mode,
         log_storage_id=db_proc.log_storage_id,
@@ -6577,7 +6600,7 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     # 3. Synchronize common properties into cfg
     for key in [
         "auto_start", "startup_order", "startup_delay", "watchdog_enabled", "watchdog_retries",
-        "watchdog_min_speed", "watchdog_min_speed_duration", "network_timeout", "debug_mode",
+        "watchdog_min_speed", "watchdog_min_speed_duration", "watchdog_max_memory_mb", "watchdog_max_memory_duration", "network_timeout", "debug_mode",
         "log_storage_id", "software_type", "software_version", "software_build_id", "ffmpeg_build_id",
         "allow_auto_start_deps", "allow_auto_stop_deps"
     ]:
@@ -6815,6 +6838,8 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "watchdog_circuit_breaker": getattr(proc, 'watchdog_circuit_breaker', True),
             "watchdog_min_speed": proc.watchdog_min_speed,
             "watchdog_min_speed_duration": proc.watchdog_min_speed_duration,
+            "watchdog_max_memory_mb": proc.watchdog_max_memory_mb,
+            "watchdog_max_memory_duration": proc.watchdog_max_memory_duration,
             "network_timeout": getattr(proc, 'network_timeout', 15),
             "debug_mode": getattr(proc, 'debug_mode', False),
             "log_storage_id": getattr(proc, 'log_storage_id', None),
@@ -6854,6 +6879,8 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         watchdog_circuit_breaker=profile.get('watchdog_circuit_breaker', True),
         watchdog_min_speed=profile.get('watchdog_min_speed'),
         watchdog_min_speed_duration=profile.get('watchdog_min_speed_duration', 30),
+        watchdog_max_memory_mb=profile.get('watchdog_max_memory_mb'),
+        watchdog_max_memory_duration=profile.get('watchdog_max_memory_duration', 30),
         network_timeout=profile.get('network_timeout', 15),
         debug_mode=profile.get('debug_mode', False),
         log_storage_id=profile.get('log_storage_id'),
@@ -7969,6 +7996,8 @@ def _serialize_service(p) -> dict:
         "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
         "watchdog_min_speed": p.watchdog_min_speed,
         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+        "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
+        "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
         "pending_changes": p.pending_changes,
         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
         "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
@@ -8013,7 +8042,9 @@ def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
         watchdog_enabled=True,
         watchdog_retries=3,
         watchdog_min_speed=0.85,
-        watchdog_min_speed_duration=30
+        watchdog_min_speed_duration=30,
+        watchdog_max_memory_mb=None,
+        watchdog_max_memory_duration=30
     )
     db.add(new_proc)
     db.commit()
@@ -9281,6 +9312,12 @@ def update_software_config(payload: Dict[str, Any], db: Session = Depends(get_db
 
     for k, v in payload.items():
         c_parser.set("software_engines", str(k), str(v).lower())
+
+    hard_mem = payload.get("ffmpeg_hard_memory_limit_mb") or payload.get("watchdog_hard_memory_limit_mb")
+    if hard_mem is not None:
+        if not c_parser.has_section("watchdog"):
+            c_parser.add_section("watchdog")
+        c_parser.set("watchdog", "watchdog_hard_memory_limit_mb", str(hard_mem))
 
     try:
         with open(config_path, "w", encoding="utf-8") as f:

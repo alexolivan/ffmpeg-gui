@@ -117,7 +117,9 @@ def init_db():
                         "watchdog_enabled": bool(row_dict.get("watchdog_enabled", False)),
                         "watchdog_retries": row_dict.get("watchdog_retries", 5),
                         "watchdog_min_speed": row_dict.get("watchdog_min_speed"),
-                        "watchdog_min_speed_duration": row_dict.get("watchdog_min_speed_duration", 30)
+                        "watchdog_min_speed_duration": row_dict.get("watchdog_min_speed_duration", 30),
+                        "watchdog_max_memory_mb": row_dict.get("watchdog_max_memory_mb"),
+                        "watchdog_max_memory_duration": row_dict.get("watchdog_max_memory_duration", 30)
                     }
                     
                     conn.execute(

@@ -57,6 +57,8 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("srt://0.0.0.0:8888?mode=listener&latency=200&streamid=output_id", cmd_str)
         # Check Annex B filter for H.264 into SRT/mpegts
         self.assertIn("-bsf:v h264_mp4toannexb", cmd_str)
+        # Check max_muxing_queue_size guardrail against memory runaway
+        self.assertIn("-max_muxing_queue_size 1024", cmd_str)
 
     def test_ndi_input_and_output(self):
         # Test Case 2: NDI Input (no find_sources) and NDI Output (format=uyvy422)

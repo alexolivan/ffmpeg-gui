@@ -232,6 +232,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [startupGraceDelay, setStartupGraceDelay] = useState(settings?.watchdog?.startup_grace_delay ?? 10);
   const [networkWaitTimeout, setNetworkWaitTimeout] = useState(settings?.watchdog?.network_wait_timeout ?? 60);
   const [watchdogMaxBackoff, setWatchdogMaxBackoff] = useState(settings?.watchdog?.watchdog_max_backoff ?? 30);
+  const [watchdogHardMemoryLimitMb, setWatchdogHardMemoryLimitMb] = useState(settings?.watchdog?.watchdog_hard_memory_limit_mb ?? 4096);
 
   // Hardware Health & Thermal Protection States
   const [thermalWarningThreshold, setThermalWarningThreshold] = useState(settings?.thermal_warning_threshold ?? 75);
@@ -282,6 +283,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setStartupGraceDelay(wd?.startup_grace_delay ?? 10);
     setNetworkWaitTimeout(wd?.network_wait_timeout ?? 60);
     setWatchdogMaxBackoff(wd?.watchdog_max_backoff ?? 30);
+    setWatchdogHardMemoryLimitMb(wd?.watchdog_hard_memory_limit_mb ?? 4096);
     setThermalWarningThreshold(settings?.thermal_warning_threshold ?? 75);
     setThermalCriticalThreshold(settings?.thermal_critical_threshold ?? 85);
     setThermalActiveProtection(!!settings?.thermal_active_protection);
@@ -313,6 +315,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings?.watchdog?.startup_grace_delay,
     settings?.watchdog?.network_wait_timeout,
     settings?.watchdog?.watchdog_max_backoff,
+    settings?.watchdog?.watchdog_hard_memory_limit_mb,
     settings?.thermal_warning_threshold,
     settings?.thermal_critical_threshold,
     settings?.thermal_active_protection,
@@ -774,6 +777,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(startupGraceDelay) !== Number(settings?.watchdog?.startup_grace_delay ?? 10) ||
     Number(networkWaitTimeout) !== Number(settings?.watchdog?.network_wait_timeout ?? 60) ||
     Number(watchdogMaxBackoff) !== Number(settings?.watchdog?.watchdog_max_backoff ?? 30) ||
+    Number(watchdogHardMemoryLimitMb) !== Number(settings?.watchdog?.watchdog_hard_memory_limit_mb ?? 4096) ||
     bruteForceEnabled !== (settings?.brute_force_enabled !== undefined ? !!settings?.brute_force_enabled : true) ||
     Number(bruteForceMaxAttempts) !== Number(settings?.brute_force_max_attempts ?? 5) ||
     Number(bruteForceWindowSeconds) !== Number(settings?.brute_force_window_seconds ?? 300) ||
@@ -859,6 +863,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           startup_grace_delay: Number(startupGraceDelay),
           network_wait_timeout: Number(networkWaitTimeout),
           watchdog_max_backoff: Number(watchdogMaxBackoff),
+          watchdog_hard_memory_limit_mb: Number(watchdogHardMemoryLimitMb),
         },
         brute_force_enabled: bruteForceEnabled,
         brute_force_max_attempts: Number(bruteForceMaxAttempts),
@@ -1299,7 +1304,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {t('settings.watchdog.description', 'Configure system boot grace delays, network pre-flight timeout checks, and watchdog exponential backoff limits.')}
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
                     {t('settings.watchdog.startupGraceDelay', 'Startup Grace Delay (sec)')}
@@ -1348,6 +1353,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   />
                   <span className="text-[9px] text-text-secondary/70 block">
                     {t('settings.watchdog.watchdogMaxBackoffHelp', 'Upper cap for exponential backoff retry interval')}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                    {t('settings.watchdog.hardMemoryLimit', 'Hard RAM Limit (MB)')}
+                  </label>
+                  <input
+                    type="number"
+                    step={128}
+                    min={256}
+                    max={65536}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime font-mono"
+                    value={watchdogHardMemoryLimitMb}
+                    onChange={(e) => setWatchdogHardMemoryLimitMb(parseInt(e.target.value, 10) || 512)}
+                  />
+                  <span className="text-[9px] text-text-secondary/70 block">
+                    {t('settings.watchdog.hardMemoryLimitHelp', 'Host safety ceiling. Process is killed if RAM exceeds this limit')}
                   </span>
                 </div>
               </div>
