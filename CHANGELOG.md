@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.59.1] - 2026-11-06
+
+### Fixed
+- **Software Engines Hard RAM Limit Integer Preservation (`backend/core/software_manager.py`, `frontend/src/components/views/settings/SoftwareEngineCard.tsx`)**:
+  - Fixed regression where `SoftwareManager.load_config` coerced all section keys into booleans, turning numeric integer memory caps (e.g. 4096 MB) into `True` (`1 MB`).
+  - Added explicit numeric integer preservation in `load_config`, robust fallback in `get_hard_memory_limit`, and safe lower-bound checks in `SoftwareEngineCard.tsx`.
+
 ## [2.59.0] - 2026-11-06
 
 ### Added

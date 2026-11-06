@@ -75,14 +75,16 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
   // Icon preview
   const [hasCustomIcon, setHasCustomIcon] = useState(() => Boolean(engine.has_custom_icon));
-  const [hardMemoryLimit, setHardMemoryLimit] = useState(engine.hard_memory_limit_mb ?? 4096);
+  const [hardMemoryLimit, setHardMemoryLimit] = useState(
+    engine.hard_memory_limit_mb && engine.hard_memory_limit_mb > 1 ? engine.hard_memory_limit_mb : 4096
+  );
 
   React.useEffect(() => {
     setHasCustomIcon(Boolean(engine.has_custom_icon));
   }, [engine.has_custom_icon]);
 
   React.useEffect(() => {
-    if (engine.hard_memory_limit_mb !== undefined && engine.hard_memory_limit_mb !== null) {
+    if (engine.hard_memory_limit_mb && engine.hard_memory_limit_mb > 1) {
       setHardMemoryLimit(engine.hard_memory_limit_mb);
     }
   }, [engine.hard_memory_limit_mb]);
