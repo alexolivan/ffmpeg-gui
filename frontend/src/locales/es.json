@@ -614,7 +614,9 @@
       "networkWaitTimeout": "Tiempo Máximo de Espera de Red (seg)",
       "networkWaitTimeoutHelp": "Espera máxima para disponer de ruta de red/DNS en el boot",
       "watchdogMaxBackoff": "Backoff Máximo del Watchdog (seg)",
-      "watchdogMaxBackoffHelp": "Límite tope para el intervalo de espera entre reintentos"
+      "watchdogMaxBackoffHelp": "Límite tope para el intervalo de espera entre reintentos",
+      "hardMemoryLimit": "Límite Hard de RAM (MB)",
+      "hardMemoryLimitHelp": "Techo de seguridad del host. El proceso se liquida si la RAM supera este límite"
     },
     "thermal": {
       "title": "MONITORIZACIÓN TÉRMICA Y PROTECCIÓN HARDWARE",
@@ -1064,6 +1066,8 @@
       "cannotDeleteInUse": "No se puede eliminar mientras esté en uso por servicios",
       "errorUpdatingConfig": "Error al actualizar la configuración de motores",
       "configUpdated": "Configuración de motores actualizada correctamente.",
+      "hardMemoryLimit": "Tope Hard de RAM en Watchdog",
+      "hardMemoryLimitDesc": "Límite máximo de RAM para instancias FFmpeg antes de que el watchdog termine el proceso para proteger la memoria del host.",
       "errorTogglingInstalled": "Error al conmutar binario instalado",
       "installedRegistered": "Binario del sistema registrado como build.",
       "installedUnregistered": "Binario del sistema desregistrado.",
@@ -1926,6 +1930,7 @@
     "infiniteRetriesDesc": "Seguir intentando reiniciar el proceso indefinidamente.",
     "maxRetries": "Máximo de reintentos consecutivos:",
     "minSpeed": "Velocidad Mínima:",
+    "maxMemory": "RAM Máxima (MB):",
     "tolerance": "Tolerancia (s):",
     "debugMode": "Modo Debug (Consola en Vivo)",
     "debugModeDesc": "Habilita lectura interactiva de logs. Sensible a reinicios del panel.",

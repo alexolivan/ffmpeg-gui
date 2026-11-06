@@ -40,6 +40,7 @@ export interface SoftwareEngineData {
   builds: SoftwareEngineBuild[];
   total_builds: number;
   has_custom_icon?: boolean;
+  hard_memory_limit_mb?: number | null;
 }
 
 interface SoftwareEngineCardProps {
@@ -74,10 +75,17 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
   // Icon preview
   const [hasCustomIcon, setHasCustomIcon] = useState(() => Boolean(engine.has_custom_icon));
+  const [hardMemoryLimit, setHardMemoryLimit] = useState(engine.hard_memory_limit_mb ?? 4096);
 
   React.useEffect(() => {
     setHasCustomIcon(Boolean(engine.has_custom_icon));
   }, [engine.has_custom_icon]);
+
+  React.useEffect(() => {
+    if (engine.hard_memory_limit_mb !== undefined && engine.hard_memory_limit_mb !== null) {
+      setHardMemoryLimit(engine.hard_memory_limit_mb);
+    }
+  }, [engine.hard_memory_limit_mb]);
 
   const showNotification = (msg: string, isError = false) => {
     if (isError) {
@@ -93,14 +101,14 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
     }, 3500);
   };
 
-  const handleUpdateEngineConfig = async (patch: Record<string, boolean>) => {
+  const handleUpdateEngineConfig = async (patch: Record<string, boolean | number>) => {
     setIsUpdatingConfig(true);
     setErrorMessage(null);
     try {
       const resStatus = await fetch(`${API}/api/settings/software`);
       const allEngines: Record<string, SoftwareEngineData> = await resStatus.json();
       
-      const payload: Record<string, boolean> = {};
+      const payload: Record<string, boolean | number> = {};
       Object.values(allEngines).forEach((eng) => {
         if (!eng.always_enabled) {
           payload[`${eng.key}_enabled`] = eng.is_enabled;
@@ -594,6 +602,49 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Subcard 4: Watchdog Hard RAM Ceiling for FFmpeg Engine */}
+          {engine.key === 'ffmpeg' && (
+            <div className="md:col-span-2 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-primary)] block">
+                  {t('settings.software.hardMemoryLimit', 'Watchdog Hard RAM Ceiling')}
+                </span>
+                <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                  {t('settings.software.hardMemoryLimitDesc', 'Maximum RAM limit for FFmpeg instances before the watchdog terminates the process to protect host memory.')}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step={128}
+                  min={256}
+                  max={65536}
+                  className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--text-primary)] font-mono w-24 text-right focus:border-brand-lime outline-none"
+                  value={hardMemoryLimit}
+                  onChange={(e) => setHardMemoryLimit(parseInt(e.target.value, 10) || 512)}
+                />
+                <span className="text-xs text-[var(--text-secondary)] font-mono">MB</span>
+                <button
+                  type="button"
+                  disabled={isUpdatingConfig || hardMemoryLimit === (engine.hard_memory_limit_mb ?? 4096)}
+                  onClick={async () => {
+                    await handleUpdateEngineConfig({
+                      ffmpeg_hard_memory_limit_mb: hardMemoryLimit,
+                      watchdog_hard_memory_limit_mb: hardMemoryLimit,
+                    });
+                  }}
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded transition-all cursor-pointer ${
+                    hardMemoryLimit !== (engine.hard_memory_limit_mb ?? 4096)
+                      ? 'bg-brand-lime text-black shadow-sm'
+                      : 'bg-white/5 text-[var(--text-secondary)] opacity-50 cursor-not-allowed'
+                  }`}
+                >
+                  {t('common.save', 'Save')}
+                </button>
+              </div>
             </div>
           )}
         </div>

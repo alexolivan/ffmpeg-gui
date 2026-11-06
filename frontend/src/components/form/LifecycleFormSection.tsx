@@ -10,6 +10,8 @@ interface LifecycleFormSectionProps {
   watchdog_circuit_breaker?: boolean;
   watchdog_min_speed: number | null;
   watchdog_min_speed_duration: number;
+  watchdog_max_memory_mb?: number | null;
+  watchdog_max_memory_duration?: number;
   debug_mode: boolean;
   log_storage_id: number | null;
   logsStorages: any[];
@@ -24,6 +26,8 @@ interface LifecycleFormSectionProps {
     watchdog_circuit_breaker?: boolean;
     watchdog_min_speed?: number | null;
     watchdog_min_speed_duration?: number;
+    watchdog_max_memory_mb?: number | null;
+    watchdog_max_memory_duration?: number;
     debug_mode?: boolean;
     log_storage_id?: number | null;
     allow_auto_start_deps?: boolean;
@@ -40,6 +44,8 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
   watchdog_circuit_breaker = true,
   watchdog_min_speed,
   watchdog_min_speed_duration,
+  watchdog_max_memory_mb,
+  watchdog_max_memory_duration = 30,
   debug_mode,
   log_storage_id,
   logsStorages,
@@ -205,6 +211,45 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
                   value={watchdog_min_speed_duration}
                   onChange={e => onChange({
                     watchdog_min_speed_duration: Math.max(5, parseInt(e.target.value) || 30)
+                  })}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Maximum RAM Memory Watchdog Settings */}
+          <div className="flex items-center gap-4 pt-2.5 border-t border-white/5 flex-wrap">
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
+                {t('lifecycle.maxMemory', 'Max RAM (MB):')}
+              </label>
+              <input
+                type="number"
+                step="64"
+                min="128"
+                max="65536"
+                placeholder={t('common.disabled', 'Disabled')}
+                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-28 focus:border-brand-lime font-mono"
+                value={watchdog_max_memory_mb === null || watchdog_max_memory_mb === undefined ? '' : watchdog_max_memory_mb}
+                onChange={e => {
+                  const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                  onChange({ watchdog_max_memory_mb: val });
+                }}
+              />
+            </div>
+            {(watchdog_max_memory_mb !== null && watchdog_max_memory_mb !== undefined) && (
+              <div className="flex items-center gap-2 animate-in fade-in duration-200">
+                <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
+                  {t('lifecycle.tolerance', 'Tolerance (s):')}
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  max="3600"
+                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-20 focus:border-brand-lime font-mono"
+                  value={watchdog_max_memory_duration ?? 30}
+                  onChange={e => onChange({
+                    watchdog_max_memory_duration: Math.max(5, parseInt(e.target.value, 10) || 30)
                   })}
                 />
               </div>

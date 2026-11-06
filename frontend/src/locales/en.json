@@ -614,7 +614,9 @@
       "networkWaitTimeout": "Network Wait Timeout (sec)",
       "networkWaitTimeoutHelp": "Max time to wait for network/DNS route on boot",
       "watchdogMaxBackoff": "Watchdog Max Backoff (sec)",
-      "watchdogMaxBackoffHelp": "Upper cap for exponential backoff retry interval"
+      "watchdogMaxBackoffHelp": "Upper cap for exponential backoff retry interval",
+      "hardMemoryLimit": "Hard RAM Limit (MB)",
+      "hardMemoryLimitHelp": "Host safety ceiling. Process is killed if RAM exceeds this limit"
     },
     "thermal": {
       "title": "THERMAL MONITORING & HARDWARE SHIELDING",
@@ -1064,6 +1066,8 @@
       "cannotDeleteInUse": "Cannot delete while used by services",
       "errorUpdatingConfig": "Failed to update software configuration",
       "configUpdated": "Engine configuration updated successfully.",
+      "hardMemoryLimit": "Watchdog Hard RAM Ceiling",
+      "hardMemoryLimitDesc": "Maximum RAM limit for FFmpeg instances before the watchdog terminates the process to protect host memory.",
       "errorTogglingInstalled": "Failed to toggle installed binary",
       "installedRegistered": "System binary registered as build.",
       "installedUnregistered": "System binary unregistered.",
@@ -1926,6 +1930,7 @@
     "infiniteRetriesDesc": "Keep trying to restart the process indefinitely.",
     "maxRetries": "Maximum consecutive retries:",
     "minSpeed": "Minimum Speed:",
+    "maxMemory": "Max RAM (MB):",
     "tolerance": "Tolerance (s):",
     "debugMode": "Debug Mode (Live Console)",
     "debugModeDesc": "Enables interactive log reading. Sensitive to panel restarts.",
