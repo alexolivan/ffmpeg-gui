@@ -29,6 +29,7 @@ class ProcessManager:
         self.srt_has_had_activity: Dict[int, bool] = {}
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
         self.watchdog_low_speed_since: Dict[int, Optional[datetime]] = {}
+        self.watchdog_high_memory_since: Dict[int, Optional[datetime]] = {}
         self.db_session_factory = db_session_factory
         if db_session_factory:
             self.dependency_manager.db_session_factory = db_session_factory
@@ -3916,6 +3917,21 @@ class ProcessManager:
                 pass
         return 60
 
+    def get_watchdog_hard_memory_limit(self) -> int:
+        config_path = os.environ.get("CONFIG_FILE_PATH", "ffmpeg-gui.conf")
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                cfg = configparser.ConfigParser()
+                cfg.read(config_path)
+                if "watchdog" in cfg:
+                    return cfg.getint("watchdog", "watchdog_hard_memory_limit_mb", fallback=4096)
+                if "software_engines" in cfg:
+                    return cfg.getint("software_engines", "ffmpeg_hard_memory_limit_mb", fallback=4096)
+            except Exception:
+                pass
+        return 4096
+
     async def _async_check_network_readiness(self, input_config: dict, timeout: float = 60.0) -> bool:
         """
         Asynchronously check if a network-dependent input (RTMP, SRT, RTSP, HTTP, UDP) has network connectivity
@@ -4056,6 +4072,7 @@ class ProcessManager:
         is_cancelled = False
         self.watchdog_stalled_since[process_id] = None
         self.watchdog_low_speed_since[process_id] = None
+        self.watchdog_high_memory_since[process_id] = None
 
         try:
             p = psutil.Process(pid)
@@ -4293,6 +4310,51 @@ class ProcessManager:
                                                     await self._safe_terminate_process(proc=proc, pid=pid)
                                         else:
                                             self.watchdog_low_speed_since[process_id] = None
+
+                                # Check memory threshold (Soft limit per service + Global hard cap)
+                                hard_cap = self.get_watchdog_hard_memory_limit()
+                                soft_limit = cfg.get('watchdog_max_memory_mb')
+                                if soft_limit is not None:
+                                    try:
+                                        soft_limit = int(soft_limit)
+                                    except (ValueError, TypeError):
+                                        soft_limit = None
+
+                                if soft_limit is not None and soft_limit > 0:
+                                    effective_mem_limit = min(soft_limit, hard_cap)
+                                    limit_desc = f"soft threshold ({effective_mem_limit} MB)"
+                                else:
+                                    effective_mem_limit = hard_cap
+                                    limit_desc = f"global hard ceiling ({effective_mem_limit} MB)"
+
+                                mem_duration = cfg.get('watchdog_max_memory_duration', 30)
+                                try:
+                                    mem_duration = int(mem_duration)
+                                except (ValueError, TypeError):
+                                    mem_duration = 30
+
+                                if watchdog_enabled and effective_mem_limit and mem > effective_mem_limit:
+                                    if self.watchdog_high_memory_since.get(process_id) is None:
+                                        self.watchdog_high_memory_since[process_id] = datetime.utcnow()
+                                    else:
+                                        high_mem_duration = (datetime.utcnow() - self.watchdog_high_memory_since[process_id]).total_seconds()
+                                        if high_mem_duration > mem_duration:
+                                            log_msg = f"Watchdog: Process RAM ({int(mem)} MB) exceeded {limit_desc} for more than {mem_duration}s. Force killing to protect host..."
+                                            self.logger.error(log_msg)
+
+                                            from database.models import ProcessLog
+                                            log = ProcessLog(
+                                                process_id=process_id,
+                                                level='ERROR',
+                                                message=log_msg
+                                            )
+                                            session.add(log)
+                                            session.commit()
+
+                                            await self._safe_terminate_process(proc=proc, pid=pid)
+                                            self.watchdog_high_memory_since[process_id] = None
+                                else:
+                                    self.watchdog_high_memory_since[process_id] = None
 
                                 # Check startup stall (process running for > network_wait_timeout with zero activity/frames)
                                 elapsed_since_start = (datetime.utcnow() - start_time).total_seconds()
@@ -4578,6 +4640,7 @@ class ProcessManager:
             self.srt_has_had_activity.pop(process_id, None)
             self.watchdog_stalled_since.pop(process_id, None)
             self.watchdog_low_speed_since.pop(process_id, None)
+            self.watchdog_high_memory_since.pop(process_id, None)
             if process_id in self.log_buffers:
                 del self.log_buffers[process_id]
 

@@ -265,6 +265,22 @@ class Service(Base):
         self._set_config_key('watchdog_min_speed_duration', val)
 
     @property
+    def watchdog_max_memory_mb(self):
+        return self.config.get('watchdog_max_memory_mb') if self.config else None
+
+    @watchdog_max_memory_mb.setter
+    def watchdog_max_memory_mb(self, val):
+        self._set_config_key('watchdog_max_memory_mb', val)
+
+    @property
+    def watchdog_max_memory_duration(self):
+        return self.config.get('watchdog_max_memory_duration', 30) if self.config else 30
+
+    @watchdog_max_memory_duration.setter
+    def watchdog_max_memory_duration(self, val):
+        self._set_config_key('watchdog_max_memory_duration', val)
+
+    @property
     def log_storage_id(self):
         return self.config.get('log_storage_id') if self.config else None
 

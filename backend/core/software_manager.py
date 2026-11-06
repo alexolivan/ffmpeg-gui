@@ -330,6 +330,7 @@ class SoftwareManager:
                 "builds": builds_list,
                 "total_builds": len(builds_list),
                 "has_custom_icon": bool(self.get_engine_icon_path(s_type, storage_base_dir)),
+                "hard_memory_limit_mb": int(self.config.get("ffmpeg_hard_memory_limit_mb", self.config.get("watchdog_hard_memory_limit_mb", 4096))) if s_type == "ffmpeg" else None,
             }
 
         return engines_res
