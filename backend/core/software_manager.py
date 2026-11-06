@@ -130,11 +130,46 @@ class SoftwareManager:
         if not section:
             return
         for k, v in section.items():
+            if k in ("ffmpeg_hard_memory_limit_mb", "watchdog_hard_memory_limit_mb"):
+                try:
+                    self.config[k] = int(v)
+                except (ValueError, TypeError):
+                    self.config[k] = 4096
+                continue
             if isinstance(v, str):
                 val = v.strip().lower() in ("true", "1", "yes", "on")
+            elif isinstance(v, (int, float)) and not isinstance(v, bool):
+                val = int(v)
             else:
                 val = bool(v)
             self.config[k] = val
+
+    def get_hard_memory_limit(self) -> int:
+        val = self.config.get("ffmpeg_hard_memory_limit_mb") or self.config.get("watchdog_hard_memory_limit_mb")
+        if isinstance(val, int) and val > 1:
+            return val
+        if isinstance(val, str) and val.isdigit() and int(val) > 1:
+            return int(val)
+
+        config_path = os.environ.get("CONFIG_FILE_PATH", "ffmpeg-gui.conf")
+        if not os.path.exists(config_path) and os.path.exists("/etc/ffmpeg-gui/ffmpeg-gui.conf"):
+            config_path = "/etc/ffmpeg-gui/ffmpeg-gui.conf"
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                cfg = configparser.ConfigParser()
+                cfg.read(config_path)
+                if cfg.has_section("watchdog") and cfg.has_option("watchdog", "watchdog_hard_memory_limit_mb"):
+                    lim = cfg.getint("watchdog", "watchdog_hard_memory_limit_mb", fallback=4096)
+                    if lim > 1:
+                        return lim
+                if cfg.has_section("software_engines") and cfg.has_option("software_engines", "ffmpeg_hard_memory_limit_mb"):
+                    lim = cfg.getint("software_engines", "ffmpeg_hard_memory_limit_mb", fallback=4096)
+                    if lim > 1:
+                        return lim
+            except Exception:
+                pass
+        return 4096
 
     def get_config(self) -> Dict[str, bool]:
         return dict(self.config)
@@ -330,7 +365,7 @@ class SoftwareManager:
                 "builds": builds_list,
                 "total_builds": len(builds_list),
                 "has_custom_icon": bool(self.get_engine_icon_path(s_type, storage_base_dir)),
-                "hard_memory_limit_mb": int(self.config.get("ffmpeg_hard_memory_limit_mb", self.config.get("watchdog_hard_memory_limit_mb", 4096))) if s_type == "ffmpeg" else None,
+                "hard_memory_limit_mb": self.get_hard_memory_limit() if s_type == "ffmpeg" else None,
             }
 
         return engines_res
