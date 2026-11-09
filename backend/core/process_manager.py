@@ -42,6 +42,11 @@ class ProcessManager:
         self.auxiliary_pids: Dict[int, List[int]] = {}
         self.pipewire_supervisors: Dict[int, Any] = {}
         self.aoip_discovery_supervisors: Dict[int, Any] = {}
+        self.mediamtx_stats_cache: Dict[int, Dict[str, Any]] = {}
+
+    def get_mediamtx_telemetry_cached(self, process_id: int) -> Dict[str, Any]:
+        """Returns the latest volatile MediaMTX path stats cached during monitor loop."""
+        return self.mediamtx_stats_cache.get(process_id, {})
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -1132,6 +1137,7 @@ class ProcessManager:
                 
                 if process_id in self.processes:
                     del self.processes[process_id]
+                self.mediamtx_stats_cache.pop(process_id, None)
 
             # Terminate any auxiliary child processes (e.g. x11vnc for desktop services)
             aux_procs = self.auxiliary_processes.pop(process_id, [])
@@ -4247,7 +4253,23 @@ class ProcessManager:
                                 except Exception:
                                     pass
 
-                            if is_icecast:
+                            is_mediamtx = (getattr(media_proc, 'service_type', '') == 'mediamtx_hub')
+                            if is_mediamtx:
+                                try:
+                                    cfg = media_proc.config or {}
+                                    mtx_cfg = cfg.get("mediamtx_config") or {}
+                                    api_port = mtx_cfg.get("api_port", 9997)
+                                    api_enabled = mtx_cfg.get("api_enabled", True)
+                                    if api_enabled:
+                                        import requests
+                                        resp = requests.get(f"http://127.0.0.1:{api_port}/v3/paths/list", timeout=1.5)
+                                        if resp.status_code == 200:
+                                            self.mediamtx_stats_cache[process_id] = resp.json()
+                                except Exception:
+                                    pass
+
+                            svc_type = getattr(media_proc, 'service_type', 'ffmpeg_stream')
+                            if svc_type != 'ffmpeg_stream':
                                 media_proc.fps = None
                                 media_proc.bitrate = None
                                 media_proc.speed = None
@@ -4646,6 +4668,7 @@ class ProcessManager:
 
             if process_id in self.processes:
                 del self.processes[process_id]
+            self.mediamtx_stats_cache.pop(process_id, None)
 
     def reattach_process(self, process_id: int, pid: int) -> List[int]:
         with self.db_session_factory() as session:

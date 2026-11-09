@@ -3802,6 +3802,8 @@ def is_ip_allowed_for_metrics(client_ip: str, allowed_ips_str: Optional[str]) ->
     return False
 
 
+_LAST_TELEMETRY_SNAPSHOT: dict = {}
+
 @app.get("/api/metrics")
 @app.get("/metrics")
 def get_prometheus_metrics(request: Request, db: Session = Depends(get_db)):
@@ -3827,60 +3829,19 @@ def get_prometheus_metrics(request: Request, db: Session = Depends(get_db)):
     if not token or not expected_token or not secrets.compare_digest(token, expected_token):
         raise HTTPException(status_code=401, detail="Unauthorized metrics access: Invalid or missing token")
 
-    # Build OpenMetrics 0.0.4 lines
-    lines = [
-        "# HELP ffmpeg_gui_system_cpu_percent Overall system host CPU usage percentage",
-        "# TYPE ffmpeg_gui_system_cpu_percent gauge",
-        f"ffmpeg_gui_system_cpu_percent {psutil.cpu_percent(interval=None)}",
-        "# HELP ffmpeg_gui_system_ram_percent Overall system host RAM usage percentage",
-        "# TYPE ffmpeg_gui_system_ram_percent gauge",
-        f"ffmpeg_gui_system_ram_percent {psutil.virtual_memory().percent}",
-        "# HELP ffmpeg_gui_service_status Operational status of service (1=running, 0=stopped, -1=error)",
-        "# TYPE ffmpeg_gui_service_status gauge",
-        "# HELP ffmpeg_gui_service_cpu_percent Service CPU usage percentage",
-        "# TYPE ffmpeg_gui_service_cpu_percent gauge",
-        "# HELP ffmpeg_gui_service_ram_percent Service RAM usage in MB",
-        "# TYPE ffmpeg_gui_service_ram_percent gauge",
-        "# HELP ffmpeg_gui_service_bitrate_kbps Service output stream bitrate in kbps",
-        "# TYPE ffmpeg_gui_service_bitrate_kbps gauge",
-        "# HELP ffmpeg_gui_service_fps Service encoding frames per second",
-        "# TYPE ffmpeg_gui_service_fps gauge",
-        "# HELP ffmpeg_gui_service_speed_ratio Service encoding speed ratio relative to real-time",
-        "# TYPE ffmpeg_gui_service_speed_ratio gauge",
-        "# HELP ffmpeg_gui_service_uptime_seconds Service uptime in seconds",
-        "# TYPE ffmpeg_gui_service_uptime_seconds counter",
-    ]
+    from core.prometheus_exporter import build_openmetrics_payload
+    from core.hardware_health import hardware_health_manager
 
-    now_utc = datetime.datetime.utcnow()
     services = db.query(MediaProcess).all()
-    for s in services:
-        s_id = s.id
-        s_name = (getattr(s, "alias", None) or "").strip() or s.name
-        s_type = getattr(s, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
-
-        status_code = 1 if s.status == "running" else (-1 if s.status == "error" else 0)
-        lines.append(f'ffmpeg_gui_service_status{{id="{s_id}",name="{s_name}",type="{s_type}"}} {status_code}')
-
-        from core.rrd_store import parse_metric_float, parse_bitrate_kbps, parse_speed_ratio
-        cpu_val = parse_metric_float(s.cpu_usage)
-        ram_val = parse_metric_float(s.ram_usage)
-        bitrate_val = parse_bitrate_kbps(s.bitrate)
-        fps_val = parse_metric_float(s.fps)
-        speed_val = parse_speed_ratio(s.speed)
-
-        lines.append(f'ffmpeg_gui_service_cpu_percent{{id="{s_id}",name="{s_name}"}} {cpu_val}')
-        lines.append(f'ffmpeg_gui_service_ram_percent{{id="{s_id}",name="{s_name}"}} {ram_val}')
-        lines.append(f'ffmpeg_gui_service_bitrate_kbps{{id="{s_id}",name="{s_name}"}} {bitrate_val}')
-        lines.append(f'ffmpeg_gui_service_fps{{id="{s_id}",name="{s_name}"}} {fps_val}')
-        lines.append(f'ffmpeg_gui_service_speed_ratio{{id="{s_id}",name="{s_name}"}} {speed_val}')
-
-        uptime_sec = 0
-        if s.status == "running" and s.last_start:
-            uptime_sec = max(0, int((now_utc - s.last_start).total_seconds()))
-        lines.append(f'ffmpeg_gui_service_uptime_seconds{{id="{s_id}",name="{s_name}"}} {uptime_sec}')
+    payload = build_openmetrics_payload(
+        services=services,
+        telemetry_snapshot=_LAST_TELEMETRY_SNAPSHOT,
+        hardware_health=hardware_health_manager.get_health_snapshot(),
+        process_manager=process_manager,
+    )
 
     return Response(
-        content="\n".join(lines) + "\n",
+        content=payload,
         media_type="text/plain; version=0.0.4; charset=utf-8",
     )
 
@@ -4183,6 +4144,13 @@ async def telemetry_broadcast_loop():
             except Exception as e:
                 logger.error(f"Error evaluating thermal notification alerts: {e}")
 
+            global _LAST_TELEMETRY_SNAPSHOT
+            _LAST_TELEMETRY_SNAPSHOT = {
+                "system": system_data,
+                "storages": storages_data,
+                "task_stats": task_stats,
+                "peers": peers_data,
+            }
 
             await manager.broadcast({
                 "type": "telemetry",

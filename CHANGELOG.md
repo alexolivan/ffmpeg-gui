@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.61.0] - 2026-11-09
+
+### Added
+- **Prometheus & OpenMetrics Exporter v2 Taxonomy & Subsystems (`backend/core/prometheus_exporter.py`, `backend/core/process_manager.py`, `backend/main.py`)**:
+  - Implemented modular OpenMetrics 0.0.4 exporter architecture with semantic capability filtering (`service_has_video`, `service_has_bitrate`), eliminating false zero metrics on incompatible services.
+  - Corrected RAM metric nomenclature from `ffmpeg_gui_service_ram_percent` to `ffmpeg_gui_service_ram_mb` to match actual RSS usage in Megabytes.
+  - Added service watchdog cumulative restart counters (`ffmpeg_gui_service_restarts_total{id, name, type}`).
+  - Exported Icecast2 server and per-mountpoint telemetry: active listeners, peak listeners, active mount count, mount listeners, mount peak, and mount bitrate (`ffmpeg_gui_icecast_*`).
+  - Exported MediaMTX live path telemetry from volatile cache: total paths, ready paths, per-path readiness, connected readers count, and cumulative received/sent bytes (`ffmpeg_gui_mediamtx_*`).
+  - Exported PipeWire Hub telemetry: virtual sinks count, remote AoIP sinks count, and sidecar clock/discovery statuses (`ptp4l`, `phc2sys`, `sap`).
+  - Exported comprehensive host and daemon health metrics directly from volatile in-memory snapshots with zero disk I/O: CPU/RAM percentages, RAM used/total in MB, host and daemon uptime, CPU package temperature, thermal throttling active state and cumulative events, cooling fan rotational speed (RPM), dedicated GPU utilization, VRAM usage and temperature, storage pool capacities and writability, scheduled tasks status counts, and federated peer statuses and round-trip latency.
+  - Added comprehensive test suite in `test_prometheus_exporter.py` validating capability filters, label escaping, and OpenMetrics payload generation.
+
 ## [2.60.1] - 2026-11-09
 
 ### Fixed
