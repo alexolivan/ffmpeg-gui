@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.62.2] - 2026-11-09
+
+### Fixed
+- **AoIP Stream Lifecycle State Machine & Silence Recovery (`backend/core/aoip_discovery_supervisor.py`, `backend/core/websocket_subscription_hub.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Implemented dynamic detection of recovered streams (`is_new or was_inactive`) in `AoIpDiscoverySupervisor.handle_sap_packet`: when an announcement arrives for a stream previously silent or waiting, the supervisor immediately logs the recovery, transitions the stream back to `online`, and invalidates the PipeWire graph subscription to notify WebSocket clients without stalling.
+  - Eliminated `SO_REUSEPORT` from SAP listener UDP socket setup, retaining exclusively `SO_REUSEADDR` to avoid Linux kernel 4-tuple hash packet balancing that blocked multicast SAP announcements from reaching Python when PipeWire or other services coexisted on UDP port 9875.
+  - Hardened multicast group joins (`IP_ADD_MEMBERSHIP`) with `struct ip_mreqn` using `INADDR_ANY` as local IP to prevent interface binding exceptions when DHCP or interface aliases differ.
+  - Added periodic silence and timeout detection (`_check_stream_timeouts_and_prune`) in background monitoring, transitioning silent streams to `waiting` at 60s and invalidating the WebSocket graph proactively without requiring user polling.
+  - Exposed live `status` attribute on all discovered streams in `get_discovery_status()` (`online` vs `waiting`), ensuring the WebSocket graph hash signature accurately triggers diff broadcasts on state transitions.
+  - Hardened frontend status calculation in `PipeWirePreviewModal.tsx`: requires affirmative `liveSink.status === 'online'` to show `Online / Linked`, preventing false-positive greens when telemetries are missing or silent. Added cache-busting timestamp `_t` on manual refreshes.
+  - Added unit test `test_stream_recovery_after_silence_invalidates_pipewire_graph` in `test_aoip_discovery_supervisor.py`.
+
 ## [2.62.1] - 2026-11-09
 
 ### Fixed

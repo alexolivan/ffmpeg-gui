@@ -265,7 +265,7 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
         supervisor.nic_ip = "192.168.99.13"
 
         now = time.time()
-        # Seed an active stream (seen 10s ago) and an expired stream (seen 50s ago > 45s threshold)
+        # Seed an active stream (seen 10s ago) and an expired stream (seen 130s ago > 120s threshold)
         supervisor._streams_cache["239.69.11.1:5004"] = {
             "session_name": "Active Stream",
             "session_id": "239.69.11.1:5004",
@@ -281,7 +281,7 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
             "session_id": "239.69.11.2:5008",
             "multicast_ip": "239.69.11.2",
             "rtp_port": 5008,
-            "last_seen": now - 50.0,
+            "last_seen": now - 130.0,
             "origin_ip": "192.168.99.11",
             "channels": 2,
             "format": "S24BE"
@@ -301,11 +301,48 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
         self.assertIn("239.69.11.1:5004", supervisor._streams_cache)
         self.assertEqual(len(status["discovered_streams"]), 1)
         self.assertEqual(status["discovered_streams"][0]["session_name"], "Active Stream")
+        self.assertEqual(status["discovered_streams"][0]["status"], "online")
 
         # 2. Remote sinks status should reflect real-time network presence
         rs_status = {s["id"]: s["status"] for s in status["remote_sinks_status"]}
         self.assertEqual(rs_status["rx_active"], "online")
         self.assertEqual(rs_status["rx_expired"], "waiting")
+
+    def test_stream_recovery_after_silence_invalidates_pipewire_graph(self):
+        """Verifies that an inactive/silent stream receiving a new SAP packet transitions to online and invalidates the graph."""
+        import time
+        mock_pm = MagicMock()
+        supervisor = AoIpDiscoverySupervisor(14, mock_pm)
+        supervisor.nic_ip = "192.168.99.13"
+
+        with patch("core.websocket_subscription_hub.subscription_hub.invalidate_pipewire_graph") as mock_inval:
+            sdp = (
+                "v=0\r\n"
+                "s=Recoverable Stream\r\n"
+                "c=IN IP4 239.69.20.1\r\n"
+                "m=audio 5004 RTP/AVP 96\r\n"
+            )
+            raw = build_raw_sap_packet(sdp, origin_ip="192.168.99.20")
+
+            # 1. First packet: new stream -> invalidates graph
+            supervisor.handle_sap_packet(raw, ("192.168.99.20", 9875))
+            mock_inval.assert_called_with(14)
+            mock_inval.reset_mock()
+
+            # 2. Simulate stream went silent for 70 seconds (> 60s active window)
+            now = time.time()
+            stream_key = "239.69.20.1:5004"
+            supervisor._streams_cache[stream_key]["last_seen"] = now - 70.0
+            supervisor._streams_cache[stream_key]["_state"] = "waiting"
+
+            # 3. New packet arrives from recovered sender: MUST invalidate graph!
+            supervisor.handle_sap_packet(raw, ("192.168.99.20", 9875))
+            mock_inval.assert_called_with(14)
+
+            # 4. State in cache should now be online
+            cached = supervisor._streams_cache[stream_key]
+            self.assertEqual(cached["status"], "online")
+            self.assertEqual(cached["_state"], "online")
 
 
 

@@ -37,8 +37,10 @@ SAP_MULTICAST_GROUPS: Tuple[str, ...] = (
 )
 
 # SAP stream announcement freshness and pruning windows (seconds)
-SAP_STREAM_EXPIRATION_SEC: float = 45.0
-SAP_ACTIVE_STREAM_WINDOW_SEC: float = 45.0
+# SAP_ACTIVE_STREAM_WINDOW_SEC: Time of announcement silence before stream state transitions to 'waiting'
+# SAP_STREAM_EXPIRATION_SEC: Time before unmanaged discovered streams are pruned from memory
+SAP_ACTIVE_STREAM_WINDOW_SEC: float = 60.0
+SAP_STREAM_EXPIRATION_SEC: float = 120.0
 
 
 
@@ -330,11 +332,21 @@ class AoIpDiscoverySupervisor:
                 is_local = (parsed["origin_ip"] == self.nic_ip) if self.nic_ip else (parsed["origin_ip"] in ("127.0.0.1", "0.0.0.0"))
                 parsed["is_local"] = is_local
                 parsed["last_seen"] = now
-                is_new = stream_key not in self._streams_cache
+
+                existing = self._streams_cache.get(stream_key)
+                is_new = existing is None
+                was_inactive = existing is not None and (
+                    existing.get("_state") == "waiting" or (now - existing.get("last_seen", 0) > SAP_ACTIVE_STREAM_WINDOW_SEC)
+                )
+
+                parsed["status"] = "online"
+                parsed["_state"] = "online"
                 self._streams_cache[stream_key] = parsed
-                if is_new:
+
+                if is_new or was_inactive:
+                    action_desc = "Discovered SAP stream" if is_new else "RECOVERED SAP stream (restored from silence)"
                     logger.info(
-                        f"[AoIpDiscovery #{self.hub_id}] Discovered SAP stream '{parsed['session_name']}' "
+                        f"[AoIpDiscovery #{self.hub_id}] {action_desc} '{parsed['session_name']}' "
                         f"on {parsed['multicast_ip']}:{parsed['rtp_port']} "
                         f"({parsed['channels']}ch, {parsed['rate']}Hz, {parsed['format']}) from {parsed['origin_ip']}"
                     )
@@ -385,16 +397,15 @@ class AoIpDiscoverySupervisor:
         logger.info(f"[AoIpDiscovery #{self.hub_id}] Stopped companion discovery supervisor.")
 
     def _setup_sap_socket(self) -> Optional[socket.socket]:
-        """Create and bind non-blocking UDP multicast listener on port 9875."""
+        """
+        Create and bind non-blocking UDP multicast listener on port 9875.
+        Uses SO_REUSEADDR exclusively (avoiding SO_REUSEPORT which causes hash load-balancing
+        among multiple processes listening on the same port on Linux instead of multicast fanout).
+        """
         sock = None
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if hasattr(socket, "SO_REUSEPORT"):
-                try:
-                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-                except Exception:
-                    pass
 
             # Bind to device if specified and permissions allow (SO_BINDTODEVICE = 25)
             if self.interface:
@@ -410,12 +421,11 @@ class AoIpDiscoverySupervisor:
             groups = list(SAP_MULTICAST_GROUPS)
             for grp in groups:
                 joined = False
-                # 1. Prefer struct ip_mreqn with interface index
+                # 1. Prefer struct ip_mreqn with interface index and INADDR_ANY
                 if self.interface:
                     try:
                         if_idx = socket.if_nametoindex(self.interface)
-                        local_ip = self.nic_ip or "0.0.0.0"
-                        mreqn = struct.pack("=4s4si", socket.inet_aton(grp), socket.inet_aton(local_ip), if_idx)
+                        mreqn = struct.pack("=4s4si", socket.inet_aton(grp), socket.inet_aton("0.0.0.0"), if_idx)
                         sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreqn)
                         joined = True
                     except Exception as e:
@@ -430,13 +440,12 @@ class AoIpDiscoverySupervisor:
                     except Exception as e:
                         logger.debug(f"[AoIpDiscovery #{self.hub_id}] ip_mreq IP join {grp} on {self.nic_ip} failed: {e}")
 
-                # 3. Fallback to INADDR_ANY (0.0.0.0)
-                if not joined:
-                    try:
-                        mreq = struct.pack("4s4s", socket.inet_aton(grp), socket.inet_aton("0.0.0.0"))
-                        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-                    except Exception as e:
-                        logger.debug(f"[AoIpDiscovery #{self.hub_id}] INADDR_ANY join {grp} failed: {e}")
+                # 3. Always ensure INADDR_ANY membership is added as baseline
+                try:
+                    mreq = struct.pack("4s4s", socket.inet_aton(grp), socket.inet_aton("0.0.0.0"))
+                    sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+                except Exception as e:
+                    logger.debug(f"[AoIpDiscovery #{self.hub_id}] INADDR_ANY join {grp} failed: {e}")
 
             return sock
         except Exception as e:
@@ -448,25 +457,49 @@ class AoIpDiscoverySupervisor:
             logger.warning(f"[AoIpDiscovery #{self.hub_id}] Failed to bind SAP socket on port 9875: {e}")
             return None
 
-    def _prune_expired_streams(self, now: float) -> bool:
+    def _check_stream_timeouts_and_prune(self, now: float) -> bool:
         """
-        Prunes cached SAP streams that have not announced within SAP_STREAM_EXPIRATION_SEC.
-        Returns True if any stream was pruned, triggering WebSocket graph invalidation.
+        Evaluates active streams for announcement silence (state transition to 'waiting')
+        and prunes unmanaged discovered streams that exceeded SAP_STREAM_EXPIRATION_SEC.
+        Returns True if any state changed or stream was pruned, triggering WebSocket invalidation.
         """
+        changed = False
+
+        # 1. Prune streams older than SAP_STREAM_EXPIRATION_SEC
         expired_keys = [
             k for k, v in self._streams_cache.items()
             if now - v.get("last_seen", 0) > SAP_STREAM_EXPIRATION_SEC
         ]
         if expired_keys:
             for k in expired_keys:
-                self._streams_cache.pop(k, None)
+                removed = self._streams_cache.pop(k, None)
+                if removed:
+                    logger.info(f"[AoIpDiscovery #{self.hub_id}] Pruned expired SAP stream '{k}' ({removed.get('session_name')})")
+            changed = True
+
+        # 2. Detect transitions from online to waiting due to announcement silence
+        for k, v in self._streams_cache.items():
+            is_active = (now - v.get("last_seen", 0) <= SAP_ACTIVE_STREAM_WINDOW_SEC)
+            prev_state = v.get("_state", "online")
+            new_state = "online" if is_active else "waiting"
+            if new_state != prev_state:
+                v["_state"] = new_state
+                v["status"] = new_state
+                changed = True
+                logger.info(f"[AoIpDiscovery #{self.hub_id}] SAP stream '{k}' ({v.get('session_name')}) transitioned from {prev_state} to {new_state}.")
+
+        if changed:
             try:
                 from core.websocket_subscription_hub import subscription_hub
                 subscription_hub.invalidate_pipewire_graph(self.hub_id)
             except Exception:
                 pass
-            return True
-        return False
+
+        return changed
+
+    def _prune_expired_streams(self, now: float) -> bool:
+        """Compatibility wrapper for _check_stream_timeouts_and_prune."""
+        return self._check_stream_timeouts_and_prune(now)
 
     async def _run_sap_listener(self):
         """Asynchronous listener loop receiving and parsing SAP announcements via DatagramProtocol."""
@@ -581,24 +614,26 @@ class AoIpDiscoverySupervisor:
         """
         Returns real-time discovery status, including PTP state, discovered streams,
         and live status of configured remote sinks.
-        Actively prunes expired streams on demand so immediate queries reflect current network reality.
+        Actively checks stream freshness on demand so immediate queries reflect current network reality.
         """
         now = time.time()
-        self._prune_expired_streams(now)
+        self._check_stream_timeouts_and_prune(now)
         persisted_remote_sinks = self._get_persisted_remote_sinks()
 
         # Build lookup of persisted remote sinks by multicast_ip:rtp_port
         persisted_map: Dict[str, Dict[str, Any]] = {}
         for rs in persisted_remote_sinks:
-            m_ip = rs.get("multicast_ip")
-            r_port = rs.get("rtp_port", 5004)
+            m_ip = (rs.get("multicast_ip") or "").strip()
+            r_port = int(rs.get("rtp_port", 5004))
             if m_ip:
                 persisted_map[f"{m_ip}:{r_port}"] = rs
 
-        # Decorate discovered streams with persistence match
+        # Decorate discovered streams with persistence match and live status
         streams_list = []
         for key, stream in sorted(self._streams_cache.items(), key=lambda x: x[1].get("sap_name", "")):
             s_copy = dict(stream)
+            is_active = (now - stream.get("last_seen", 0) <= SAP_ACTIVE_STREAM_WINDOW_SEC)
+            s_copy["status"] = "online" if is_active else "waiting"
             is_persisted = key in persisted_map
             matched_sink = persisted_map.get(key)
             s_copy["is_persisted"] = is_persisted
@@ -611,7 +646,7 @@ class AoIpDiscoverySupervisor:
         for rs in persisted_remote_sinks:
             rs_id = rs.get("id", "")
             rs_name = rs.get("name") or rs_id
-            m_ip = rs.get("multicast_ip", "")
+            m_ip = (rs.get("multicast_ip") or "").strip()
             r_port = int(rs.get("rtp_port", 5004))
             k = f"{m_ip}:{r_port}"
             active_stream = self._streams_cache.get(k)

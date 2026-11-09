@@ -93,6 +93,7 @@ interface AoIpStream {
   ptp_clock_id?: string | null;
   last_seen?: number;
   is_local?: boolean;
+  status?: 'online' | 'waiting' | string;
 }
 
 interface RemoteSinkStatusItem {
@@ -196,7 +197,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     try {
       if (isManual || !graphData) setLoading(true);
       const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${API}/api/services/${currentProcess.id}/pipewire/nodes`, {
+      const res = await fetch(`${API}/api/services/${currentProcess.id}/pipewire/nodes?_t=${Date.now()}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
@@ -1244,13 +1245,13 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       <tbody className="divide-y divide-[var(--glass-border)]">
                         {remoteSinks.map((rs: any, idx: number) => {
                           const liveSink = graphData?.aoip_discovery?.remote_sinks_status?.find(
-                            (s: any) => s.id === rs.id || (s.multicast_ip === rs.multicast_ip && Number(s.rtp_port) === Number(rs.rtp_port))
+                            (s: any) => s.id === rs.id || (s.multicast_ip?.trim() === rs.multicast_ip?.trim() && Number(s.rtp_port) === Number(rs.rtp_port))
                           );
                           const isNodeLoaded = Boolean(
                             graphData?.nodes?.some((n) => n.name === `rtp_rx_${rs.id}` || n.name === rs.id)
                           );
-                          const isOnline = isRunning && isNodeLoaded && (liveSink ? liveSink.status === 'online' : true);
-                          const isWaiting = isRunning && isNodeLoaded && liveSink?.status === 'waiting';
+                          const isOnline = isRunning && isNodeLoaded && liveSink?.status === 'online';
+                          const isWaiting = isRunning && isNodeLoaded && (!liveSink || liveSink?.status === 'waiting');
 
                           return (
                             <tr key={rs.id || idx} className="hover:bg-white/2 transition-colors">
@@ -1371,7 +1372,18 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                           return (
                             <tr key={sId} className="hover:bg-white/2 transition-colors">
                               <td className="py-2.5 px-3">
-                                <div className="font-bold text-[var(--text-primary)] font-sans">{sName}</div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-bold text-[var(--text-primary)] font-sans">{sName}</span>
+                                  {stream.status === 'waiting' ? (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                                      🟡 {t('services.pipewire.statusWaiting', 'Waiting')}
+                                    </span>
+                                  ) : stream.status === 'online' ? (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                      🟢 {t('common.active', 'Active')}
+                                    </span>
+                                  ) : null}
+                                </div>
                                 <div className="text-[10px] text-[var(--text-secondary)]">{sId}</div>
                               </td>
                               <td className="py-2.5 px-3 text-cyan-400 font-semibold">
