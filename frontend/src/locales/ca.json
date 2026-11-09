@@ -507,6 +507,8 @@
       "statusOnline": "En línia / Enllaçat",
       "statusWaiting": "Esperant Flux",
       "statusOffline": "Desconnectat / No carregat",
+      "levelHeader": "Nivell",
+      "levelIdleTooltip": "Node inactiu o no enllaçat (sense encaminament d'àudio actiu)",
       "refreshRadar": "Actualitzar i purgar fluxos SAP",
       "localTxStream": "Tx Local",
       "alreadyConfigured": "Persistit",

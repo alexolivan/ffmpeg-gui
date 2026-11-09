@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.63.0] - 2026-11-09
+
+### Added
+- **PipeWire Audio Node Real-Time VU Meters (`backend/core/pipewire_meter_collector.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`, `frontend/src/locales/`)**:
+  - Replaced the low-utility numeric `#ID` column in the **Audio Nodes** tab with a dedicated, compact visual **`Level`** column (`w-16`).
+  - Implemented zero-react-rerender HTML5 `<canvas>` horizontal stereo LED meter bars (L/R) rendering real-time peaks with segmented green/amber/red coloration at ~10 Hz.
+  - Nodes in `idle`, `suspended`, or unlinked state (`links == 0`) render a dimmed placeholder meter in rest state, reserving active VU meter monitoring strictly for nodes in `running` state with active graph links.
+  - Built an on-demand, lightweight backend capture manager (`PipeWireMeterCollector`) utilizing native low-rate (8 kHz s16) `pw-record` sessions connected to the hub's local `pipewire-0` socket.
+  - Created dedicated ephemeral WebSocket `/ws/pipewire/meters/{service_id}` and multiplexed `pipewire_meters` topic in `WebSocketSubscriptionHub`: capture workers run strictly while the `Audio Nodes` tab is visible, immediately halting all sub-processes upon tab switch or modal dismissal for zero standby CPU load.
+  - Added unit test suite `test_pipewire_meter_collector.py` verifying active node filtering, level formatting, and process termination.
+
 ## [2.62.2] - 2026-11-09
 
 ### Fixed

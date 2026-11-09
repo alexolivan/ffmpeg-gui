@@ -9114,6 +9114,50 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
         alsa_manager.active_mixer_ws_count = max(0, alsa_manager.active_mixer_ws_count - 1)
 
 
+@app.websocket("/ws/pipewire/meters/{service_id}")
+async def websocket_pipewire_meters(websocket: WebSocket, service_id: int):
+    # Authenticate WebSocket connection if authentication is configured
+    token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
+    if not token:
+        auth_hdr = websocket.headers.get("authorization")
+        if auth_hdr:
+            token = auth_hdr.replace("Bearer ", "").strip()
+
+    with SessionLocal() as db:
+        from database.models import SystemSettings, Service
+        settings = db.query(SystemSettings).first()
+        gui_password = settings.gui_password if settings else None
+        if gui_password:
+            is_valid = bool(token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)))
+            if not is_valid:
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+
+        svc = db.get(Service, service_id) if hasattr(db, "get") else db.query(Service).get(service_id)
+        if not svc or svc.service_type != "pipewire_hub":
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+    await websocket.accept()
+    collector = process_manager.get_or_create_pipewire_meter_collector(service_id)
+    try:
+        while True:
+            levels = await collector.get_meters()
+            await websocket.send_json({
+                "type": "pipewire_meters",
+                "id": service_id,
+                "meters": levels
+            })
+            await asyncio.sleep(0.1)  # ~10 Hz refresh
+    except WebSocketDisconnect:
+        logger.debug(f"WebSocket client disconnected from PipeWire meters #{service_id}")
+    except Exception as e:
+        logger.debug(f"WebSocket PipeWire meters error for #{service_id}: {e}")
+    finally:
+        if collector:
+            await collector.stop()
+
+
 @app.websocket("/ws/desktop/{service_id}/vnc")
 async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
     # 1. Authenticate WebSocket connection

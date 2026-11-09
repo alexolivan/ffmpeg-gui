@@ -507,6 +507,8 @@
       "statusOnline": "En línea / Enlazado",
       "statusWaiting": "Esperando Flujo",
       "statusOffline": "Desconectado / No cargado",
+      "levelHeader": "Nivel",
+      "levelIdleTooltip": "Nodo inactivo o sin enlazar (sin enrutamiento de audio activo)",
       "refreshRadar": "Actualizar y purgar flujos SAP",
       "localTxStream": "Tx Local",
       "alreadyConfigured": "Persistido",

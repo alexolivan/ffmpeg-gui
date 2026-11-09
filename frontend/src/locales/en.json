@@ -507,6 +507,8 @@
       "statusOnline": "Online / Linked",
       "statusWaiting": "Waiting for Stream",
       "statusOffline": "Offline / Unloaded",
+      "levelHeader": "Level",
+      "levelIdleTooltip": "Node idle or unlinked (no active audio routing)",
       "refreshRadar": "Refresh & Prune SAP Streams",
       "localTxStream": "Local Tx",
       "alreadyConfigured": "Persisted",

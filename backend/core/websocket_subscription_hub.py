@@ -380,6 +380,19 @@ class WebSocketSubscriptionHub:
                         "graph": graph_data
                     })
 
+            elif topic == "pipewire_meters" and item_id is not None:
+                target_id = int(item_id) if (isinstance(item_id, (int, str)) and str(item_id).isdigit()) else item_id
+                meters = {}
+                if process_manager and hasattr(process_manager, "get_or_create_pipewire_meter_collector"):
+                    collector = process_manager.get_or_create_pipewire_meter_collector(target_id)
+                    if collector:
+                        meters = await collector.get_meters()
+                await ws.send_json({
+                    "type": "pipewire_meters",
+                    "id": target_id,
+                    "meters": meters
+                })
+
         except Exception as err:
             logger.debug(f"Failed to send initial snapshot for {topic}:{item_id}: {err}")
 
@@ -556,6 +569,36 @@ class WebSocketSubscriptionHub:
 
                     for dead in dead_clients:
                         self.unregister_client(dead)
+
+        # 5. PipeWire Audio Node Meters deltas (if subscribed)
+        active_meter_subs = self._topics.get("pipewire_meters", {})
+        if active_meter_subs and process_manager and hasattr(process_manager, "get_or_create_pipewire_meter_collector"):
+            for s_id, subscribers in list(active_meter_subs.items()):
+                if not subscribers:
+                    continue
+                target_id = int(s_id) if (isinstance(s_id, (int, str)) and str(s_id).isdigit()) else s_id
+                collector = process_manager.get_or_create_pipewire_meter_collector(target_id)
+                if not collector:
+                    continue
+                try:
+                    meters = await collector.get_meters()
+                except Exception as e:
+                    logger.debug(f"Error reading pipewire meters for #{target_id}: {e}")
+                    continue
+
+                dead_clients = []
+                for ws in list(subscribers):
+                    try:
+                        await ws.send_json({
+                            "type": "pipewire_meters",
+                            "id": target_id,
+                            "meters": meters
+                        })
+                    except Exception:
+                        dead_clients.append(ws)
+
+                for dead in dead_clients:
+                    self.unregister_client(dead)
 
 
 # Global singleton instance

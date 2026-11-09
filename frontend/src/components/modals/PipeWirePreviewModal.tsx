@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
 import { RefreshIcon, ClipboardIcon, CheckIcon } from '../Icons';
@@ -173,6 +173,90 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
   const ptpLogsContainerRef = useRef<HTMLDivElement | null>(null);
   const phcLogsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Canvas references for active PipeWire audio node VU meters
+  const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
+  const canvasRefSetter = useCallback((nodeId: number, el: HTMLCanvasElement | null) => {
+    canvasRefs.current[nodeId] = el;
+  }, []);
+
+  const renderPipeWireCanvasMeters = useCallback((metersMap: Record<string | number, number[]>) => {
+    Object.entries(metersMap).forEach(([nidStr, vals]) => {
+      const nid = parseInt(nidStr, 10);
+      const canvas = canvasRefs.current[nid];
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // Stereo horizontal bars: L on top, R on bottom
+      const barHeight = Math.max(2, Math.floor((h - 2) / 2));
+      const leftLevel = Math.min(1.0, Math.max(0.0, vals[0] || 0.0));
+      const rightLevel = Math.min(1.0, Math.max(0.0, vals[1] ?? vals[0] ?? 0.0));
+
+      const drawBar = (y: number, level: number) => {
+        // Background track
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.fillRect(0, y, w, barHeight);
+
+        if (level <= 0.005) return;
+
+        const fillW = Math.max(1, Math.floor(w * level));
+
+        // Segmented LED look: green -> amber -> red
+        const grad = ctx.createLinearGradient(0, y, w, y);
+        grad.addColorStop(0, '#22c55e');    // Green
+        grad.addColorStop(0.7, '#22c55e');  // Green up to ~ -6 dB
+        grad.addColorStop(0.85, '#eab308'); // Amber ~ -3 dB
+        grad.addColorStop(1.0, '#ef4444');  // Red 0 dB
+
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, y, fillW, barHeight);
+      };
+
+      drawBar(0, leftLevel);
+      drawBar(barHeight + 2, rightLevel);
+    });
+  }, []);
+
+  // Ephemeral WebSocket connection for real-time node audio meters (active exclusively on 'nodes' tab)
+  useEffect(() => {
+    if (!isRunning || activeTab !== 'nodes' || !currentProcess?.id) {
+      return;
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const token = localStorage.getItem('token') || '';
+    const wsUrl = `${protocol}//${window.location.host}/ws/pipewire/meters/${currentProcess.id}${
+      token ? `?token=${encodeURIComponent(token)}` : ''
+    }`;
+    let ws: WebSocket | null = null;
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.meters) {
+            renderPipeWireCanvasMeters(payload.meters);
+          }
+        } catch {
+          // ignore parsing error
+        }
+      };
+    } catch {
+      // ignore connection error
+    }
+
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, [currentProcess?.id, isRunning, activeTab, renderPipeWireCanvasMeters]);
 
   const handleReconcileMatrix = async () => {
     if (!currentProcess?.id || isReconciling) return;
@@ -673,7 +757,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   <table className="w-full text-left text-xs font-mono">
                     <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                       <tr>
-                        <th className="p-2.5">ID</th>
+                        <th className="p-2.5 w-16 text-center">{t('services.pipewire.levelHeader', 'Level')}</th>
                         <th className="p-2.5">{t('services.pipewire.nodeNameEntity', 'Node / Entity Name')}</th>
                         <th className="p-2.5">Media Class</th>
                         <th className="p-2.5">State</th>
@@ -682,11 +766,39 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--glass-border)]">
-                      {graphData.nodes.map((node) => (
-                        <tr key={node.id} className="hover:bg-white/2 transition-colors">
-                          <td className="p-2.5 text-zinc-500">#{node.id}</td>
-                          <td className="p-2.5">
-                            <div className="flex flex-col">
+                      {graphData.nodes.map((node) => {
+                        const nodeLinksCount = graphData?.links?.filter(
+                          (l) => l.output_node_id === node.id || l.input_node_id === node.id
+                        ).length || 0;
+                        const isNodeActive = isRunning && node.state === 'running' && nodeLinksCount > 0;
+
+                        return (
+                          <tr key={node.id} className="hover:bg-white/2 transition-colors">
+                            <td className="p-2.5 text-center">
+                              {isNodeActive ? (
+                                <div
+                                  className="w-14 h-5 px-1 py-1 rounded bg-black/70 border border-[var(--glass-border)] flex items-center justify-center shadow-inner mx-auto"
+                                  title={`Node #${node.id} · ${t('common.active', 'Active')} (${nodeLinksCount} links)`}
+                                >
+                                  <canvas
+                                    ref={(el) => canvasRefSetter(node.id, el)}
+                                    width={48}
+                                    height={12}
+                                    className="w-12 h-3 rounded-sm"
+                                  />
+                                </div>
+                              ) : (
+                                <div
+                                  className="w-14 h-5 px-1 py-1 rounded bg-black/40 border border-[var(--glass-border)]/50 flex flex-col justify-center gap-1 opacity-35 select-none mx-auto"
+                                  title={`Node #${node.id} · ${t('services.pipewire.levelIdleTooltip', 'Node idle or unlinked')}`}
+                                >
+                                  <div className="w-full h-1 bg-white/10 rounded-sm" />
+                                  <div className="w-full h-1 bg-white/10 rounded-sm" />
+                                </div>
+                              )}
+                            </td>
+                            <td className="p-2.5">
+                              <div className="flex flex-col" title={`Node #${node.id}`}>
                               {node.human_label ? (
                                 <>
                                   <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
@@ -730,7 +842,8 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                             {node.description || node.nick || '-'}
                           </td>
                         </tr>
-                      ))}
+                      );
+                    })}
                     </tbody>
                   </table>
                 </div>
