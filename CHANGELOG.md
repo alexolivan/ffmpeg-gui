@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.62.0] - 2026-11-09
+
+### Added
+- **AoIP Profile-Based RTP Port Policy & Dante Standards Compliance (`backend/core/pipewire_config.py`, `frontend/src/components/forms/PipeWireConfigForm.tsx`, `frontend/src/locales/`)**:
+  - Enforced strict destination port locking to `5004` (standard AES67/Dante RTP port) when using the `Audinate Dante / AES67 (Strict)` profile, preventing multi-sink port drift (e.g. 5006, 5008) that breaks compatibility with hardware receivers and Sound-Net Virtual Sound Card (VSC).
+  - Automatically resets existing virtual sinks to port `5004` when switching to the Dante profile in the PipeWire Hub configuration form.
+  - Implemented subtle non-standard port warning for `Ravenna / Broadcast AES67` profile (`services.pipewire.nonStandardPortNotice`) when a port other than 5004 is configured, while keeping the field editable.
+  - Removed legacy generic RTP `+ idx * 2` multiplier from route recalculation (`handleRecalculateRoutes`), initializing all sinks to port `5004` while preserving independent canonical multicast IP allocation per sink (`239.69.X.1`, `239.69.X.2`, etc.).
+  - Added backend defense-in-depth guardrail in `PipeWireConfigGenerator.generate_pipewire_conf` forcing `dest_port = 5004` under Dante profile regardless of raw payload values.
+  - Added automated unit tests in `test_pipewire_config.py` verifying Dante port 5004 enforcement and custom port preservation in Ravenna/standalone profiles.
+
 ## [2.61.1] - 2026-11-09
 
 ### Fixed

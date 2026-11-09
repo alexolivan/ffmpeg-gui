@@ -232,6 +232,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       setPtpDomain(0);
       setPtpPriority1(forceLocalMaster ? 128 : 254);
       setPtpAutoInhibit(!forceLocalMaster);
+      setVirtualSinks((prev) => prev.map((s) => ({ ...s, rtp_port: 5004 })));
     }
   };
 
@@ -307,7 +308,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     setVirtualSinks((prev) =>
       prev.map((sink, idx) => {
         const nextIp = `${cleanPrefix}.${idx + 1}`;
-        const nextPort = 5004 + idx * 2;
+        const nextPort = 5004;
         const currentSuffix = cleanSapSuffix(sink.sap_name, hostName, sink.id);
         return {
           ...sink,
@@ -609,7 +610,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         channels: Number(s.channels) || 2,
         aes67_enabled: aes67Enabled && Boolean(s.aes67_enabled),
         multicast_ip: s.multicast_ip?.trim() || `${cleanPrefix}.${idx + 1}`,
-        rtp_port: Number(s.rtp_port) || 5004,
+        rtp_port: aoipProfile === 'dante' ? 5004 : (Number(s.rtp_port) || 5004),
         sap_name: fullSap,
       };
     });
@@ -1585,12 +1586,21 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                               required
                               min={1024}
                               max={65535}
-                              value={sink.rtp_port || 5004}
+                              value={aoipProfile === 'dante' ? 5004 : (sink.rtp_port || 5004)}
+                              disabled={aoipProfile === 'dante'}
                               onChange={(e) => handleSinkChange(idx, 'rtp_port', Number(e.target.value))}
                               onBlur={() => validateSinkMulticast(idx, sink.multicast_ip, sink.rtp_port)}
-                              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime"
+                              className={`w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime ${
+                                aoipProfile === 'dante' ? 'opacity-70 cursor-not-allowed bg-[var(--bg-card)]' : ''
+                              }`}
                               placeholder="5004"
                             />
+                            {aoipProfile === 'ravenna' && Number(sink.rtp_port || 5004) !== 5004 && (
+                              <p className="text-[10px] text-amber-400/80 mt-1 flex items-center gap-1">
+                                <span>ℹ️</span>
+                                <span>{t('services.pipewire.nonStandardPortNotice', 'Non-standard AES67 port (standard is 5004)')}</span>
+                              </p>
+                            )}
                           </div>
 
                           <div>

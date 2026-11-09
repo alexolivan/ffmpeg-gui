@@ -324,7 +324,7 @@ class PipeWireConfigGenerator:
                 dest_ip = sink.get("multicast_ip")
                 if not dest_ip:
                     dest_ip = cls.get_canonical_sink_multicast_ip(base_prefix, idx)
-                dest_port = int(sink.get("rtp_port", 5004))
+                dest_port = 5004 if aoip_profile == "dante" else int(sink.get("rtp_port", 5004))
                 raw_sap = sink.get("sap_name") or sink.get("name") or sink_id
                 sap_name = cls.format_sap_name(raw_sap)
                 audio_fmt = "S24BE" if aoip_profile == "dante" else sink.get("format", "S24BE")

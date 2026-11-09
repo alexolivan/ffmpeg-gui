@@ -387,6 +387,7 @@
       "sinkAes67Enable": "Emetre via AES67 / Dante (Multicast RTP)",
       "multicastIp": "IP Multicast",
       "rtpPort": "Port RTP",
+      "nonStandardPortNotice": "Port fora de l'estàndard AES67 (l'estàndard és 5004)",
       "sapName": "Nom d'Emissió SAP",
       "aes67Section": "2. Mòdul de Difusió de Xarxa AES67 / Dante (Tx)",
       "aes67Help": "Transmet àudio sense compressió de molt baixa latència per la xarxa local cap a receptors Dante i AES67 amb anunci SAP.",

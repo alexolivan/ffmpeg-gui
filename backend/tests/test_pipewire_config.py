@@ -607,6 +607,45 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         lat_4ms = PipeWireConfigGenerator.resolve_safe_jitter_latency_ms(86, quantum=1024, sample_rate=48000, ptime_mode="4ms")
         self.assertEqual(lat_4ms, 88)
 
+    def test_dante_profile_forces_port_5004(self):
+        """Verifies that Dante profile strictly enforces port 5004 even if custom port is in config."""
+        dante_cfg = {
+            "aoip_profile": "dante",
+            "virtual_sinks": [
+                {
+                    "id": "sink_dante",
+                    "name": "Dante Tx",
+                    "aes67_enabled": True,
+                    "multicast_ip": "239.69.1.5",
+                    "rtp_port": 5010,
+                    "channels": 2
+                }
+            ]
+        }
+        conf = PipeWireConfigGenerator.generate_config(60, dante_cfg, "/tmp/run")
+        self.assertIn("destination.port = 5004", conf)
+        self.assertIn("rtp.destination.port = 5004", conf)
+        self.assertNotIn("5010", conf)
+
+        # In contrast, ravenna and standalone preserve custom port
+        ravenna_cfg = {
+            "aoip_profile": "ravenna",
+            "virtual_sinks": [
+                {
+                    "id": "sink_ravenna",
+                    "name": "Ravenna Tx",
+                    "aes67_enabled": True,
+                    "multicast_ip": "239.69.1.6",
+                    "rtp_port": 5010,
+                    "channels": 2
+                }
+            ]
+        }
+        conf_rav = PipeWireConfigGenerator.generate_config(61, ravenna_cfg, "/tmp/run")
+        self.assertIn("destination.port = 5010", conf_rav)
+        self.assertIn("rtp.destination.port = 5010", conf_rav)
+
+
 
 if __name__ == "__main__":
     unittest.main()
