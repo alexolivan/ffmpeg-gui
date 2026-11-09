@@ -7708,9 +7708,10 @@ def _serialize_build(build: FfmpegBuild) -> dict:
 class ScheduledTaskCreate(BaseModel):
     name: str
     is_active: Optional[bool] = True
+    command: Optional[str] = None
     input_config: dict
-    output_config: dict
-    codec_config: dict
+    output_config: Optional[dict] = {}
+    codec_config: Optional[dict] = {}
     filter_config: Optional[dict] = None
     ffmpeg_build_id: Optional[int] = None
     schedule_type: str
@@ -7739,6 +7740,7 @@ class ScheduledTaskCreate(BaseModel):
 class ScheduledTaskUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
+    command: Optional[str] = None
     input_config: Optional[dict] = None
     output_config: Optional[dict] = None
     codec_config: Optional[dict] = None
@@ -7793,6 +7795,7 @@ def serialize_task_item(t: ScheduledTask, db: Session, deps_list: Optional[list]
     return {
         "id": t.id,
         "name": t.name,
+        "command": t.command,
         "is_active": t.is_active,
         "input_config": t.input_config,
         "output_config": t.output_config,
@@ -7868,12 +7871,21 @@ def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = De
 
     is_active_val = True if payload.schedule_type == 'manual' else (payload.is_active if payload.is_active is not None else True)
 
+    cmd_val = payload.command
+    in_cfg = payload.input_config or {}
+    if cmd_val == "system://service_restart" or in_cfg.get("type") == "service_restart":
+        cmd_val = "system://service_restart"
+        sids = in_cfg.get("service_ids")
+        if not sids or not isinstance(sids, list):
+            raise HTTPException(status_code=400, detail="service_ids must be a non-empty list of service IDs")
+
     db_task = ScheduledTask(
         name=payload.name,
+        command=cmd_val,
         is_active=is_active_val,
         input_config=payload.input_config,
         output_config=output_cfg,
-        codec_config=payload.codec_config,
+        codec_config=payload.codec_config or {},
         filter_config=payload.filter_config,
         ffmpeg_build_id=payload.ffmpeg_build_id,
         schedule_type=payload.schedule_type,
@@ -7891,8 +7903,9 @@ def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = De
     db.add(db_task)
     db.commit()
 
-    from core.dependency_manager import dependency_manager
-    dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
+    if not db_task.command:
+        from core.dependency_manager import dependency_manager
+        dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
     db.refresh(db_task)
     actor_info = audit_logger.extract_actor_info(request)
     audit_logger.log(
@@ -7915,6 +7928,7 @@ def export_tasks(db: Session = Depends(get_db)):
     for t in tasks:
         exported.append({
             "name": t.name,
+            "command": t.command,
             "is_active": t.is_active,
             "input_config": t.input_config,
             "output_config": t.output_config,
@@ -7949,6 +7963,7 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
         "exported_at": datetime.datetime.utcnow().isoformat(),
         "task": {
             "name": t.name,
+            "command": t.command,
             "is_active": t.is_active,
             "input_config": t.input_config,
             "output_config": t.output_config,
@@ -8015,6 +8030,8 @@ def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
     db_task = db.query(ScheduledTask).get(task_id)
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if db_task.command == "system://service_restart" or (db_task.input_config and db_task.input_config.get("type") == "service_restart"):
+        raise HTTPException(status_code=400, detail="Service maintenance tasks cannot be cloned as an FFmpeg service")
 
     new_proc_name = f"Copy of {db_task.name}"
     
@@ -8108,18 +8125,26 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
                 def_b = db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready", SoftwareBuild.is_default == True).first() or db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready").first()
                 build_id = def_b.id if def_b else None
 
-        sanitized_cfg = migrate_and_validate_profile({
-            "input_config": td.get("input_config", {}),
-            "output_config": td.get("output_config", {})
-        }, db)
+        cmd = td.get("command")
+        if cmd == "system://service_restart" or (td.get("input_config") and td.get("input_config").get("type") == "service_restart"):
+            cmd = "system://service_restart"
+            sanitized_input = td.get("input_config", {})
+            sanitized_output = td.get("output_config", {})
+        else:
+            sanitized_cfg = migrate_and_validate_profile({
+                "input_config": td.get("input_config", {}),
+                "output_config": td.get("output_config", {})
+            }, db)
+            sanitized_input = sanitized_cfg.get("input_config", {})
+            sanitized_output = sanitized_cfg.get("output_config", {})
 
         db_task = ScheduledTask(
             name=f"Imported: {td.get('name', 'Untitled')}",
             is_system=False,
-            command=None,
+            command=cmd,
             is_active=td.get("is_active", False),
-            input_config=sanitized_cfg.get("input_config", {}),
-            output_config=sanitized_cfg.get("output_config", {}),
+            input_config=sanitized_input,
+            output_config=sanitized_output,
             codec_config=td.get("codec_config", {}),
             filter_config=td.get("filter_config"),
             ffmpeg_build_id=build_id,
@@ -8142,10 +8167,11 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
 
     from core.dependency_manager import dependency_manager
     for db_task in imported:
-        try:
-            dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
-        except Exception as e:
-            logger.warning(f"Error syncing auto dependencies for imported task {db_task.id}: {e}")
+        if not db_task.command:
+            try:
+                dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
+            except Exception as e:
+                logger.warning(f"Error syncing auto dependencies for imported task {db_task.id}: {e}")
 
     return {"status": "success", "count": len(imported)}
 
@@ -8161,6 +8187,7 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
         "task": {
             "id": task.id,
             "name": task.name,
+            "command": task.command,
             "is_active": task.is_active,
             "input_config": task.input_config,
             "output_config": task.output_config,
@@ -8207,6 +8234,17 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db
     update_data = payload.dict(exclude_unset=True)
     if 'output_config' in update_data and update_data['output_config']:
         sanitize_output_config_data(update_data['output_config'])
+
+    # Validate service maintenance restart inputs if applicable
+    effective_cmd = update_data.get('command', task.command)
+    in_cfg = update_data.get('input_config', task.input_config or {})
+    if effective_cmd == "system://service_restart" or in_cfg.get("type") == "service_restart":
+        if 'input_config' in update_data:
+            sids = in_cfg.get("service_ids")
+            if not sids or not isinstance(sids, list):
+                raise HTTPException(status_code=400, detail="service_ids must be a non-empty list of service IDs")
+        if not task.command:
+            task.command = "system://service_restart"
     
     sched_changed = ('schedule_type' in update_data or 
                      'schedule_cron' in update_data or 
@@ -8236,8 +8274,9 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db
 
     db.commit()
 
-    from core.dependency_manager import dependency_manager
-    dependency_manager.sync_auto_dependencies('task', task.id, task.input_config, task.output_config, db)
+    if not task.command:
+        from core.dependency_manager import dependency_manager
+        dependency_manager.sync_auto_dependencies('task', task.id, task.input_config, task.output_config, db)
     db.refresh(task)
 
     actor_info = audit_logger.extract_actor_info(request)
