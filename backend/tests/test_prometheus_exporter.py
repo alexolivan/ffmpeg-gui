@@ -127,3 +127,46 @@ def test_prometheus_metrics_service_gauges(client):
         with SessionLocal() as db:
             db.query(Service).filter(Service.id.in_([svc_id, svc_na_id])).delete()
             db.commit()
+
+
+def test_prometheus_metrics_with_gui_password_configured(client):
+    from main import _AUTH_PW_CACHE
+    with SessionLocal() as db:
+        settings = db.query(SystemSettings).first()
+        if not settings:
+            settings = SystemSettings()
+            db.add(settings)
+        settings.metrics_exporter_enabled = True
+        settings.metrics_exporter_token = "metrics_secret_tok"
+        settings.metrics_exporter_allowed_ips = None
+        settings.gui_password = "admin_super_secret_gui_password"
+        db.commit()
+
+    _AUTH_PW_CACHE["password"] = "admin_super_secret_gui_password"
+    _AUTH_PW_CACHE["timestamp"] = 99999999999.0
+
+    try:
+        # Scraper requesting with metrics bearer token must pass through AuthBarrierMiddleware
+        resp = client.get(
+            "/metrics",
+            headers={"Authorization": "Bearer metrics_secret_tok"}
+        )
+        assert resp.status_code == 200
+        assert "ffmpeg_gui_system_cpu_percent" in resp.text
+
+        # Invalid metrics token must return 401 from get_prometheus_metrics with specific detail
+        resp_invalid = client.get(
+            "/metrics",
+            headers={"Authorization": "Bearer bad_tok"}
+        )
+        assert resp_invalid.status_code == 401
+        assert "Unauthorized metrics access" in resp_invalid.json().get("detail", "")
+    finally:
+        with SessionLocal() as db:
+            settings = db.query(SystemSettings).first()
+            if settings:
+                settings.gui_password = None
+                db.commit()
+        _AUTH_PW_CACHE["password"] = None
+        _AUTH_PW_CACHE["timestamp"] = 0.0
+

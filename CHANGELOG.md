@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.60.1] - 2026-11-09
+
+### Fixed
+- **Prometheus & OpenMetrics Exporter Authentication Barrier Bypass (`backend/main.py`, `backend/tests/test_prometheus_exporter.py`)**:
+  - Whitelisted `/metrics` and `/api/metrics` in `AuthBarrierMiddleware` so scrape requests pass through to `get_prometheus_metrics` without being prematurely intercepted and rejected with `401 Unauthorized` when a GUI master password is configured on the appliance.
+  - Metrics endpoints remain strictly protected by their own dedicated two-layer defense (`metrics_exporter_token` with constant-time `secrets.compare_digest` and `metrics_exporter_allowed_ips` CIDR whitelist).
+  - Added unit test `test_prometheus_metrics_with_gui_password_configured` validating scrape authentication when GUI password protection is active.
+
+### Changed
+- **Metrics Exporter UI & CloudHub Proxy Awareness (`frontend/src/components/views/settings/MetricsExporterSettingsCard.tsx`, `frontend/src/locales/`)**:
+  - Added dedicated "Copy Token" button alongside "Copy URL" so operators can directly copy the raw bearer authentication token with a single click.
+  - Added CloudHub proxy detection to prevent generating invalid CloudHub VPS root URLs (`https://<cloudhub-host>/api/metrics`); the UI now formats scrape targets as `http://<node-ip>:8000/api/metrics` and provides clear explanatory guidance when accessed via CloudHub remote reverse tunnels.
+  - Added localized strings for token copy and CloudHub notice in English, Spanish, and Catalan.
+
 ## [2.60.0] - 2026-11-09
 
 ### Added

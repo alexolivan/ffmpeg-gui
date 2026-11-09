@@ -20,6 +20,7 @@ export const MetricsExporterSettingsCard: React.FC<MetricsExporterSettingsCardPr
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+  const [copiedToken, setCopiedToken] = useState<boolean>(false);
   const [copiedConfig, setCopiedConfig] = useState<boolean>(false);
 
   useEffect(() => {
@@ -53,11 +54,16 @@ export const MetricsExporterSettingsCard: React.FC<MetricsExporterSettingsCardPr
     }
   };
 
+  const isCloudHub = typeof window !== 'undefined' && (
+    window.location.pathname.includes('/proxy/') ||
+    document.cookie.includes('cloudhub_session')
+  );
+
   const baseUrl = API ? (API.startsWith('http') ? API : `${window.location.protocol}//${window.location.host}${API}`) : window.location.origin;
-  const metricsUrl = `${baseUrl}/api/metrics`;
+  const metricsUrl = isCloudHub ? 'http://<node-ip>:8000/api/metrics' : `${baseUrl}/api/metrics`;
   const metricsUrlWithToken = token ? `${metricsUrl}?token=${token}` : metricsUrl;
 
-  const scrapeHost = API ? new URL(baseUrl).host : window.location.host;
+  const scrapeHost = isCloudHub ? '<node-ip>:8000' : (API ? new URL(baseUrl).host : window.location.host);
   const scrapeConfigYaml = `# Prometheus Scrape Target for ffmpeg-gui node
 scrape_configs:
   - job_name: 'ffmpeg-gui'
@@ -66,6 +72,16 @@ scrape_configs:
     ${token ? `bearer_token: '${token}'` : '# No auth token configured'}
     static_configs:
       - targets: ['${scrapeHost}']`;
+
+  const handleCopyToken = async () => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopiedToken(true);
+      setTimeout(() => setCopiedToken(false), 2000);
+    } catch (err) {
+      console.error('Copy token failed', err);
+    }
+  };
 
   const handleCopyUrl = async () => {
     try {
@@ -159,15 +175,34 @@ scrape_configs:
                 className="input-field flex-1 font-mono text-xs py-2 px-3 bg-black/30 border border-white/10 rounded-lg text-[var(--text-primary)]"
               />
               {token && (
-                <button
-                  type="button"
-                  onClick={handleCopyUrl}
-                  className="px-3 py-2 bg-white/5 hover:bg-white/10 text-xs text-[var(--text-primary)] rounded-lg border border-white/10 cursor-pointer font-mono whitespace-nowrap"
-                >
-                  {copiedUrl ? `✓ ${t('settings.metricsExporter.copied', 'Copied!')}` : t('settings.metricsExporter.copyUrl', 'Copy URL')}
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCopyToken}
+                    className="px-2.5 py-2 bg-white/5 hover:bg-white/10 text-xs text-[var(--text-primary)] rounded-lg border border-white/10 cursor-pointer font-mono whitespace-nowrap"
+                    title={t('settings.metricsExporter.copyToken', 'Copy Token')}
+                  >
+                    {copiedToken ? `✓ ${t('settings.metricsExporter.copied', 'Copied!')}` : `🔑 ${t('settings.metricsExporter.copyToken', 'Copy Token')}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyUrl}
+                    className="px-2.5 py-2 bg-white/5 hover:bg-white/10 text-xs text-[var(--text-primary)] rounded-lg border border-white/10 cursor-pointer font-mono whitespace-nowrap"
+                    title={t('settings.metricsExporter.copyUrl', 'Copy URL')}
+                  >
+                    {copiedUrl ? `✓ ${t('settings.metricsExporter.copied', 'Copied!')}` : `🔗 ${t('settings.metricsExporter.copyUrl', 'Copy URL')}`}
+                  </button>
+                </div>
               )}
             </div>
+            {isCloudHub && (
+              <p className="text-[11px] text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-md p-2 mt-1">
+                ⚠️ {t(
+                  'settings.metricsExporter.cloudhubScrapeNote',
+                  "Scraping via CloudHub proxy is not supported. Use the appliance's local IP or internal DNS in your Prometheus scrape configuration."
+                )}
+              </p>
+            )}
             <p className="text-[10px] text-[var(--text-secondary)]">
               {t(
                 'settings.metricsExporter.tokenHelp',
