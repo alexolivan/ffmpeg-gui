@@ -208,9 +208,9 @@ def build_openmetrics_payload(
             "# HELP ffmpeg_gui_fan_speed_rpm Host cooling fan rotational speed in RPM",
             "# TYPE ffmpeg_gui_fan_speed_rpm gauge",
         ])
-        for fan in fans:
-            f_id = escape_label_value(fan.get("id", "0"))
-            f_lbl = escape_label_value(fan.get("label", "fan"))
+        for idx, fan in enumerate(fans):
+            f_id = escape_label_value(fan.get("id", str(idx + 1)))
+            f_lbl = escape_label_value(fan.get("name") or fan.get("label") or f"Fan #{idx + 1}")
             f_rpm = fan.get("rpm", 0)
             lines.append(f'ffmpeg_gui_fan_speed_rpm{{id="{f_id}",label="{f_lbl}"}} {f_rpm}')
 

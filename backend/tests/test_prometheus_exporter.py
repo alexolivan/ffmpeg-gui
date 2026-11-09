@@ -208,7 +208,10 @@ def test_build_openmetrics_payload_semantic_separation():
             "package_temp": 49.5,
             "throttling": {"active": False, "total_package_events": 0}
         },
-        "fans": [{"id": "1", "label": "CPU Fan", "rpm": 1450}]
+        "fans": [
+            {"name": "Sys Fan #1", "rpm": 1005},
+            {"name": "Sys Fan #2", "rpm": 574},
+        ]
     }
 
     payload = build_openmetrics_payload(
@@ -272,7 +275,8 @@ def test_build_openmetrics_payload_semantic_separation():
     assert 'ffmpeg_gui_system_ram_used_mb 2048' in payload
     assert 'ffmpeg_gui_system_uptime_seconds 120000' in payload
     assert 'ffmpeg_gui_cpu_package_temp_celsius 49.5' in payload
-    assert 'ffmpeg_gui_fan_speed_rpm{id="1",label="CPU Fan"} 1450' in payload
+    assert 'ffmpeg_gui_fan_speed_rpm{id="1",label="Sys Fan #1"} 1005' in payload
+    assert 'ffmpeg_gui_fan_speed_rpm{id="2",label="Sys Fan #2"} 574' in payload
     assert 'ffmpeg_gui_gpu_utilization_percent{vendor="NVIDIA",name="RTX 4000"} 22' in payload
     assert 'ffmpeg_gui_storage_used_gb{id="1",name="Storage NVMe",type="local"} 120.5' in payload
     assert 'ffmpeg_gui_tasks_running_count 1' in payload

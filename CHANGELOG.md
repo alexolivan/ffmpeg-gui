@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.61.1] - 2026-11-09
+
+### Fixed
+- **Prometheus Fan Speed Metrics Duplicate Label Collision (`backend/core/prometheus_exporter.py`, `backend/tests/test_prometheus_exporter.py`)**:
+  - Fixed duplicate OpenMetrics label sets on hosts with multiple cooling fans by enumerating fan indices (`idx + 1`) and reading the tachometer sensor name (`name` or `label`) rather than hardcoding identical IDs and label attributes.
+  - Updated test suite `test_prometheus_exporter.py` with multi-fan scenario.
+
+### Added
+- **Packaging Templates for Prometheus & Grafana Integration (`packaging/prometheus/`)**:
+  - Added [prometheus.yml.example](file:///home/alex/LocalRepositories/ffmpeg-gui/packaging/prometheus/prometheus.yml.example) providing an out-of-the-box Prometheus scrape configuration with bearer token authentication and target definitions.
+  - Added [grafana-dashboard-ffmpeg-gui.json](file:///home/alex/LocalRepositories/ffmpeg-gui/packaging/prometheus/grafana-dashboard-ffmpeg-gui.json) featuring a ready-to-import Grafana dashboard model with Host & System Health, Broadcast Services, FFmpeg Live Stream Performance (FPS, Bitrate, Realtime Speed ratio), Subsystems (Icecast2, MediaMTX, PipeWire), and Federated Node latencies.
+  - Added [README.md](file:///home/alex/LocalRepositories/ffmpeg-gui/packaging/prometheus/README.md) with quick start guide and scrape validation instructions.
+
 ## [2.61.0] - 2026-11-09
 
 ### Added
