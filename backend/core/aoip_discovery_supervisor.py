@@ -36,6 +36,11 @@ SAP_MULTICAST_GROUPS: Tuple[str, ...] = (
     "224.2.127.254"
 )
 
+# SAP stream announcement freshness and pruning windows (seconds)
+SAP_STREAM_EXPIRATION_SEC: float = 45.0
+SAP_ACTIVE_STREAM_WINDOW_SEC: float = 45.0
+
+
 
 
 def parse_sap_packet(data: bytes, sender_ip: str = "") -> Optional[Dict[str, Any]]:
@@ -443,6 +448,26 @@ class AoIpDiscoverySupervisor:
             logger.warning(f"[AoIpDiscovery #{self.hub_id}] Failed to bind SAP socket on port 9875: {e}")
             return None
 
+    def _prune_expired_streams(self, now: float) -> bool:
+        """
+        Prunes cached SAP streams that have not announced within SAP_STREAM_EXPIRATION_SEC.
+        Returns True if any stream was pruned, triggering WebSocket graph invalidation.
+        """
+        expired_keys = [
+            k for k, v in self._streams_cache.items()
+            if now - v.get("last_seen", 0) > SAP_STREAM_EXPIRATION_SEC
+        ]
+        if expired_keys:
+            for k in expired_keys:
+                self._streams_cache.pop(k, None)
+            try:
+                from core.websocket_subscription_hub import subscription_hub
+                subscription_hub.invalidate_pipewire_graph(self.hub_id)
+            except Exception:
+                pass
+            return True
+        return False
+
     async def _run_sap_listener(self):
         """Asynchronous listener loop receiving and parsing SAP announcements via DatagramProtocol."""
         loop = asyncio.get_running_loop()
@@ -546,17 +571,9 @@ class AoIpDiscoverySupervisor:
             except Exception as e:
                 logger.debug(f"[AoIpDiscovery #{self.hub_id}] PTP monitor loop error: {e}")
 
-            # Prune expired streams (no SAP announce for 120 seconds)
+            # Prune expired streams
             now = time.time()
-            expired_keys = [k for k, v in self._streams_cache.items() if now - v.get("last_seen", 0) > 120.0]
-            if expired_keys:
-                for k in expired_keys:
-                    self._streams_cache.pop(k, None)
-                try:
-                    from core.websocket_subscription_hub import subscription_hub
-                    subscription_hub.invalidate_pipewire_graph(self.hub_id)
-                except Exception:
-                    pass
+            self._prune_expired_streams(now)
 
             await asyncio.sleep(5.0)
 
@@ -564,8 +581,10 @@ class AoIpDiscoverySupervisor:
         """
         Returns real-time discovery status, including PTP state, discovered streams,
         and live status of configured remote sinks.
+        Actively prunes expired streams on demand so immediate queries reflect current network reality.
         """
         now = time.time()
+        self._prune_expired_streams(now)
         persisted_remote_sinks = self._get_persisted_remote_sinks()
 
         # Build lookup of persisted remote sinks by multicast_ip:rtp_port
@@ -596,7 +615,7 @@ class AoIpDiscoverySupervisor:
             r_port = int(rs.get("rtp_port", 5004))
             k = f"{m_ip}:{r_port}"
             active_stream = self._streams_cache.get(k)
-            is_active = active_stream is not None and (now - active_stream.get("last_seen", 0) <= 60.0)
+            is_active = active_stream is not None and (now - active_stream.get("last_seen", 0) <= SAP_ACTIVE_STREAM_WINDOW_SEC)
 
             remote_sinks_status.append({
                 "id": rs_id,

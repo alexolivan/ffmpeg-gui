@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.62.1] - 2026-11-09
+
+### Fixed
+- **AoIP Remote Sinks Live Status Accuracy (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Fixed false-positive `Online / Linked` status on remote sinks when the source stream changes port or stops broadcasting.
+  - Linked the status check to real-time network presence from `aoip_discovery.remote_sinks_status` in addition to PipeWire OS node availability: distinguishes between active streams (`Online / Linked`), silent/changed streams (`Waiting for Stream`), and unloaded receiver modules (`Offline / Unloaded`).
+- **Dynamic SAP Radar Pruning & Instant Refresh (`backend/core/aoip_discovery_supervisor.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Reduced SAP stream expiration window from 120s to 45s (`SAP_STREAM_EXPIRATION_SEC = 45.0`, `SAP_ACTIVE_STREAM_WINDOW_SEC = 45.0`), allowing rapid discovery updates when streams migrate across ports.
+  - Implemented on-demand active stream pruning inside `get_discovery_status()`, ensuring manual refreshes and API queries immediately discard dead streams without waiting for the background loop.
+  - Added dedicated refresh button directly in the SAP Radar card header in the PipeWire preview modal.
+  - Added automated unit test in `test_aoip_discovery_supervisor.py` verifying immediate cache pruning and remote sink transition to `waiting`.
+
 ## [2.62.0] - 2026-11-09
 
 ### Added

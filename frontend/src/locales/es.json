@@ -506,6 +506,8 @@
       "streamClock": "Reloj PTP",
       "statusOnline": "En línea / Enlazado",
       "statusWaiting": "Esperando Flujo",
+      "statusOffline": "Desconectado / No cargado",
+      "refreshRadar": "Actualizar y purgar flujos SAP",
       "localTxStream": "Tx Local",
       "alreadyConfigured": "Persistido",
       "readyToImport": "Descubierto",

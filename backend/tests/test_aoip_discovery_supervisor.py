@@ -258,6 +258,56 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(status2["streams_count"], 0)
         self.assertEqual(len(status2["discovered_streams"]), 0)
 
+    def test_get_discovery_status_actively_prunes_expired_streams(self):
+        import time
+        mock_pm = MagicMock()
+        supervisor = AoIpDiscoverySupervisor(14, mock_pm)
+        supervisor.nic_ip = "192.168.99.13"
+
+        now = time.time()
+        # Seed an active stream (seen 10s ago) and an expired stream (seen 50s ago > 45s threshold)
+        supervisor._streams_cache["239.69.11.1:5004"] = {
+            "session_name": "Active Stream",
+            "session_id": "239.69.11.1:5004",
+            "multicast_ip": "239.69.11.1",
+            "rtp_port": 5004,
+            "last_seen": now - 10.0,
+            "origin_ip": "192.168.99.11",
+            "channels": 2,
+            "format": "S24BE"
+        }
+        supervisor._streams_cache["239.69.11.2:5008"] = {
+            "session_name": "Expired Stream",
+            "session_id": "239.69.11.2:5008",
+            "multicast_ip": "239.69.11.2",
+            "rtp_port": 5008,
+            "last_seen": now - 50.0,
+            "origin_ip": "192.168.99.11",
+            "channels": 2,
+            "format": "S24BE"
+        }
+
+        # Mock persisted remote sinks pointing to both
+        supervisor._get_persisted_remote_sinks = MagicMock(return_value=[
+            {"id": "rx_active", "name": "Rx Active", "multicast_ip": "239.69.11.1", "rtp_port": 5004},
+            {"id": "rx_expired", "name": "Rx Expired", "multicast_ip": "239.69.11.2", "rtp_port": 5008},
+        ])
+
+        # Calling get_discovery_status() must prune the expired stream on-the-fly
+        status = supervisor.get_discovery_status()
+
+        # 1. Expired stream should be pruned from cache & discovered_streams
+        self.assertNotIn("239.69.11.2:5008", supervisor._streams_cache)
+        self.assertIn("239.69.11.1:5004", supervisor._streams_cache)
+        self.assertEqual(len(status["discovered_streams"]), 1)
+        self.assertEqual(status["discovered_streams"][0]["session_name"], "Active Stream")
+
+        # 2. Remote sinks status should reflect real-time network presence
+        rs_status = {s["id"]: s["status"] for s in status["remote_sinks_status"]}
+        self.assertEqual(rs_status["rx_active"], "online")
+        self.assertEqual(rs_status["rx_expired"], "waiting")
+
+
 
 if __name__ == "__main__":
     unittest.main()

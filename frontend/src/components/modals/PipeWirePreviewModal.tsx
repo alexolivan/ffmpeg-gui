@@ -95,6 +95,18 @@ interface AoIpStream {
   is_local?: boolean;
 }
 
+interface RemoteSinkStatusItem {
+  id: string;
+  name: string;
+  multicast_ip: string;
+  rtp_port: number;
+  channels: number;
+  format: string;
+  status: 'online' | 'waiting' | string;
+  last_seen?: number | null;
+  origin_ip?: string | null;
+}
+
 interface AoIpTelemetry {
   running: boolean;
   interface?: string | null;
@@ -108,6 +120,7 @@ interface AoIpTelemetry {
     domain?: number;
   };
   discovered_streams: AoIpStream[];
+  remote_sinks_status?: RemoteSinkStatusItem[];
 }
 
 interface GraphTelemetryData {
@@ -1230,9 +1243,15 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       </thead>
                       <tbody className="divide-y divide-[var(--glass-border)]">
                         {remoteSinks.map((rs: any, idx: number) => {
-                          const isOnline = isRunning && Boolean(
+                          const liveSink = graphData?.aoip_discovery?.remote_sinks_status?.find(
+                            (s: any) => s.id === rs.id || (s.multicast_ip === rs.multicast_ip && Number(s.rtp_port) === Number(rs.rtp_port))
+                          );
+                          const isNodeLoaded = Boolean(
                             graphData?.nodes?.some((n) => n.name === `rtp_rx_${rs.id}` || n.name === rs.id)
                           );
+                          const isOnline = isRunning && isNodeLoaded && (liveSink ? liveSink.status === 'online' : true);
+                          const isWaiting = isRunning && isNodeLoaded && liveSink?.status === 'waiting';
+
                           return (
                             <tr key={rs.id || idx} className="hover:bg-white/2 transition-colors">
                               <td className="py-2.5 px-3 font-bold text-[var(--text-primary)]">
@@ -1256,9 +1275,13 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                                     🟢 {t('services.pipewire.statusOnline', 'Online / Linked')}
                                   </span>
-                                ) : (
+                                ) : isWaiting ? (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
                                     🟡 {t('services.pipewire.statusWaiting', 'Waiting for Stream')}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                                    🔴 {t('services.pipewire.statusOffline', 'Offline / Unloaded')}
                                   </span>
                                 )}
                               </td>
@@ -1280,9 +1303,21 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       {t('services.pipewire.discoveredLanStreams', 'Discovered LAN AoIP Streams (SAP Radar)')}
                     </h4>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 font-bold">
-                    {graphData?.aoip_discovery?.discovered_streams?.length || 0}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fetchGraphTelemetry(true)}
+                      disabled={loading || !isRunning}
+                      className="px-2 py-0.5 rounded bg-[var(--input-bg)] hover:bg-white/10 flex items-center gap-1 border border-[var(--glass-border)] text-[10px] font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 transition-colors cursor-pointer"
+                      title={t('services.pipewire.refreshRadar', 'Refresh & Prune SAP Streams')}
+                    >
+                      <RefreshIcon size={10} className={loading ? 'animate-spin' : ''} />
+                      <span>{t('common.refresh', 'Refresh')}</span>
+                    </button>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 font-bold">
+                      {graphData?.aoip_discovery?.discovered_streams?.length || 0}
+                    </span>
+                  </div>
                 </div>
 
                 {(!graphData?.aoip_discovery?.discovered_streams || graphData.aoip_discovery.discovered_streams.length === 0) ? (

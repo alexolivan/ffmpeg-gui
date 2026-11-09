@@ -506,6 +506,8 @@
       "streamClock": "PTP Clock",
       "statusOnline": "Online / Linked",
       "statusWaiting": "Waiting for Stream",
+      "statusOffline": "Offline / Unloaded",
+      "refreshRadar": "Refresh & Prune SAP Streams",
       "localTxStream": "Local Tx",
       "alreadyConfigured": "Persisted",
       "readyToImport": "Discovered",

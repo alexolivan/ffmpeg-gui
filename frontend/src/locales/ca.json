@@ -506,6 +506,8 @@
       "streamClock": "Rellotge PTP",
       "statusOnline": "En línia / Enllaçat",
       "statusWaiting": "Esperant Flux",
+      "statusOffline": "Desconnectat / No carregat",
+      "refreshRadar": "Actualitzar i purgar fluxos SAP",
       "localTxStream": "Tx Local",
       "alreadyConfigured": "Persistit",
       "readyToImport": "Descobert",
