@@ -1997,7 +1997,31 @@
     "taskActiveDesc": "Quan estigui activada, el programador automàtic executarà aquesta tasca segons el seu horari.",
     "triggerAndScheduling": "Disparador i Programació",
     "taskScheduleStatus": "Estat de Programació",
-    "cloneAsService": "Copiar com a Servei"
+    "cloneAsService": "Copiar com a Servei",
+    "editTask": "Editar Tasca Programada",
+    "serviceRestart": {
+      "badge": "REINICI PREVENTIU",
+      "taskTypeMedia": "Tasca Multimèdia FFmpeg",
+      "taskTypeServiceRestart": "Reinici Preventiu de Serveis",
+      "taskTypeMediaDesc": "Transcodificació, enllaç, emissió o conversió de fitxers mitjançant FFmpeg.",
+      "taskTypeServiceRestartDesc": "Reinici esglaonat preventiu de serveis 24/7 per alliberar memòria i sincronia.",
+      "titleNew": "Nova Tasca de Reinici Preventiu de Serveis",
+      "titleEdit": "Editar Tasca de Reinici Preventiu de Serveis",
+      "selectService": "Selecciona un servei per afegir",
+      "addService": "Afegir a la Seqüència",
+      "sequenceTitle": "Seqüència Ordenada de Reinicis",
+      "emptySequence": "Encara no hi ha serveis afegits. Selecciona un servei a dalt i prem \"Afegir a la Seqüència\".",
+      "staggerDelay": "Pausa Esglaonada entre Reinicis",
+      "staggerDelayDesc": "Segons d'espera abans d'iniciar el reinici del següent servei.",
+      "onlyIfRunning": "Reiniciar només si està en execució",
+      "onlyIfRunningDesc": "Salvaguarda: Omet serveis aturats o desactivats (evita aixecar serveis pausats per manteniment).",
+      "sequenceSummary": "Seqüència (cada {{delay}}s):",
+      "sequenceSummaryNoDelay": "Seqüència (simultània):",
+      "noServicesSelectedError": "Si us plau, afegeix almenys un servei a la seqüència de reinici.",
+      "stepMoveUp": "Moure amunt",
+      "stepMoveDown": "Moure avall",
+      "stepRemove": "Eliminar"
+    }
   },
   "sdks": {
     "modalTitle": "INVENTARI I CICLE DE VIDA DE SDKs",

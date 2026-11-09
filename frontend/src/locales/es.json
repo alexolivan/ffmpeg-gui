@@ -1997,7 +1997,31 @@
     "taskActiveDesc": "Cuando esté activada, el programador automático ejecutará esta tarea según su horario.",
     "triggerAndScheduling": "Disparador y Programación",
     "taskScheduleStatus": "Estado de Programación",
-    "cloneAsService": "Copiar como Servicio"
+    "cloneAsService": "Copiar como Servicio",
+    "editTask": "Editar Tarea Programada",
+    "serviceRestart": {
+      "badge": "REINICIO PREVENTIVO",
+      "taskTypeMedia": "Tarea Multimedia FFmpeg",
+      "taskTypeServiceRestart": "Reinicio Preventivo de Servicios",
+      "taskTypeMediaDesc": "Transcodificación, enlace, emisión o conversión de archivos mediante FFmpeg.",
+      "taskTypeServiceRestartDesc": "Reinicio escalonado preventivo de servicios 24/7 para liberar memoria y sincronía.",
+      "titleNew": "Nueva Tarea de Reinicio Preventivo de Servicios",
+      "titleEdit": "Editar Tarea de Reinicio Preventivo de Servicios",
+      "selectService": "Selecciona un servicio para añadir",
+      "addService": "Añadir a la Secuencia",
+      "sequenceTitle": "Secuencia Ordenada de Reinicios",
+      "emptySequence": "Aún no hay servicios añadidos. Selecciona un servicio arriba y pulsa \"Añadir a la Secuencia\".",
+      "staggerDelay": "Pausa Escalonada entre Reinicios",
+      "staggerDelayDesc": "Segundos de espera antes de iniciar el reinicio del siguiente servicio.",
+      "onlyIfRunning": "Reiniciar solo si está en ejecución",
+      "onlyIfRunningDesc": "Salvaguarda: Omite servicios detenidos o desactivados (evita levantar servicios pausados por mantenimiento).",
+      "sequenceSummary": "Secuencia (cada {{delay}}s):",
+      "sequenceSummaryNoDelay": "Secuencia (simultánea):",
+      "noServicesSelectedError": "Por favor, añade al menos un servicio a la secuencia de reinicio.",
+      "stepMoveUp": "Mover arriba",
+      "stepMoveDown": "Mover abajo",
+      "stepRemove": "Eliminar"
+    }
   },
   "sdks": {
     "modalTitle": "INVENTARIO Y CICLO DE VIDA DE SDKs",

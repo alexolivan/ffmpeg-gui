@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.60.0] - 2026-11-09
+
+### Added
+- **Service Maintenance Restart Orchestrator Task (`backend/core/task_manager.py`, `backend/main.py`, `frontend/src/components/ScheduledTasks.tsx`)**:
+  - Implemented scheduled system task type `system://service_restart` for clean, preventive maintenance of 24/7 continuous services (such as DeckLink playouts or long-running encoders).
+  - Configurable ordered service sequence (`service_ids`), inter-service stagger delay (`stagger_delay_seconds`), and running-only safeguard (`only_if_running`) to avoid activating deliberately paused/stopped services.
+  - Abort/cancellation support mid-cascade and live line-by-line task execution logging streamed to the UI and WebSocket.
+  - Updated API task schemas, serialization, and import/export with validation and protection against cloning maintenance tasks as FFmpeg media services.
+  - Added dedicated `ServiceRestartTaskForm` modal component, tabbed creation selector in `ScheduledTasks`, maintenance sequence card badges, and full multi-language translations (`en`, `es`, `ca`).
+
 ## [2.59.1] - 2026-11-06
 
 ### Fixed

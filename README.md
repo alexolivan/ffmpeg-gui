@@ -129,8 +129,9 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Freeze Protection**: Actively monitors process FPS, bitrate, and outputs, force-restarting streams if frames freeze or connection drops.
 - **Jittered Backoff**: Uses exponential backoff delays combined with randomized jitter to break lockstep recovery loops and reduce server resource peaks during network outages.
 
-### ⏰ 10. Task Scheduler & Bilateral Cloning
+### ⏰ 10. Task Scheduler & Service Maintenance Orchestration
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
+- **Service Maintenance Restarts**: Preventive, staggered restart tasks (`system://service_restart`) for 24/7 services to cleanly flush memory accumulation (e.g., long-running DeckLink playouts) and reset clocks with configurable inter-service delays and running-only safeguards.
 - **Safety Runtime Limits**: Define max duration timers to automatically clean up active tasks.
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 

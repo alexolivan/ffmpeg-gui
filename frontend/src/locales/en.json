@@ -1997,7 +1997,31 @@
     "taskActiveDesc": "When enabled, the automated scheduler will execute this task according to its schedule.",
     "triggerAndScheduling": "Trigger & Scheduling",
     "taskScheduleStatus": "Task Schedule Status",
-    "cloneAsService": "Copy as Service"
+    "cloneAsService": "Copy as Service",
+    "editTask": "Edit Scheduled Task",
+    "serviceRestart": {
+      "badge": "MAINTENANCE RESTART",
+      "taskTypeMedia": "FFmpeg Media Task",
+      "taskTypeServiceRestart": "Service Maintenance Restart",
+      "taskTypeMediaDesc": "Transcode, bridge, stream or file conversion using FFmpeg.",
+      "taskTypeServiceRestartDesc": "Preventive staggered restart of 24/7 services to reset memory and clocks.",
+      "titleNew": "New Service Maintenance Restart Task",
+      "titleEdit": "Edit Service Maintenance Restart Task",
+      "selectService": "Select Service to add",
+      "addService": "Add to Sequence",
+      "sequenceTitle": "Ordered Restart Sequence",
+      "emptySequence": "No services added yet. Select a service above and click \"Add to Sequence\".",
+      "staggerDelay": "Stagger Delay Between Restarts",
+      "staggerDelayDesc": "Seconds to wait before initiating the restart of the next service.",
+      "onlyIfRunning": "Only restart if currently running",
+      "onlyIfRunningDesc": "Safeguard: Skips services that are stopped or disabled (avoids starting paused services).",
+      "sequenceSummary": "Sequence (every {{delay}}s):",
+      "sequenceSummaryNoDelay": "Sequence (concurrent):",
+      "noServicesSelectedError": "Please add at least one service to the restart sequence.",
+      "stepMoveUp": "Move up",
+      "stepMoveDown": "Move down",
+      "stepRemove": "Remove"
+    }
   },
   "sdks": {
     "modalTitle": "SDK INVENTORY & LIFECYCLE",
