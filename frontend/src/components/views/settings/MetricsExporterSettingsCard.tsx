@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 interface MetricsExporterSettingsCardProps {
   settings: any;
@@ -54,16 +55,25 @@ export const MetricsExporterSettingsCard: React.FC<MetricsExporterSettingsCardPr
     }
   };
 
-  const isCloudHub = typeof window !== 'undefined' && (
-    window.location.pathname.includes('/proxy/') ||
-    document.cookie.includes('cloudhub_session')
+  const isCloudHub = typeof window !== 'undefined' && Boolean(
+    (window as any).__CLOUDHUB_PROXY__ ||
+    window.location.pathname.includes('/proxy/')
   );
 
+  const appliancePort = settings?.gui_port || (typeof window !== 'undefined' && window.location.port ? window.location.port : 8000);
+  const applianceIp = settings?.primary_ip;
+
+  let scrapeHost = typeof window !== 'undefined' ? window.location.host : '127.0.0.1:8000';
+  if (isCloudHub) {
+    scrapeHost = applianceIp ? `${applianceIp}:${appliancePort}` : `<node-ip>:${appliancePort}`;
+  }
+
   const baseUrl = API ? (API.startsWith('http') ? API : `${window.location.protocol}//${window.location.host}${API}`) : window.location.origin;
-  const metricsUrl = isCloudHub ? 'http://<node-ip>:8000/api/metrics' : `${baseUrl}/api/metrics`;
+  const metricsUrl = isCloudHub
+    ? `http://${scrapeHost}/api/metrics`
+    : `${baseUrl}/api/metrics`;
   const metricsUrlWithToken = token ? `${metricsUrl}?token=${token}` : metricsUrl;
 
-  const scrapeHost = isCloudHub ? '<node-ip>:8000' : (API ? new URL(baseUrl).host : window.location.host);
   const scrapeConfigYaml = `# Prometheus Scrape Target for ffmpeg-gui node
 scrape_configs:
   - job_name: 'ffmpeg-gui'
@@ -74,32 +84,26 @@ scrape_configs:
       - targets: ['${scrapeHost}']`;
 
   const handleCopyToken = async () => {
-    try {
-      await navigator.clipboard.writeText(token);
+    const ok = await copyToClipboard(token);
+    if (ok) {
       setCopiedToken(true);
       setTimeout(() => setCopiedToken(false), 2000);
-    } catch (err) {
-      console.error('Copy token failed', err);
     }
   };
 
   const handleCopyUrl = async () => {
-    try {
-      await navigator.clipboard.writeText(metricsUrlWithToken);
+    const ok = await copyToClipboard(metricsUrlWithToken);
+    if (ok) {
       setCopiedUrl(true);
       setTimeout(() => setCopiedUrl(false), 2000);
-    } catch (err) {
-      console.error('Copy failed', err);
     }
   };
 
   const handleCopyConfig = async () => {
-    try {
-      await navigator.clipboard.writeText(scrapeConfigYaml);
+    const ok = await copyToClipboard(scrapeConfigYaml);
+    if (ok) {
       setCopiedConfig(true);
       setTimeout(() => setCopiedConfig(false), 2000);
-    } catch (err) {
-      console.error('Copy failed', err);
     }
   };
 

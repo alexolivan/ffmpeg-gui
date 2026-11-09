@@ -614,6 +614,7 @@ class SettingsResponse(BaseModel):
     metrics_exporter_enabled: Optional[bool] = False
     metrics_exporter_token: Optional[str] = None
     metrics_exporter_allowed_ips: Optional[str] = None
+    primary_ip: Optional[str] = None
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -667,6 +668,7 @@ class SettingsUpdate(BaseModel):
     metrics_exporter_enabled: Optional[bool] = None
     metrics_exporter_token: Optional[str] = None
     metrics_exporter_allowed_ips: Optional[str] = None
+    primary_ip: Optional[str] = None
 
 
     @validator('brute_force_whitelist')
@@ -1101,6 +1103,24 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     if discovery_beacon_enabled is None:
         discovery_beacon_enabled = True
     res["discovery_beacon_enabled"] = bool(discovery_beacon_enabled)
+
+    # Resolve primary LAN IP for node identification & scraper targets
+    primary_ip = None
+    try:
+        from core.network_inspector import get_network_interfaces
+        ifaces = get_network_interfaces()
+        for iface in ifaces:
+            if iface.get("is_default_gateway") and iface.get("ipv4_addresses"):
+                primary_ip = iface["ipv4_addresses"][0]["address"]
+                break
+        if not primary_ip:
+            for iface in ifaces:
+                if not iface.get("is_loopback") and iface.get("is_up") and iface.get("ipv4_addresses"):
+                    primary_ip = iface["ipv4_addresses"][0]["address"]
+                    break
+    except Exception as e:
+        logger.debug(f"Could not determine primary IP: {e}")
+    res["primary_ip"] = primary_ip
     
     return SettingsResponse(**res).model_dump()
 
