@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Abort/cancellation support mid-cascade and live line-by-line task execution logging streamed to the UI and WebSocket.
   - Updated API task schemas, serialization, and import/export with validation and protection against cloning maintenance tasks as FFmpeg media services.
   - Added dedicated `ServiceRestartTaskForm` modal component, tabbed creation selector in `ScheduledTasks`, maintenance sequence card badges, and full multi-language translations (`en`, `es`, `ca`).
+  - Refined task card typography and preview modal architecture: removed heterogeneous restart icon from task card titles, replaced lengthy service card chains with a compact single-line target counter (`Target Services: X services`), and overhauled the execution preview modal to display the wide, ordered restart sequence flow while eliminating irrelevant FFmpeg video encoding telemetry (bitrate, FPS, speed) for all system maintenance tasks and log rotators.
 
 ## [2.59.1] - 2026-11-06
 
