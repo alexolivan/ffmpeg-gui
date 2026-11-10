@@ -12,9 +12,11 @@ logger = logging.getLogger("PipeWireMeterCollector")
 class PipeWireMeterCollector:
     """
     On-demand lightweight audio peak level meter collector for active PipeWire Hub nodes.
-    Spawns low-rate (8 kHz) pw-record processes for audio nodes (sinks, sources, streams).
+    Spawns low-rate (8 kHz) pw-record processes for audio sinks and output sources.
     Automatically terminates capture processes when subscribers disconnect.
     """
+
+    MAX_CONCURRENT_METERS = 12
 
     def __init__(self, hub_service_id: int, process_manager: Any):
         self.hub_id = int(hub_service_id)
@@ -55,27 +57,45 @@ class PipeWireMeterCollector:
     def _get_pw_record_bin(self) -> Optional[str]:
         if hasattr(self.pm, "_get_pipewire_tool_binary"):
             pw_bin, _ = self.pm._get_pipewire_tool_binary(self.hub_id, "pw-record")
-            if pw_bin:
+            if pw_bin and os.path.isfile(pw_bin):
                 return pw_bin
         return shutil.which("pw-record") or shutil.which("pw-cat")
 
-    @staticmethod
-    def _is_audio_node(node: Dict[str, Any]) -> bool:
-        """Determines if a PipeWire node is an audio sink, source, or stream that produces or consumes audio."""
+    @classmethod
+    def _is_audio_node(cls, node: Dict[str, Any]) -> bool:
+        """
+        Determines if a PipeWire node is an audio sink or output source.
+        CRITICAL: Never monitor capture clients, meter collectors, or pw-record itself to avoid recursion!
+        """
         nid = node.get("id")
         if nid is None:
             return False
         name = str(node.get("name") or "").lower()
-        if not name or "driver" in name or name in ("dummy-driver", "freewheel-driver"):
+        desc = str(node.get("description") or "").lower()
+        media_class = str(node.get("media_class") or "").lower()
+
+        # 1. HARD BLOCK: Never monitor any meter, pw-record/cat, driver, or monitor tool!
+        for blocked in ("pw-record", "pw-cat", "pw-meter", "meter-collector", "pw-mon", "driver", "dummy", "freewheel"):
+            if blocked in name or blocked in desc:
+                return False
+
+        # 2. HARD BLOCK: Never monitor capture/input streams (e.g. Stream/Input/Audio).
+        # A capture stream is an audio consumer; monitoring it creates an infinite cascade of collectors!
+        if "input" in media_class and "sink" not in media_class:
             return False
+
         state = str(node.get("state") or "").lower()
         if state == "error":
             return False
-        media_class = str(node.get("media_class") or "").lower()
-        if any(mc in media_class for mc in ("audio/sink", "audio/source", "stream/output/audio", "stream/input/audio", "audio")):
+
+        # 3. Only monitor actual Audio Sinks and Sources
+        if media_class in ("audio/sink", "audio/source", "stream/output/audio"):
             return True
-        if any(k in name for k in ("aes", "rtp", "sink", "source", "ffmpeg", "remote", "kiosk", "desktop", "alsa")):
+
+        # Fallback for named virtual buses or landing sinks without explicit media_class
+        if any(k in name for k in ("aes_bus", "remote_", "rtp_rx", "null-audio-sink")):
             return True
+
         return False
 
     async def sync_active_nodes(self, graph_telemetry: Optional[dict] = None) -> None:
@@ -120,12 +140,14 @@ class PipeWireMeterCollector:
                         pass
                 self.latest_levels.pop(nid, None)
 
-        # 2. Start capture for new eligible audio nodes
+        # 2. Start capture for new eligible audio nodes (up to MAX_CONCURRENT_METERS limit)
         pw_rec = self._get_pw_record_bin()
         if not pw_rec:
             return
 
         for nid, node_info in eligible_nodes.items():
+            if len(self.tasks) >= self.MAX_CONCURRENT_METERS:
+                break
             if nid not in self.tasks or self.tasks[nid].done():
                 self.latest_levels[nid] = [0.0, 0.0]
                 self.tasks[nid] = asyncio.create_task(self._monitor_node(node_info, pw_rec))
@@ -173,10 +195,13 @@ class PipeWireMeterCollector:
 
         try:
             for use_sink_prop, target_val in targets:
-                cmd = [pw_record_bin, "-R", "pipewire-0"]
-                if use_sink_prop:
-                    cmd.extend(["-P", "{ stream.capture.sink = true }"])
-                cmd.extend([
+                # CRITICAL: Always set node.name and application.name to pw-meter-collector
+                # to prevent PipeWire graph discovery from ever recursively monitoring our own meter sessions!
+                props_str = '{ application.name = "pw-meter-collector" node.name = "pw-meter-collector" stream.capture.sink = true }' if use_sink_prop else '{ application.name = "pw-meter-collector" node.name = "pw-meter-collector" }'
+                cmd = [
+                    pw_record_bin,
+                    "-R", "pipewire-0",
+                    "-P", props_str,
                     "--target", target_val,
                     "--rate", "8000",
                     "--channels", "2",
@@ -184,8 +209,9 @@ class PipeWireMeterCollector:
                     "--latency", "100ms",
                     "--raw",
                     "-"
-                ])
+                ]
 
+                p: Optional[asyncio.subprocess.Process] = None
                 try:
                     p = await asyncio.create_subprocess_exec(
                         *cmd,
@@ -202,6 +228,11 @@ class PipeWireMeterCollector:
                                 f"[PipeWireMeters #{self.hub_id}] Target '{target_val}' failed for node #{node_id}: "
                                 f"{err_out.decode('utf-8', errors='replace').strip()}"
                             )
+                            try:
+                                p.kill()
+                                await p.wait()
+                            except Exception:
+                                pass
                             continue
                         # Successfully linked and receiving data
                         proc = p
@@ -214,9 +245,20 @@ class PipeWireMeterCollector:
                             proc = p
                             self.procs[node_id] = proc
                             break
+                        try:
+                            p.kill()
+                            await p.wait()
+                        except Exception:
+                            pass
                         continue
                 except Exception as ex:
                     logger.debug(f"[PipeWireMeters #{self.hub_id}] Failed candidate target '{target_val}': {ex}")
+                    if p:
+                        try:
+                            p.kill()
+                            await p.wait()
+                        except Exception:
+                            pass
                     continue
 
             if not proc or proc.returncode is not None:

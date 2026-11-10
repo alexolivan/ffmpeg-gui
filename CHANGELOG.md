@@ -14,7 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Eliminated dead black placeholder boxes: every node in the graph mounts an HTML5 `<canvas>` initialized with dimmed resting tracks, seamlessly lighting up when real-time peak audio telemetries arrive.
 - **PipeWire Audio Capture Resolution & Target Fallbacks (`backend/core/pipewire_meter_collector.py`)**:
   - Resolved zero-activity / black meter issue where overly restrictive eligibility checks (`state == "running" and linked_node_ids > 0`) dropped landing sinks (`remote_sinks`), virtual buses (`aes_bus_1`), and audio streams in `idle` or internal routing states.
-  - Relaxed collector eligibility to all audio-bearing nodes (`Audio/Sink`, `Audio/Source`, `Stream/Output/Audio`, `Stream/Input/Audio`) without blocking on driver runtime state strings or external link graphs.
+  - Relaxed collector eligibility to actual audio endpoints (`Audio/Sink`, `Audio/Source`, `Stream/Output/Audio`).
+  - Implemented strict anti-recursion filtering (`_is_audio_node`): explicitly blocks `pw-record`, `pw-cat`, `pw-meter-collector`, and `Stream/Input/Audio` (capture consumers) to prevent infinite recursive fork cascades where meter processes spawned meters on themselves.
+  - Added hard cap guardrail (`MAX_CONCURRENT_METERS = 12`) and immediate process kill on rejected candidate targets.
   - Implemented prioritized target resolution for `pw-record`: automatically applies `-P '{ stream.capture.sink = true }'` when capturing from `Audio/Sink` nodes, with fallback to `<node_name>.monitor` and numerical node IDs.
   - Replaced `stderr=DEVNULL` with pipe logging to capture and diagnose `pw-record` link negotiation errors.
 - **PipeWire Forge Build Recipe & Dependency Alignment (`backend/forge/recipes/pipewire.py`, `backend/core/build_manager.py`, `install.sh`, `INSTALL.md`)**:
