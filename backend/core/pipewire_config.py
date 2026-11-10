@@ -587,6 +587,12 @@ class PipeWireConfigGenerator:
         is_hw = (ptp_support == "hardware")
         ts_mode = "hardware" if is_hw else "software"
 
+        # In software timestamping mode on client-only nodes (slave), free_running must be 1.
+        # This allows ptp4l to participate in BMCA, measure path delays and achieve SLAVE state
+        # without attempting to step CLOCK_REALTIME on the Linux host (which fails with EINVAL
+        # if the Grandmaster clock is on an arbitrary/1970 epoch and protects system time integrity).
+        free_running = 1 if (ts_mode == "software" and client_only == 1) else 0
+
         # Dedicated ephemeral UDS IPC socket paths in /dev/shm (or /tmp) to prevent permission errors in /var/run
         shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
         uds_path = os.path.join(shm_dir, f"ptp4l_{service_id}.uds")
@@ -611,7 +617,7 @@ class PipeWireConfigGenerator:
             "clockClass              248",
             "clockAccuracy           0xFE",
             "offsetScaledLogVariance 0xFFFF",
-            "free_running            0",
+            f"free_running            {free_running}",
             "freq_est_interval       1",
             "step_threshold          1.0",
             f"clientOnly              {client_only}",

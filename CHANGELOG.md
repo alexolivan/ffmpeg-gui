@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.5] - 2026-11-10
+
+### Fixed
+- **Conditional free_running in Software Timestamping Client Nodes (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Automatically activates `free_running 1` in `ptp4l.conf` specifically when running in software timestamping mode (`ts_mode == "software"`) as a client/slave node (`client_only == 1`).
+  - Resolves `failed to step clock: Invalid argument` error caused by Linux kernel safety limits (`MAX_PAST_SECS / MAX_FUTURE_SECS = 1000 days`) when receiving PTP broadcasts from Grandmasters operating on arbitrary or 1970 relative epochs (e.g. legacy broadcast matrices / AEQ consoles).
+  - Preserves host system clock (`CLOCK_REALTIME`) integrity at the current date (avoiding certificate and systemd corruption) while enabling `ptp4l` to achieve clean, stable `SLAVE` state via BMCA.
+  - Leaves `free_running 0` intact for all hardware timestamping NICs (disciplining isolated `/dev/ptp0` hardware crystals) and for local PTP Masters.
+
 ## [2.64.4] - 2026-11-10
 
 ### Fixed
