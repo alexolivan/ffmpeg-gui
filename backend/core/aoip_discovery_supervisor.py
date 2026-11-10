@@ -564,12 +564,14 @@ class AoIpDiscoverySupervisor:
                         self._ptp_status["is_local"] = probe_res.get("is_local", False)
                         self._ptp_status["last_seen"] = time.time()
                     else:
-                        # Age out after 15 seconds without detection
-                        last = self._ptp_status.get("last_seen")
-                        if last and (time.time() - last > 15.0):
-                            self._ptp_status["detected"] = False
-                            self._ptp_status["source_ip"] = None
-                            self._ptp_status["clock_identity"] = None
+                        # Age out after 15 seconds without detection, but only if not actively locked in SLAVE/UNCALIBRATED
+                        current_role = self._ptp_status.get("local_ptp4l_role")
+                        if current_role not in ("SLAVE", "UNCALIBRATED"):
+                            last = self._ptp_status.get("last_seen")
+                            if last and (time.time() - last > 15.0):
+                                self._ptp_status["detected"] = False
+                                self._ptp_status["source_ip"] = None
+                                self._ptp_status["clock_identity"] = None
 
                 # 2. Inspect local ptp4l role from sidecar log
                 role = "INACTIVE"
@@ -594,6 +596,7 @@ class AoIpDiscoverySupervisor:
                     f"/var/log/ffmpeg-gui/ptp4l_{self.hub_id}.log"
                 ])
 
+                best_master_clock = None
                 for lp in cand_log_paths:
                     if os.path.exists(lp):
                         try:
@@ -607,27 +610,32 @@ class AoIpDiscoverySupervisor:
                                     line_clean = line.strip()
                                     if not line_clean or line_clean.startswith("---") or line_clean.startswith("COMMAND:"):
                                         continue
-                                    if "assuming the grand master role" in line_clean or "MASTER on" in line_clean or "to MASTER" in line_clean:
-                                        role = "MASTER"
-                                        break
-                                    elif "SLAVE on" in line_clean or "to SLAVE" in line_clean:
-                                        role = "SLAVE"
-                                        break
-                                    elif "UNCALIBRATED on" in line_clean or "to UNCALIBRATED" in line_clean:
-                                        role = "UNCALIBRATED"
-                                        break
-                                    elif "PASSIVE on" in line_clean or "to PASSIVE" in line_clean:
-                                        role = "PASSIVE"
-                                        break
-                                    elif "LISTENING on" in line_clean or "to LISTENING" in line_clean:
-                                        role = "LISTENING"
-                                        break
-                                    elif "FAULT_DETECTED" in line_clean or "to FAULTY" in line_clean:
-                                        role = "FAULTY"
-                                        break
-                                    elif "to INITIALIZING" in line_clean or "INITIALIZING on" in line_clean:
-                                        role = "INITIALIZING"
-                                        break
+                                    if not best_master_clock:
+                                        m_clock = re.search(r"selected best master clock\s+([0-9a-fA-F.]+)", line_clean)
+                                        if not m_clock:
+                                            m_clock = re.search(r"new foreign master\s+([0-9a-fA-F.]+)", line_clean)
+                                        if m_clock:
+                                            raw_id = m_clock.group(1).replace(".", "")
+                                            if len(raw_id) == 16:
+                                                best_master_clock = ":".join(raw_id[i:i+2] for i in range(0, 16, 2)).lower()
+
+                                    if role in ("INACTIVE", "INITIALIZING"):
+                                        if "assuming the grand master role" in line_clean or "MASTER on" in line_clean or "to MASTER" in line_clean:
+                                            role = "MASTER"
+                                        elif "SLAVE on" in line_clean or "to SLAVE" in line_clean:
+                                            role = "SLAVE"
+                                        elif "UNCALIBRATED on" in line_clean or "to UNCALIBRATED" in line_clean:
+                                            role = "UNCALIBRATED"
+                                        elif "PASSIVE on" in line_clean or "to PASSIVE" in line_clean:
+                                            role = "PASSIVE"
+                                        elif "LISTENING on" in line_clean or "to LISTENING" in line_clean:
+                                            role = "LISTENING"
+                                        elif "FAULT_DETECTED" in line_clean or "to FAULTY" in line_clean:
+                                            role = "FAULTY"
+                                        elif "to INITIALIZING" in line_clean or "INITIALIZING on" in line_clean:
+                                            role = "INITIALIZING"
+                                if best_master_clock:
+                                    self._ptp_status["clock_identity"] = best_master_clock
                             if role not in ("INACTIVE", "INITIALIZING"):
                                 break
                         except Exception:

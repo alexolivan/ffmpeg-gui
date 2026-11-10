@@ -594,22 +594,34 @@ class TestPipewireNetworkAudit(unittest.TestCase):
         mock_sock = MagicMock()
         mock_socket_cls.return_value = mock_sock
 
-        # Mock PTPv2 Announce packet (version=2, msg_type=0xB)
-        ptp_announce_header = bytearray(44)
-        ptp_announce_header[0] = 0x0B  # Announce msgType
-        ptp_announce_header[1] = 0x02  # Version 2
-        mock_sock.recvfrom.return_value = (bytes(ptp_announce_header), ("192.168.99.13", 320))
+        # Mock PTPv2 Announce packet (version=2, msg_type=0xB, >= 64 bytes with GM identity)
+        ptp_announce = bytearray(64)
+        ptp_announce[0] = 0x0B  # Announce msgType
+        ptp_announce[1] = 0x02  # Version 2
+        # GM identity at octets 53..60
+        ptp_announce[53:61] = b"\x00\x1d\x9b\xff\xfe\x12\x34\x56"
+        mock_sock.recvfrom.return_value = (bytes(ptp_announce), ("192.168.99.13", 320))
 
         detected = ni_module.probe_network_ptp_master("exp7s0", "192.168.99.11", timeout=0.1)
         self.assertTrue(detected["detected"])
         self.assertEqual(detected["source_ip"], "192.168.99.13")
+        self.assertEqual(detected["clock_identity"], "00:1d:9b:ff:fe:12:34:56")
         self.assertFalse(detected["is_local"])
 
         # Local source
-        mock_sock.recvfrom.return_value = (bytes(ptp_announce_header), ("192.168.99.11", 320))
+        mock_sock.recvfrom.return_value = (bytes(ptp_announce), ("192.168.99.11", 320))
         local_detected = ni_module.probe_network_ptp_master("exp7s0", "192.168.99.11", timeout=0.1)
         self.assertTrue(local_detected["detected"])
         self.assertTrue(local_detected["is_local"])
+
+        # CRITICAL TEST: Delay_Req (msg_type=0x1) MUST NOT be recognized as a Master!
+        ptp_delay_req = bytearray(44)
+        ptp_delay_req[0] = 0x01  # Delay_Req sent by slave/client
+        ptp_delay_req[1] = 0x02  # Version 2
+        mock_sock.recvfrom.return_value = (bytes(ptp_delay_req), ("192.168.99.20", 319))
+        slave_detected = ni_module.probe_network_ptp_master("exp7s0", "192.168.99.11", timeout=0.1)
+        self.assertFalse(slave_detected["detected"])
+        self.assertIsNone(slave_detected["source_ip"])
 
 
 if __name__ == "__main__":

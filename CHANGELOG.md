@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.3] - 2026-11-10
+
+### Fixed
+- **Strict PTP Grandmaster Detection & Slave Packet Discrimination (`backend/core/network_inspector.py`, `backend/core/aoip_discovery_supervisor.py`)**:
+  - Excluded `Delay_Req` (`msg_type = 0x1`) from `probe_network_ptp_master`: client nodes in E2E delay mode (`clientOnly 1`) periodically transmit `Delay_Req` packets to multicast `224.0.1.129`, which were mistakenly being identified as Grandmasters by peering slave nodes (`test1` and `test3` seeing each other).
+  - Restricted PTP master detection strictly to true Master broadcasts: `Announce` (`0xB` on port 320) and `Sync` (`0x0` on port 319).
+  - Enhanced Grandmaster Identity resolution: parses `grandmasterIdentity` from body octets 53..60 of IEEE 1588 Announce frames.
+  - Linked `ptp4l` log parser directly to BMCA selection (`selected best master clock <clock_id>` and `new foreign master`), binding the discovered Clock ID to the daemon's active clock choice.
+  - Stabilized telemetry persistence: prevents aging out or clearing `source_ip` and `clock_identity` while `ptp4l` remains actively synchronized in `SLAVE` or `UNCALIBRATED` state, eliminating cyclical jumping to `Searching Grandmaster...`.
+
 ## [2.64.2] - 2026-11-10
 
 ### Fixed

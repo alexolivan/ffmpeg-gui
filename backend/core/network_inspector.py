@@ -579,15 +579,32 @@ def probe_network_ptp_master(ifname: str, if_ip: Optional[str] = None, timeout: 
             if data and len(data) >= 34:
                 msg_type = data[0] & 0x0F
                 version = data[1] & 0x0F
-                if version == 2 and msg_type in (0x0, 0x1, 0x8, 0x9, 0xA, 0xB):
+                # STRICT IEEE 1588-2008 MASTER MESSAGES:
+                # 0x0 = Sync (broadcast by Master, 8/s in AES67)
+                # 0xB = Announce (broadcast by Master, 1/s)
+                # CRITICAL: NEVER match 0x1 (Delay_Req), which is sent by client/slave nodes!
+                if version == 2 and msg_type in (0x0, 0xB):
+                    clock_id = None
+                    if msg_type == 0xB and len(data) >= 64:
+                        try:
+                            # In IEEE 1588 Announce body: octets 53..60 are grandmasterIdentity
+                            gm_bytes = data[53:61]
+                            clock_id = ":".join(f"{b:02x}" for b in gm_bytes)
+                        except Exception:
+                            pass
+
+                    if not clock_id:
+                        try:
+                            # sourcePortIdentity (header octets 20..27)
+                            clock_bytes = data[20:28]
+                            clock_id = ":".join(f"{b:02x}" for b in clock_bytes)
+                        except Exception:
+                            pass
+
                     result["detected"] = True
                     result["source_ip"] = sender_ip
                     result["is_local"] = (sender_ip == if_ip) if if_ip else (sender_ip in ("127.0.0.1", "0.0.0.0"))
-                    try:
-                        clock_bytes = data[20:28]
-                        result["clock_identity"] = ":".join(f"{b:02x}" for b in clock_bytes)
-                    except Exception:
-                        pass
+                    result["clock_identity"] = clock_id
                     break
         except (OSError, socket.timeout, Exception):
             pass
