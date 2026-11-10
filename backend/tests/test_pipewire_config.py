@@ -537,7 +537,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("priority2               254", conf)
         self.assertIn("clientOnly              1", conf)
         self.assertIn("serverOnly              0", conf)
-        self.assertIn("free_running            1", conf)
+        self.assertIn("free_running            0", conf)
 
     def test_dante_profile_ptp4l_lab_force_master(self):
         """Verifies Dante profile with force_local_master allows serverOnly=1 and priority1=128 in lab setups."""

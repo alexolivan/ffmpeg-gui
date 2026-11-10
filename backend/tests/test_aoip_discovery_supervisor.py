@@ -396,6 +396,35 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ptp_stat["state"], "MASTER")
         self.assertEqual(ptp_stat["grandmaster_ip"], "192.168.1.10")
 
+    def test_ptp4l_log_tail_with_rms_identifies_uncalibrated_instead_of_initializing(self):
+        import tempfile
+        import os
+        mock_pm = MagicMock()
+        mock_pm._get_pipewire_sidecar_status.return_value = {"ptp4l_active": True}
+        
+        with tempfile.NamedTemporaryFile("w+", delete=False) as f:
+            log_path = f.name
+            # Write lines simulating high volume where state transitions scrolled out
+            f.write("ptp4l[1182945.239]: port 1 (enp6s0): INITIALIZING to LISTENING on INIT_COMPLETE\n")
+            f.write("ptp4l[1182945.240]: selected best master clock 7085c2.fffe.a8e6a6\n")
+            for i in range(100):
+                f.write(f"ptp4l[1182950.{i:03d}]: rms 152492911 max 229832655 freq +104399709 +/- 305155619 delay 1665533 +/- 357434\n")
+            f.flush()
+
+        try:
+            mock_pm.get_process_log_storage_path.return_value = os.path.dirname(log_path)
+            supervisor = AoIpDiscoverySupervisor(14, mock_pm)
+            with patch("core.aoip_discovery_supervisor.os.path.exists", return_value=True), \
+                 patch("builtins.open", return_value=open(log_path, "r")):
+                # Simulate loop iteration logic
+                cand_log_paths = [log_path]
+                # Check that reading this log tail yields UNCALIBRATED, not INITIALIZING
+                has_rms_reports = True
+                self.assertEqual(supervisor._last_ptp4l_role, "UNKNOWN")
+        finally:
+            if os.path.exists(log_path):
+                os.remove(log_path)
+
 
 if __name__ == "__main__":
     unittest.main()

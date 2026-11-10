@@ -252,6 +252,7 @@ class AoIpDiscoverySupervisor:
         self._streams_cache: Dict[str, Dict[str, Any]] = {}
 
         # PTP state cache
+        self._last_ptp4l_role: str = "UNKNOWN"
         self._ptp_status: Dict[str, Any] = {
             "detected": False,
             "source_ip": None,
@@ -578,7 +579,9 @@ class AoIpDiscoverySupervisor:
                 sidecars = self.pm._get_pipewire_sidecar_status(self.hub_id) if self.pm and hasattr(self.pm, "_get_pipewire_sidecar_status") else {}
                 ptp4l_alive = sidecars.get("ptp4l_active", False)
                 if ptp4l_alive:
-                    role = "INITIALIZING"
+                    role = self._last_ptp4l_role if self._last_ptp4l_role not in ("UNKNOWN", "INACTIVE") else "INITIALIZING"
+                else:
+                    self._last_ptp4l_role = "INACTIVE"
 
                 cand_log_paths = []
                 if self.pm and hasattr(self.pm, "get_process_log_storage_path"):
@@ -597,19 +600,23 @@ class AoIpDiscoverySupervisor:
                 ])
 
                 best_master_clock = None
+                has_rms_reports = False
+                detected_role_in_tail = None
                 for lp in cand_log_paths:
                     if os.path.exists(lp):
                         try:
                             with open(lp, "r", errors="replace") as f:
-                                # Read tail of file
+                                # Read tail of file (64 KB window to catch transitions even after high log volume)
                                 f.seek(0, os.SEEK_END)
                                 fsize = f.tell()
-                                f.seek(max(0, fsize - 8192), os.SEEK_SET)
+                                f.seek(max(0, fsize - 65536), os.SEEK_SET)
                                 lines = f.readlines()
                                 for line in reversed(lines):
                                     line_clean = line.strip()
                                     if not line_clean or line_clean.startswith("---") or line_clean.startswith("COMMAND:"):
                                         continue
+                                    if "rms " in line_clean and "freq " in line_clean:
+                                        has_rms_reports = True
                                     if not best_master_clock:
                                         m_clock = re.search(r"selected best master clock\s+([0-9a-fA-F.]+)", line_clean)
                                         if not m_clock:
@@ -619,27 +626,39 @@ class AoIpDiscoverySupervisor:
                                             if len(raw_id) == 16:
                                                 best_master_clock = ":".join(raw_id[i:i+2] for i in range(0, 16, 2)).lower()
 
-                                    if role in ("INACTIVE", "INITIALIZING"):
+                                    if not detected_role_in_tail:
                                         if "assuming the grand master role" in line_clean or "MASTER on" in line_clean or "to MASTER" in line_clean:
-                                            role = "MASTER"
+                                            detected_role_in_tail = "MASTER"
                                         elif "SLAVE on" in line_clean or "to SLAVE" in line_clean:
-                                            role = "SLAVE"
+                                            detected_role_in_tail = "SLAVE"
                                         elif "UNCALIBRATED on" in line_clean or "to UNCALIBRATED" in line_clean:
-                                            role = "UNCALIBRATED"
+                                            detected_role_in_tail = "UNCALIBRATED"
                                         elif "PASSIVE on" in line_clean or "to PASSIVE" in line_clean:
-                                            role = "PASSIVE"
+                                            detected_role_in_tail = "PASSIVE"
                                         elif "LISTENING on" in line_clean or "to LISTENING" in line_clean:
-                                            role = "LISTENING"
+                                            detected_role_in_tail = "LISTENING"
                                         elif "FAULT_DETECTED" in line_clean or "to FAULTY" in line_clean:
-                                            role = "FAULTY"
+                                            detected_role_in_tail = "FAULTY"
                                         elif "to INITIALIZING" in line_clean or "INITIALIZING on" in line_clean:
-                                            role = "INITIALIZING"
+                                            detected_role_in_tail = "INITIALIZING"
+
                                 if best_master_clock:
                                     self._ptp_status["clock_identity"] = best_master_clock
-                            if role not in ("INACTIVE", "INITIALIZING"):
+                            if detected_role_in_tail:
                                 break
                         except Exception:
                             pass
+
+                if ptp4l_alive:
+                    if detected_role_in_tail:
+                        role = detected_role_in_tail
+                    elif has_rms_reports:
+                        # ptp4l is actively processing delay/sync reports: if we were previously SLAVE, stay SLAVE; otherwise UNCALIBRATED
+                        role = self._last_ptp4l_role if self._last_ptp4l_role == "SLAVE" else "UNCALIBRATED"
+                    self._last_ptp4l_role = role
+                else:
+                    role = "INACTIVE"
+                    self._last_ptp4l_role = "INACTIVE"
 
                 self._ptp_status["local_ptp4l_role"] = role
 

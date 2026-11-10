@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.6] - 2026-11-10
+
+### Fixed
+- **Persistent PTP4L Role Tracking & Active RMS Metric Calibration (`backend/core/aoip_discovery_supervisor.py`, `backend/tests/test_aoip_discovery_supervisor.py`)**:
+  - Expanded `ptp4l` log inspection tail from 8 KB to 64 KB and implemented `self._last_ptp4l_role` state persistence across discovery loops.
+  - Resolves UI getting permanently trapped in `INITIALIZING` on long-running nodes when initial transition messages (`to UNCALIBRATED`, `to SLAVE`) scroll beyond the tail buffer while continuous `rms ... max ... freq ... delay ...` lines are active.
+  - Automatically identifies active servo tracking (`rms` metrics) as `UNCALIBRATED` (or preserved `SLAVE`) instead of defaulting to `INITIALIZING`.
+- **Restoration of Default free_running 0 for Active Clock Steer & SLAVE Transition (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Re-established `free_running 0` by default in `generate_ptp4l_config`: in `linuxptp`, setting `free_running 1` invokes `clock_no_adjust()` which perpetually reports `SERVO_UNLOCKED`, permanently barring `ptp4l` from ever firing `EV_MASTER_CLOCK_SELECTED` and locking to `SLAVE`.
+  - When synchronizing to peer master nodes or AES67 Grandmasters on current epoch (such as `test3` with ~150 ms offset), `free_running 0` combined with `step_threshold 1.0` enables immediate locking into `SLAVE` without `Invalid argument` errors.
+
 ## [2.64.5] - 2026-11-10
 
 ### Fixed
