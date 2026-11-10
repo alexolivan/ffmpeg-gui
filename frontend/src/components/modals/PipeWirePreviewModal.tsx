@@ -176,9 +176,25 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
   // Canvas references for active PipeWire audio node VU meters
   const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
+
+  const drawVerticalIdleMeters = useCallback((canvas: HTMLCanvasElement) => {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const barWidth = Math.max(2, Math.floor(w / 2) - 1);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.fillRect(0, 0, barWidth, h);
+    ctx.fillRect(barWidth + 1, 0, barWidth, h);
+  }, []);
+
   const canvasRefSetter = useCallback((nodeId: number, el: HTMLCanvasElement | null) => {
     canvasRefs.current[nodeId] = el;
-  }, []);
+    if (el) {
+      drawVerticalIdleMeters(el);
+    }
+  }, [drawVerticalIdleMeters]);
 
   const renderPipeWireCanvasMeters = useCallback((metersMap: Record<string | number, number[]>) => {
     Object.entries(metersMap).forEach(([nidStr, vals]) => {
@@ -189,37 +205,34 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
 
-      // Stereo horizontal bars: L on top, R on bottom
-      const barHeight = Math.max(2, Math.floor((h - 2) / 2));
-      const leftLevel = Math.min(1.0, Math.max(0.0, vals[0] || 0.0));
-      const rightLevel = Math.min(1.0, Math.max(0.0, vals[1] ?? vals[0] ?? 0.0));
+      const chCount = vals.length || 2;
+      const barWidth = Math.max(2, Math.floor(width / chCount) - 1);
 
-      const drawBar = (y: number, level: number) => {
-        // Background track
+      vals.forEach((rawVal, chIdx) => {
+        const norm = Math.min(1.0, Math.max(0.0, rawVal || 0.0));
+        const fillHeight = Math.floor(height * norm);
+        const x = chIdx * (barWidth + 1);
+        const y = height - fillHeight;
+
+        // Vertical LED Gradient matching ALSA card exactly (Green at bottom -> Amber -> Red at top)
+        const grad = ctx.createLinearGradient(0, height, 0, 0);
+        grad.addColorStop(0, '#22c55e');
+        grad.addColorStop(0.7, '#eab308');
+        grad.addColorStop(1, '#ef4444');
+
+        // Background dark track
         ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-        ctx.fillRect(0, y, w, barHeight);
+        ctx.fillRect(x, 0, barWidth, height);
 
-        if (level <= 0.005) return;
-
-        const fillW = Math.max(1, Math.floor(w * level));
-
-        // Segmented LED look: green -> amber -> red
-        const grad = ctx.createLinearGradient(0, y, w, y);
-        grad.addColorStop(0, '#22c55e');    // Green
-        grad.addColorStop(0.7, '#22c55e');  // Green up to ~ -6 dB
-        grad.addColorStop(0.85, '#eab308'); // Amber ~ -3 dB
-        grad.addColorStop(1.0, '#ef4444');  // Red 0 dB
-
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, y, fillW, barHeight);
-      };
-
-      drawBar(0, leftLevel);
-      drawBar(barHeight + 2, rightLevel);
+        if (fillHeight > 0) {
+          ctx.fillStyle = grad;
+          ctx.fillRect(x, y, barWidth, fillHeight);
+        }
+      });
     });
   }, []);
 
@@ -757,7 +770,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   <table className="w-full text-left text-xs font-mono">
                     <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                       <tr>
-                        <th className="p-2.5 w-16 text-center">{t('services.pipewire.levelHeader', 'Level')}</th>
+                        <th className="p-2.5 w-12 text-center">{t('services.pipewire.levelHeader', 'Level')}</th>
                         <th className="p-2.5">{t('services.pipewire.nodeNameEntity', 'Node / Entity Name')}</th>
                         <th className="p-2.5">Media Class</th>
                         <th className="p-2.5">State</th>
@@ -770,32 +783,21 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                         const nodeLinksCount = graphData?.links?.filter(
                           (l) => l.output_node_id === node.id || l.input_node_id === node.id
                         ).length || 0;
-                        const isNodeActive = isRunning && node.state === 'running' && nodeLinksCount > 0;
 
                         return (
                           <tr key={node.id} className="hover:bg-white/2 transition-colors">
-                            <td className="p-2.5 text-center">
-                              {isNodeActive ? (
-                                <div
-                                  className="w-14 h-5 px-1 py-1 rounded bg-black/70 border border-[var(--glass-border)] flex items-center justify-center shadow-inner mx-auto"
-                                  title={`Node #${node.id} · ${t('common.active', 'Active')} (${nodeLinksCount} links)`}
-                                >
-                                  <canvas
-                                    ref={(el) => canvasRefSetter(node.id, el)}
-                                    width={48}
-                                    height={12}
-                                    className="w-12 h-3 rounded-sm"
-                                  />
-                                </div>
-                              ) : (
-                                <div
-                                  className="w-14 h-5 px-1 py-1 rounded bg-black/40 border border-[var(--glass-border)]/50 flex flex-col justify-center gap-1 opacity-35 select-none mx-auto"
-                                  title={`Node #${node.id} · ${t('services.pipewire.levelIdleTooltip', 'Node idle or unlinked')}`}
-                                >
-                                  <div className="w-full h-1 bg-white/10 rounded-sm" />
-                                  <div className="w-full h-1 bg-white/10 rounded-sm" />
-                                </div>
-                              )}
+                            <td className="p-2.5 text-center w-12">
+                              <div
+                                className="w-6 h-6 rounded bg-black/90 border border-[var(--glass-border)] flex items-center justify-center shadow-inner mx-auto"
+                                title={`Node #${node.id} · ${node.name} (${nodeLinksCount} links)`}
+                              >
+                                <canvas
+                                  ref={(el) => canvasRefSetter(node.id, el)}
+                                  width={16}
+                                  height={22}
+                                  className="w-4 h-5 rounded"
+                                />
+                              </div>
                             </td>
                             <td className="p-2.5">
                               <div className="flex flex-col" title={`Node #${node.id}`}>

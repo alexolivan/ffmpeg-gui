@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.63.1] - 2026-11-10
+
+### Fixed
+- **PipeWire Audio Node VU Meters Vertical ALSA-Style Realignment (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Homogenized audio node VU meter visual design with the established vertical stereo LED meter design from the ALSA settings card (`AlsaAudioSettingsCard.tsx`).
+  - Switched from horizontal bars to compact vertical stereo LED bars (`width={16} height={22}` inside `w-6 h-6 rounded bg-black/90` border box), displaying green-to-amber-to-red vertical gradients.
+  - Eliminated dead black placeholder boxes: every node in the graph mounts an HTML5 `<canvas>` initialized with dimmed resting tracks, seamlessly lighting up when real-time peak audio telemetries arrive.
+- **PipeWire Audio Capture Resolution & Target Fallbacks (`backend/core/pipewire_meter_collector.py`)**:
+  - Resolved zero-activity / black meter issue where overly restrictive eligibility checks (`state == "running" and linked_node_ids > 0`) dropped landing sinks (`remote_sinks`), virtual buses (`aes_bus_1`), and audio streams in `idle` or internal routing states.
+  - Relaxed collector eligibility to all audio-bearing nodes (`Audio/Sink`, `Audio/Source`, `Stream/Output/Audio`, `Stream/Input/Audio`) without blocking on driver runtime state strings or external link graphs.
+  - Implemented prioritized target resolution for `pw-record`: automatically applies `-P '{ stream.capture.sink = true }'` when capturing from `Audio/Sink` nodes, with fallback to `<node_name>.monitor` and numerical node IDs.
+  - Replaced `stderr=DEVNULL` with pipe logging to capture and diagnose `pw-record` link negotiation errors.
+
 ## [2.63.0] - 2026-11-09
 
 ### Added

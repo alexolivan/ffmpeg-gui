@@ -12,8 +12,7 @@ logger = logging.getLogger("PipeWireMeterCollector")
 class PipeWireMeterCollector:
     """
     On-demand lightweight audio peak level meter collector for active PipeWire Hub nodes.
-    Only spawns low-rate (8 kHz) pw-record processes for nodes that are currently
-    in state 'running' and have at least one active route/link.
+    Spawns low-rate (8 kHz) pw-record processes for audio nodes (sinks, sources, streams).
     Automatically terminates capture processes when subscribers disconnect.
     """
 
@@ -60,10 +59,29 @@ class PipeWireMeterCollector:
                 return pw_bin
         return shutil.which("pw-record") or shutil.which("pw-cat")
 
+    @staticmethod
+    def _is_audio_node(node: Dict[str, Any]) -> bool:
+        """Determines if a PipeWire node is an audio sink, source, or stream that produces or consumes audio."""
+        nid = node.get("id")
+        if nid is None:
+            return False
+        name = str(node.get("name") or "").lower()
+        if not name or "driver" in name or name in ("dummy-driver", "freewheel-driver"):
+            return False
+        state = str(node.get("state") or "").lower()
+        if state == "error":
+            return False
+        media_class = str(node.get("media_class") or "").lower()
+        if any(mc in media_class for mc in ("audio/sink", "audio/source", "stream/output/audio", "stream/input/audio", "audio")):
+            return True
+        if any(k in name for k in ("aes", "rtp", "sink", "source", "ffmpeg", "remote", "kiosk", "desktop", "alsa")):
+            return True
+        return False
+
     async def sync_active_nodes(self, graph_telemetry: Optional[dict] = None) -> None:
         """
-        Reconciles capture sessions against nodes currently 'running' and linked.
-        Stops capture for nodes that transitioned to idle/suspended or lost links.
+        Reconciles capture sessions against eligible audio nodes present in the graph.
+        Stops capture for removed nodes.
         """
         now = time.time()
         self._last_sync_ts = now
@@ -80,32 +98,17 @@ class PipeWireMeterCollector:
             return
 
         nodes = graph_telemetry.get("nodes", []) or []
-        links = graph_telemetry.get("links", []) or []
 
-        # Find nodes that are currently running AND have at least 1 link
-        linked_node_ids: Set[int] = set()
-        for link in links:
-            out_id = link.get("output_node_id")
-            in_id = link.get("input_node_id")
-            if out_id is not None:
-                linked_node_ids.add(int(out_id))
-            if in_id is not None:
-                linked_node_ids.add(int(in_id))
-
-        active_running_ids: Set[int] = set()
+        eligible_nodes: Dict[int, Dict[str, Any]] = {}
         for node in nodes:
-            nid = node.get("id")
-            if nid is None:
-                continue
-            nid_int = int(nid)
-            state = str(node.get("state", "")).lower()
-            if state == "running" and nid_int in linked_node_ids:
-                active_running_ids.add(nid_int)
+            if self._is_audio_node(node):
+                nid_int = int(node["id"])
+                eligible_nodes[nid_int] = node
 
-        # 1. Stop capture for nodes that are no longer eligible
+        # 1. Stop capture for nodes that are no longer eligible or disappeared
         current_monitored = list(self.tasks.keys())
         for nid in current_monitored:
-            if nid not in active_running_ids:
+            if nid not in eligible_nodes:
                 task = self.tasks.pop(nid, None)
                 if task and not task.done():
                     task.cancel()
@@ -117,72 +120,124 @@ class PipeWireMeterCollector:
                         pass
                 self.latest_levels.pop(nid, None)
 
-        # 2. Start capture for new eligible nodes
+        # 2. Start capture for new eligible audio nodes
         pw_rec = self._get_pw_record_bin()
         if not pw_rec:
             return
 
-        for nid in active_running_ids:
+        for nid, node_info in eligible_nodes.items():
             if nid not in self.tasks or self.tasks[nid].done():
                 self.latest_levels[nid] = [0.0, 0.0]
-                self.tasks[nid] = asyncio.create_task(self._monitor_node(nid, pw_rec))
+                self.tasks[nid] = asyncio.create_task(self._monitor_node(node_info, pw_rec))
 
-    async def _monitor_node(self, node_id: int, pw_record_bin: str) -> None:
+    def _process_pcm_data(self, node_id: int, data: bytes) -> None:
+        if not data:
+            return
+        samples = array.array("h")
+        even_len = len(data) - (len(data) % 2)
+        samples.frombytes(data[:even_len])
+
+        if len(samples) >= 2:
+            l_samples = samples[0::2]
+            r_samples = samples[1::2]
+            peak_l = max(abs(s) for s in l_samples) / 32768.0 if l_samples else 0.0
+            peak_r = max(abs(s) for s in r_samples) / 32768.0 if r_samples else 0.0
+            self.latest_levels[node_id] = [round(peak_l, 3), round(peak_r, 3)]
+        elif len(samples) == 1:
+            val = abs(samples[0]) / 32768.0
+            self.latest_levels[node_id] = [round(val, 3), round(val, 3)]
+        else:
+            self.latest_levels[node_id] = [0.0, 0.0]
+
+    async def _monitor_node(self, node: Dict[str, Any], pw_record_bin: str) -> None:
         """Runs a continuous raw PCM stream capture with pw-record and computes peaks."""
+        node_id = int(node["id"])
+        node_name = str(node.get("name") or node_id)
+        media_class = str(node.get("media_class") or "").lower()
+        is_sink = "sink" in media_class
+
         sub_env = self._resolve_sub_env()
-        cmd = [
-            pw_record_bin,
-            "-R", "pipewire-0",
-            "--target", str(node_id),
-            "--rate", "8000",
-            "--channels", "2",
-            "--format", "s16",
-            "--latency", "100ms",
-            "--raw",
-            "-"
-        ]
 
-        proc = None
+        # Build prioritized target candidates for resilient attachment
+        targets: List[Tuple[bool, str]] = []
+        if is_sink:
+            targets.append((True, node_name))
+            targets.append((False, f"{node_name}.monitor"))
+            targets.append((True, str(node_id)))
+        else:
+            targets.append((False, node_name))
+            targets.append((False, str(node_id)))
+
+        proc: Optional[asyncio.subprocess.Process] = None
+        chunk_size = 3200  # 100ms chunks (8000 frames/s * 2 ch * 2 bytes = 3200 bytes per 100ms)
+
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-                env=sub_env
-            )
-            self.procs[node_id] = proc
+            for use_sink_prop, target_val in targets:
+                cmd = [pw_record_bin, "-R", "pipewire-0"]
+                if use_sink_prop:
+                    cmd.extend(["-P", "{ stream.capture.sink = true }"])
+                cmd.extend([
+                    "--target", target_val,
+                    "--rate", "8000",
+                    "--channels", "2",
+                    "--format", "s16",
+                    "--latency", "100ms",
+                    "--raw",
+                    "-"
+                ])
 
-            # Read 100ms chunks (8000 frames/s * 2 ch * 2 bytes = 32000 bytes/s -> 3200 bytes per 100ms)
-            chunk_size = 3200
+                try:
+                    p = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=sub_env
+                    )
+                    # Check if process dies immediately (target resolution error)
+                    try:
+                        first_data = await asyncio.wait_for(p.stdout.read(chunk_size), timeout=0.3)
+                        if not first_data and p.returncode is not None:
+                            err_out = await p.stderr.read()
+                            logger.debug(
+                                f"[PipeWireMeters #{self.hub_id}] Target '{target_val}' failed for node #{node_id}: "
+                                f"{err_out.decode('utf-8', errors='replace').strip()}"
+                            )
+                            continue
+                        # Successfully linked and receiving data
+                        proc = p
+                        self.procs[node_id] = proc
+                        self._process_pcm_data(node_id, first_data)
+                        break
+                    except asyncio.TimeoutError:
+                        # Process running and waiting for audio buffers
+                        if p.returncode is None:
+                            proc = p
+                            self.procs[node_id] = proc
+                            break
+                        continue
+                except Exception as ex:
+                    logger.debug(f"[PipeWireMeters #{self.hub_id}] Failed candidate target '{target_val}': {ex}")
+                    continue
+
+            if not proc or proc.returncode is not None:
+                logger.debug(f"[PipeWireMeters #{self.hub_id}] Could not attach monitor to node #{node_id} ({node_name})")
+                return
+
             while True:
                 data = await proc.stdout.read(chunk_size)
                 if not data:
                     break
-
-                # Parse signed 16-bit little-endian samples
-                samples = array.array("h")
-                # Truncate to even byte count if split frame
-                even_len = len(data) - (len(data) % 2)
-                samples.frombytes(data[:even_len])
-
-                if len(samples) >= 2:
-                    l_samples = samples[0::2]
-                    r_samples = samples[1::2]
-                    peak_l = max(abs(s) for s in l_samples) / 32768.0 if l_samples else 0.0
-                    peak_r = max(abs(s) for s in r_samples) / 32768.0 if r_samples else 0.0
-                    self.latest_levels[node_id] = [round(peak_l, 3), round(peak_r, 3)]
-                else:
-                    self.latest_levels[node_id] = [0.0, 0.0]
+                self._process_pcm_data(node_id, data)
 
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            logger.debug(f"[PipeWireMeters #{self.hub_id}] Monitoring node #{node_id} error: {e}")
+            logger.debug(f"[PipeWireMeters #{self.hub_id}] Monitoring node #{node_id} ({node_name}) error: {e}")
         finally:
             if proc:
                 try:
                     proc.terminate()
-                    await asyncio.wait_for(proc.wait(), timeout=1.0)
+                    await asyncio.wait_for(proc.wait(), timeout=0.5)
                 except Exception:
                     try:
                         proc.kill()

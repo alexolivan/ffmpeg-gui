@@ -11,33 +11,33 @@ class TestPipeWireMeterCollector(unittest.IsolatedAsyncioTestCase):
         self.mock_pm = MagicMock()
         self.mock_pm._get_pipewire_tool_binary = MagicMock(return_value=("/usr/bin/pw-record", None))
 
-    async def test_sync_active_nodes_filters_only_running_and_linked(self):
+    async def test_sync_active_nodes_monitors_eligible_audio_nodes(self):
         collector = PipeWireMeterCollector(14, self.mock_pm)
 
-        # Mock telemetry with 3 nodes:
-        # Node 1: running, linked -> SHOULD monitor
-        # Node 2: idle, linked -> SHOULD NOT monitor
-        # Node 3: running, unlinked -> SHOULD NOT monitor
+        # Mock telemetry with 4 nodes:
+        # Node 1: Audio/Sink -> SHOULD monitor
+        # Node 2: Stream/Output/Audio -> SHOULD monitor
+        # Node 3: Dummy-Driver -> SHOULD NOT monitor
+        # Node 4: Audio/Sink with error state -> SHOULD NOT monitor
         mock_graph = {
             "active": True,
             "nodes": [
-                {"id": 1, "name": "sink_active", "state": "running"},
-                {"id": 2, "name": "sink_idle", "state": "idle"},
-                {"id": 3, "name": "sink_unlinked", "state": "running"},
+                {"id": 1, "name": "aes_bus_1", "media_class": "Audio/Sink", "state": "idle"},
+                {"id": 2, "name": "rtp_rx_remote_test1", "media_class": "Stream/Output/Audio", "state": "running"},
+                {"id": 3, "name": "Dummy-Driver", "media_class": "", "state": "running"},
+                {"id": 4, "name": "broken_sink", "media_class": "Audio/Sink", "state": "error"},
             ],
-            "links": [
-                {"output_node_id": 1, "input_node_id": 99},
-                {"output_node_id": 2, "input_node_id": 98},
-            ]
+            "links": []
         }
 
         with patch.object(collector, "_monitor_node", new_callable=AsyncMock) as mock_monitor:
             await collector.sync_active_nodes(mock_graph)
 
-            # Only node 1 should have a monitoring task created
+            # Nodes 1 and 2 should have monitoring tasks created
             self.assertIn(1, collector.tasks)
-            self.assertNotIn(2, collector.tasks)
+            self.assertIn(2, collector.tasks)
             self.assertNotIn(3, collector.tasks)
+            self.assertNotIn(4, collector.tasks)
 
         await collector.stop()
 
