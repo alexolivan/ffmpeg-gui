@@ -37,7 +37,8 @@ class TestPipewireForge(unittest.IsolatedAsyncioTestCase):
             "gcc",
             "libasound2-dev",
             "libdbus-1-dev",
-            "libudev-dev"
+            "libudev-dev",
+            "libsndfile1-dev"
         ]
         for dep in expected_deps:
             self.assertIn(dep, deps)
@@ -135,6 +136,7 @@ class TestPipewireForge(unittest.IsolatedAsyncioTestCase):
         self.assertIn("libasound2", deps)
         self.assertIn("libdbus-1", deps)
         self.assertIn("libudev", deps)
+        self.assertIn("libsndfile", deps)
 
         # Should not include unrelated software deps
         self.assertNotIn("cmake", deps)

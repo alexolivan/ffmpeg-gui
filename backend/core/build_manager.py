@@ -112,6 +112,7 @@ class BuildManager:
             "libpulse": {"pkg": "libpulse", "type": "required", "description": "Biblioteca cliente PulseAudio/PipeWire para captura y salida de audio (-f pulse)", "engines": ["ffmpeg"]},
             "libdbus-1": {"pkg": "dbus-1", "type": "required", "description": "Biblioteca de bus de mensajes del sistema D-Bus (libdbus-1-dev)", "engines": ["pipewire"]},
             "libudev": {"pkg": "libudev", "type": "required", "description": "Biblioteca de gestión de dispositivos hardware udev (libudev-dev)", "engines": ["pipewire"]},
+            "libsndfile": {"pkg": "sndfile", "type": "required", "description": "Biblioteca libsndfile para captura y monitorización de audio en PipeWire (libsndfile1-dev, pw-record/pw-cat)", "engines": ["pipewire"]},
             "libopus": {"pkg": "opus", "type": "optional", "description": "Biblioteca Opus para codificación de audio (libopus)", "engines": ["ffmpeg"]},
             "libvpx": {"pkg": "vpx", "type": "optional", "description": "Biblioteca VP8/VP9 (libvpx)", "engines": ["ffmpeg"]},
             "libfreetype": {"pkg": "freetype2", "type": "optional", "description": "Biblioteca para renderizado de fuentes de texto (libfreetype6-dev)", "engines": ["ffmpeg"]},

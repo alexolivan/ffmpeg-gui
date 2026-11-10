@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Relaxed collector eligibility to all audio-bearing nodes (`Audio/Sink`, `Audio/Source`, `Stream/Output/Audio`, `Stream/Input/Audio`) without blocking on driver runtime state strings or external link graphs.
   - Implemented prioritized target resolution for `pw-record`: automatically applies `-P '{ stream.capture.sink = true }'` when capturing from `Audio/Sink` nodes, with fallback to `<node_name>.monitor` and numerical node IDs.
   - Replaced `stderr=DEVNULL` with pipe logging to capture and diagnose `pw-record` link negotiation errors.
+- **PipeWire Forge Build Recipe & Dependency Alignment (`backend/forge/recipes/pipewire.py`, `backend/core/build_manager.py`, `install.sh`, `INSTALL.md`)**:
+  - Incorporated `libsndfile1-dev` (and `meson`, `ninja-build`) into the system dependencies of PipeWire's Forge recipe and the pre-flight dependency checker (`build_manager.py`).
+  - Added `-Dpw-cat=enabled` and `-Dsndfile=enabled` options to Meson setup: prevents PipeWire from silently skipping compilation of `pw-cat`, `pw-record`, and `pw-play` binaries due to missing libsndfile headers.
+  - Updated `install.sh` and `INSTALL.md` across Debian, RHEL, and Arch distributions to ensure audio recording tools are built by default.
 
 ## [2.63.0] - 2026-11-09
 
