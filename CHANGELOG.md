@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.4] - 2026-11-10
+
+### Fixed
+- **PipeWire ptp4l Slew-Rate Saturation & Synchronization Fault Oscillation (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Added `step_threshold 1.0` to the global configuration template of `ptp4l` daemon.
+  - Resolves infinite oscillation between `SLAVE` and `UNCALIBRATED` caused by `linuxptp`'s default `step_threshold 0.0`: when large initial epoch offsets exist (e.g. TAI epoch vs local clock), the servo maxed out frequency slew at `+100000000 ppb` (+10%), tripping internal sanity checks (`clockcheck: clock jumped forward or running faster than expected!`) and throwing `SYNCHRONIZATION_FAULT`.
+  - Enables instantaneous one-shot clock step on cold start while preserving microsecond-accurate slewing during continuous sync.
+
 ## [2.64.3] - 2026-11-10
 
 ### Fixed

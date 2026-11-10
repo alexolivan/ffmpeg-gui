@@ -613,6 +613,7 @@ class PipeWireConfigGenerator:
             "offsetScaledLogVariance 0xFFFF",
             "free_running            0",
             "freq_est_interval       1",
+            "step_threshold          1.0",
             f"clientOnly              {client_only}",
             f"serverOnly              {server_only}",
             f"uds_address             {uds_path}",
