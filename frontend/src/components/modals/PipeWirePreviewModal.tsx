@@ -861,7 +861,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     <table className="w-full text-left text-xs font-mono">
                       <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                         <tr>
-                          <th className="p-2.5">Link ID</th>
                           <th className="p-2.5">Output (Source Port)</th>
                           <th className="p-2.5 text-center">Direction</th>
                           <th className="p-2.5">Input (Target Port)</th>
@@ -871,7 +870,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       <tbody className="divide-y divide-[var(--glass-border)]">
                         {graphData.links.map((link) => (
                           <tr key={link.id} className="hover:bg-white/2 transition-colors">
-                            <td className="p-2.5 text-zinc-500 font-bold">#{link.id}</td>
                             <td className="p-2.5">
                               <div className="flex flex-col">
                                 <span className="text-[var(--text-primary)] font-bold">

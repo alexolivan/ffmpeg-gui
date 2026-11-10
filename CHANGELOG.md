@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.1] - 2026-11-10
+
+### Changed
+- **PipeWire Active Graph Links Table Cleanup (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Removed internal numerical `Link ID` column from the *Active Graph Links (pw-dump)* table under the Links & Routes tab.
+  - Aligned presentation with human-readable node and port names, source-to-target routing directions, and connection states.
+
 ## [2.64.0] - 2026-11-10
 
 ### Removed
