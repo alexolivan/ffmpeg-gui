@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.7] - 2026-11-10
+
+### Fixed
+- **ptp4l Servo Jump Hair-Trigger & Announce Timeout Flapping (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Replaced runtime `step_threshold 1.0` with standard `step_threshold 0.0` and explicit `first_step_threshold 0.00002`: prevents `pi.c` from transitioning to `SERVO_JUMP` and dispatching `EV_SYNCHRONIZATION_FAULT` whenever transient network jitter spikes offset above 1 second during active sync.
+  - Added `sanity_freq_limit 0` to disable false-positive `clockcheck` resets caused by software timestamping context switching.
+  - Increased `announceReceiptTimeout` from default 3 to 6 to eliminate spurious `ANNOUNCE_RECEIPT_TIMEOUT_EXPIRES` resets on standard Linux networks.
+
 ## [2.64.6] - 2026-11-10
 
 ### Fixed

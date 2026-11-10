@@ -334,7 +334,10 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("dscp_general            34", conf)
         self.assertIn("time_stamping           software", conf)
         self.assertIn("summary_interval        3", conf)
-        self.assertIn("step_threshold          1.0", conf)
+        self.assertIn("step_threshold          0.0", conf)
+        self.assertIn("first_step_threshold    0.00002", conf)
+        self.assertIn("sanity_freq_limit       0", conf)
+        self.assertIn("announceReceiptTimeout  6", conf)
         self.assertIn("[enp9s0]", conf)
         self.assertIn("network_transport       UDPv4", conf)
 
