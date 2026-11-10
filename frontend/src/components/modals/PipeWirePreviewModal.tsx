@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
 import { RefreshIcon, ClipboardIcon, CheckIcon } from '../Icons';
@@ -173,103 +173,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
   const ptpLogsContainerRef = useRef<HTMLDivElement | null>(null);
   const phcLogsContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // Canvas references for active PipeWire audio node VU meters
-  const canvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
-
-  const drawVerticalIdleMeters = useCallback((canvas: HTMLCanvasElement) => {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const w = canvas.width;
-    const h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    const barWidth = Math.max(2, Math.floor(w / 2) - 1);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.fillRect(0, 0, barWidth, h);
-    ctx.fillRect(barWidth + 1, 0, barWidth, h);
-  }, []);
-
-  const canvasRefSetter = useCallback((nodeId: number, el: HTMLCanvasElement | null) => {
-    canvasRefs.current[nodeId] = el;
-    if (el) {
-      drawVerticalIdleMeters(el);
-    }
-  }, [drawVerticalIdleMeters]);
-
-  const renderPipeWireCanvasMeters = useCallback((metersMap: Record<string | number, number[]>) => {
-    Object.entries(metersMap).forEach(([nidStr, vals]) => {
-      const nid = parseInt(nidStr, 10);
-      const canvas = canvasRefs.current[nid];
-      if (!canvas) return;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const width = canvas.width;
-      const height = canvas.height;
-      ctx.clearRect(0, 0, width, height);
-
-      const chCount = vals.length || 2;
-      const barWidth = Math.max(2, Math.floor(width / chCount) - 1);
-
-      vals.forEach((rawVal, chIdx) => {
-        const norm = Math.min(1.0, Math.max(0.0, rawVal || 0.0));
-        const fillHeight = Math.floor(height * norm);
-        const x = chIdx * (barWidth + 1);
-        const y = height - fillHeight;
-
-        // Vertical LED Gradient matching ALSA card exactly (Green at bottom -> Amber -> Red at top)
-        const grad = ctx.createLinearGradient(0, height, 0, 0);
-        grad.addColorStop(0, '#22c55e');
-        grad.addColorStop(0.7, '#eab308');
-        grad.addColorStop(1, '#ef4444');
-
-        // Background dark track
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-        ctx.fillRect(x, 0, barWidth, height);
-
-        if (fillHeight > 0) {
-          ctx.fillStyle = grad;
-          ctx.fillRect(x, y, barWidth, fillHeight);
-        }
-      });
-    });
-  }, []);
-
-  // Ephemeral WebSocket connection for real-time node audio meters (active exclusively on 'nodes' tab)
-  useEffect(() => {
-    if (!isRunning || activeTab !== 'nodes' || !currentProcess?.id) {
-      return;
-    }
-
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = localStorage.getItem('token') || '';
-    const wsUrl = `${protocol}//${window.location.host}/ws/pipewire/meters/${currentProcess.id}${
-      token ? `?token=${encodeURIComponent(token)}` : ''
-    }`;
-    let ws: WebSocket | null = null;
-    try {
-      ws = new WebSocket(wsUrl);
-      ws.onmessage = (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload?.meters) {
-            renderPipeWireCanvasMeters(payload.meters);
-          }
-        } catch {
-          // ignore parsing error
-        }
-      };
-    } catch {
-      // ignore connection error
-    }
-
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-    };
-  }, [currentProcess?.id, isRunning, activeTab, renderPipeWireCanvasMeters]);
 
   const handleReconcileMatrix = async () => {
     if (!currentProcess?.id || isReconciling) return;
@@ -770,7 +673,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   <table className="w-full text-left text-xs font-mono">
                     <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                       <tr>
-                        <th className="p-2.5 w-12 text-center">{t('services.pipewire.levelHeader', 'Level')}</th>
                         <th className="p-2.5">{t('services.pipewire.nodeNameEntity', 'Node / Entity Name')}</th>
                         <th className="p-2.5">Media Class</th>
                         <th className="p-2.5">State</th>
@@ -779,28 +681,10 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[var(--glass-border)]">
-                      {graphData.nodes.map((node) => {
-                        const nodeLinksCount = graphData?.links?.filter(
-                          (l) => l.output_node_id === node.id || l.input_node_id === node.id
-                        ).length || 0;
-
-                        return (
-                          <tr key={node.id} className="hover:bg-white/2 transition-colors">
-                            <td className="p-2.5 text-center w-12">
-                              <div
-                                className="w-6 h-6 rounded bg-black/90 border border-[var(--glass-border)] flex items-center justify-center shadow-inner mx-auto"
-                                title={`Node #${node.id} · ${node.name} (${nodeLinksCount} links)`}
-                              >
-                                <canvas
-                                  ref={(el) => canvasRefSetter(node.id, el)}
-                                  width={16}
-                                  height={22}
-                                  className="w-4 h-5 rounded"
-                                />
-                              </div>
-                            </td>
-                            <td className="p-2.5">
-                              <div className="flex flex-col" title={`Node #${node.id}`}>
+                      {graphData.nodes.map((node) => (
+                        <tr key={node.id} className="hover:bg-white/2 transition-colors">
+                          <td className="p-2.5">
+                            <div className="flex flex-col" title={`Node #${node.id}`}>
                               {node.human_label ? (
                                 <>
                                   <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
@@ -844,8 +728,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                             {node.description || node.nick || '-'}
                           </td>
                         </tr>
-                      );
-                    })}
+                      ))}
                     </tbody>
                   </table>
                 </div>

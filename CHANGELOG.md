@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.0] - 2026-11-10
+
+### Removed
+- **PipeWire Meter Collector & Parasitic Subprocess Monitoring (`backend/core/pipewire_meter_collector.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`, `backend/core/process_manager.py`)**:
+  - Completely decommissioned `PipeWireMeterCollector` and its ephemeral WebSocket endpoint `/ws/pipewire/meters/{service_id}`.
+  - Eliminated the risk of fork cascades and graph pollution from background `pw-record` capture clients, restoring clean, zero-overhead PipeWire operations.
+
+### Changed
+- **PipeWire Audio Nodes Table Optimization (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Removed canvas VU meter and Level column from the Audio Nodes table.
+  - Retained the removal of the redundant numeric `#ID` column, giving primary focus to `Node / Entity Name`, `Media Class`, `State`, `Format`, and `Description`.
+
 ## [2.63.1] - 2026-11-10
 
 ### Fixed

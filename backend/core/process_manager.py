@@ -42,7 +42,6 @@ class ProcessManager:
         self.auxiliary_pids: Dict[int, List[int]] = {}
         self.pipewire_supervisors: Dict[int, Any] = {}
         self.aoip_discovery_supervisors: Dict[int, Any] = {}
-        self.pipewire_meter_collectors: Dict[int, Any] = {}
         self.mediamtx_stats_cache: Dict[int, Dict[str, Any]] = {}
 
     def get_mediamtx_telemetry_cached(self, process_id: int) -> Dict[str, Any]:
@@ -1345,13 +1344,6 @@ class ProcessManager:
                     await aoip_sup.stop()
                 except Exception as sup_err:
                     self.logger.warning(f"Error stopping AoIP discovery supervisor for hub {process_id}: {sup_err}")
-
-            meter_col = self.pipewire_meter_collectors.pop(process_id, None)
-            if meter_col:
-                try:
-                    await meter_col.stop()
-                except Exception as col_err:
-                    self.logger.warning(f"Error stopping meter collector for hub {process_id}: {col_err}")
 
             # Stop any auto-managed dependencies that are no longer needed
             await self.stop_unused_dependencies(process_id, allow_auto_stop=allow_stop_deps)
@@ -2966,17 +2958,6 @@ class ProcessManager:
             except Exception as e:
                 self.logger.error(f"Failed to auto-heal AoIP discovery supervisor for hub #{hub_key}: {e}")
         return None
-
-    def get_or_create_pipewire_meter_collector(self, hub_id: int):
-        """Retrieves or creates the PipeWireMeterCollector instance for hub_id."""
-        hub_key = int(hub_id)
-        collector = self.pipewire_meter_collectors.get(hub_key)
-        if collector:
-            return collector
-        from core.pipewire_meter_collector import PipeWireMeterCollector
-        collector = PipeWireMeterCollector(hub_key, self)
-        self.pipewire_meter_collectors[hub_key] = collector
-        return collector
 
     def notify_pipewire_matrix_change(self, hub_id: Optional[int] = None):
         """Notifies active PipeWireMatrixSupervisor(s) to immediately re-evaluate and reconcile connections."""
