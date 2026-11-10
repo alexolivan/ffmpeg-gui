@@ -547,6 +547,7 @@ def probe_network_ptp_master(ifname: str, if_ip: Optional[str] = None, timeout: 
     result = {
         "detected": False,
         "source_ip": None,
+        "clock_identity": None,
         "is_local": False
     }
     # Check port 319 (event/sync: 8 pkts/sec in AES67) first for instant detection, then port 320 (announce)
@@ -582,6 +583,11 @@ def probe_network_ptp_master(ifname: str, if_ip: Optional[str] = None, timeout: 
                     result["detected"] = True
                     result["source_ip"] = sender_ip
                     result["is_local"] = (sender_ip == if_ip) if if_ip else (sender_ip in ("127.0.0.1", "0.0.0.0"))
+                    try:
+                        clock_bytes = data[20:28]
+                        result["clock_identity"] = ":".join(f"{b:02x}" for b in clock_bytes)
+                    except Exception:
+                        pass
                     break
         except (OSError, socket.timeout, Exception):
             pass

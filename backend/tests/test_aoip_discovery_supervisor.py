@@ -344,6 +344,57 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cached["status"], "online")
             self.assertEqual(cached["_state"], "online")
 
+    def test_ptp_status_normalization_for_frontend_contract(self):
+        mock_pm = MagicMock()
+        supervisor = AoIpDiscoverySupervisor(7, mock_pm)
+        supervisor.nic_ip = "192.168.1.10"
+
+        # Case 1: Listening / slave waiting for master
+        supervisor._ptp_status = {
+            "detected": False,
+            "source_ip": None,
+            "clock_identity": None,
+            "local_ptp4l_role": "LISTENING",
+            "is_local": False,
+            "last_seen": None,
+        }
+        res = supervisor.get_discovery_status()
+        ptp_stat = res["ptp_status"]
+        self.assertEqual(ptp_stat["state"], "LISTENING")
+        self.assertEqual(ptp_stat["local_ptp4l_role"], "LISTENING")
+        self.assertIsNone(ptp_stat["grandmaster_ip"])
+        self.assertIsNone(ptp_stat["source_ip"])
+
+        # Case 2: Locked to external Grandmaster
+        supervisor._ptp_status = {
+            "detected": True,
+            "source_ip": "192.168.1.50",
+            "clock_identity": "00:1d:9b:ff:fe:12:34:56",
+            "local_ptp4l_role": "SLAVE",
+            "is_local": False,
+            "last_seen": 12345.0,
+        }
+        res = supervisor.get_discovery_status()
+        ptp_stat = res["ptp_status"]
+        self.assertEqual(ptp_stat["state"], "SLAVE")
+        self.assertEqual(ptp_stat["local_ptp4l_role"], "SLAVE")
+        self.assertEqual(ptp_stat["grandmaster_ip"], "192.168.1.50")
+        self.assertEqual(ptp_stat["source_ip"], "192.168.1.50")
+        self.assertEqual(ptp_stat["clock_identity"], "00:1d:9b:ff:fe:12:34:56")
+
+        # Case 3: Local node acting as Master
+        supervisor._ptp_status = {
+            "detected": False,
+            "source_ip": None,
+            "clock_identity": None,
+            "local_ptp4l_role": "MASTER",
+            "is_local": True,
+            "last_seen": None,
+        }
+        res = supervisor.get_discovery_status()
+        ptp_stat = res["ptp_status"]
+        self.assertEqual(ptp_stat["state"], "MASTER")
+        self.assertEqual(ptp_stat["grandmaster_ip"], "192.168.1.10")
 
 
 if __name__ == "__main__":

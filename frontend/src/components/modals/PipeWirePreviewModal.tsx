@@ -113,10 +113,13 @@ interface AoIpTelemetry {
   interface?: string | null;
   streams_count: number;
   ptp_status?: {
-    running: boolean;
+    running?: boolean;
+    detected?: boolean;
     grandmaster_ip?: string | null;
+    source_ip?: string | null;
     clock_identity?: string | null;
     state?: string | null;
+    local_ptp4l_role?: string | null;
     priority1?: number;
     domain?: number;
   };
@@ -1160,7 +1163,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono text-[var(--text-secondary)] bg-white/5 border border-white/10">
-                      PTP Master Disabled
+                      {t('services.pipewire.ptpMasterDisabled', 'PTP Disabled')}
                     </span>
                   )}
                 </div>
@@ -1171,7 +1174,19 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       {t('services.pipewire.ptpGrandmasterIp', 'Grandmaster IP')}
                     </span>
                     <span className="font-mono font-semibold text-[var(--text-primary)]">
-                      {graphData?.aoip_discovery?.ptp_status?.grandmaster_ip || (pwConfig.aes67_network?.ptp?.enabled ? 'Local Node' : '-')}
+                      {(() => {
+                        const ptpStat = graphData?.aoip_discovery?.ptp_status;
+                        const role = ptpStat?.state || ptpStat?.local_ptp4l_role;
+                        if (!pwConfig.aes67_network?.ptp?.enabled) return '-';
+                        if (ptpStat?.grandmaster_ip || ptpStat?.source_ip) {
+                          return ptpStat.grandmaster_ip || ptpStat.source_ip;
+                        }
+                        if (role === 'MASTER') return pwConfig.aes67_network?.ip || t('services.pipewire.ptpLocalNode', 'Local Node');
+                        if (role === 'SLAVE' || role === 'UNCALIBRATED' || role === 'LISTENING') {
+                          return t('services.pipewire.ptpSearching', 'Searching Grandmaster...');
+                        }
+                        return '-';
+                      })()}
                     </span>
                   </div>
 
@@ -1188,9 +1203,21 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
                       {t('services.pipewire.ptpRole', 'Local ptp4l State')}
                     </span>
-                    <span className="font-mono font-bold text-cyan-400 uppercase">
-                      {graphData?.aoip_discovery?.ptp_status?.state || (pwConfig.aes67_network?.ptp?.enabled ? 'MASTER' : 'INACTIVE')}
-                    </span>
+                    {(() => {
+                      const ptpStat = graphData?.aoip_discovery?.ptp_status;
+                      const role = ptpStat?.state || ptpStat?.local_ptp4l_role || (pwConfig.aes67_network?.ptp?.enabled ? (pwConfig.aes67_network?.ptp?.force_local_master ? 'MASTER' : 'LISTENING') : 'INACTIVE');
+                      const roleColor =
+                        role === 'MASTER' ? 'text-purple-400' :
+                        role === 'SLAVE' ? 'text-emerald-400' :
+                        role === 'UNCALIBRATED' ? 'text-amber-400' :
+                        role === 'LISTENING' ? 'text-cyan-400' :
+                        role === 'FAULTY' ? 'text-red-400' : 'text-zinc-500';
+                      return (
+                        <span className={`font-mono font-bold uppercase ${roleColor}`}>
+                          {role}
+                        </span>
+                      );
+                    })()}
                   </div>
 
                   <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
@@ -1198,7 +1225,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       BMCA Priority / Domain
                     </span>
                     <span className="font-mono text-[var(--text-secondary)]">
-                      Prio: {pwConfig.aes67_network?.ptp?.priority1 ?? 128} · Dom: {pwConfig.aes67_network?.ptp?.domain ?? 0}
+                      Prio: {pwConfig.aes67_network?.aoip_profile === 'dante' && !pwConfig.aes67_network?.ptp?.force_local_master ? 254 : (pwConfig.aes67_network?.ptp?.priority1 ?? 128)} · Dom: {pwConfig.aes67_network?.aoip_profile === 'dante' ? 0 : (pwConfig.aes67_network?.ptp?.domain ?? 0)}
                     </span>
                   </div>
                 </div>

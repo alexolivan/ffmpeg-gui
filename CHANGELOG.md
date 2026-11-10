@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.2] - 2026-11-10
+
+### Fixed
+- **PipeWire AoIP PTP Dynamic Status Synchronization & Contract Alignment (`frontend/src/components/modals/PipeWirePreviewModal.tsx`, `backend/core/aoip_discovery_supervisor.py`, `backend/core/network_inspector.py`)**:
+  - Resolved contract mismatch where backend emitted `local_ptp4l_role` and `source_ip` while UI inspected `state` and `grandmaster_ip`, causing blind fallbacks to `MASTER` and `Local Node` when PTP was enabled.
+  - Normalized telemetry keys in `AoIpDiscoverySupervisor.get_discovery_status()` (`state`, `local_ptp4l_role`, `grandmaster_ip`, `source_ip`).
+  - Added extraction of Grandmaster `clock_identity` (EUI-64) directly from network PTPv2 announce/sync headers in `probe_network_ptp_master`.
+  - Upgraded `_run_ptp_monitor` in `AoIpDiscoverySupervisor` to parse all linuxptp port states (`MASTER`, `SLAVE`, `UNCALIBRATED`, `PASSIVE`, `LISTENING`, `FAULTY`, `INITIALIZING`) and trigger immediate WebSocket graph invalidation on state changes.
+  - Eliminated hardcoded `MASTER` fallback in UI: displays accurate real-time state with dynamic semantic colors (`MASTER` in purple, `SLAVE` in emerald green, `UNCALIBRATED` in amber, `LISTENING` in cyan, `FAULTY` in red, `INACTIVE` in zinc), resolving Dante slave mode (`clientOnly 1 · Priority 254`) confusion.
+  - Added i18n localization keys (`ptpSearching`, `ptpLocalNode`, `ptpMasterDisabled`) across English, Spanish, and Catalan locales.
+
 ## [2.64.1] - 2026-11-10
 
 ### Changed

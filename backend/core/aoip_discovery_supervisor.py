@@ -544,6 +544,10 @@ class AoIpDiscoverySupervisor:
 
         while self._running:
             try:
+                prev_role = self._ptp_status.get("local_ptp4l_role")
+                prev_src = self._ptp_status.get("source_ip")
+                prev_det = self._ptp_status.get("detected")
+
                 # 1. Passive PTP probe on network interface
                 if self.interface:
                     probe_res = await asyncio.to_thread(
@@ -555,6 +559,8 @@ class AoIpDiscoverySupervisor:
                     if probe_res.get("detected"):
                         self._ptp_status["detected"] = True
                         self._ptp_status["source_ip"] = probe_res.get("source_ip")
+                        if probe_res.get("clock_identity"):
+                            self._ptp_status["clock_identity"] = probe_res.get("clock_identity")
                         self._ptp_status["is_local"] = probe_res.get("is_local", False)
                         self._ptp_status["last_seen"] = time.time()
                     else:
@@ -562,14 +568,32 @@ class AoIpDiscoverySupervisor:
                         last = self._ptp_status.get("last_seen")
                         if last and (time.time() - last > 15.0):
                             self._ptp_status["detected"] = False
+                            self._ptp_status["source_ip"] = None
+                            self._ptp_status["clock_identity"] = None
 
                 # 2. Inspect local ptp4l role from sidecar log
                 role = "INACTIVE"
-                cand_log_paths = [
+                sidecars = self.pm._get_pipewire_sidecar_status(self.hub_id) if self.pm and hasattr(self.pm, "_get_pipewire_sidecar_status") else {}
+                ptp4l_alive = sidecars.get("ptp4l_active", False)
+                if ptp4l_alive:
+                    role = "INITIALIZING"
+
+                cand_log_paths = []
+                if self.pm and hasattr(self.pm, "get_process_log_storage_path"):
+                    try:
+                        p_dir = self.pm.get_process_log_storage_path(process_id=self.hub_id)
+                        if p_dir:
+                            cand_log_paths.append(os.path.join(p_dir, f"ptp4l_{self.hub_id}.log"))
+                    except Exception:
+                        pass
+                cand_log_paths.extend([
                     f"backend/data/logs/ptp4l_{self.hub_id}.log",
                     f"data/logs/ptp4l_{self.hub_id}.log",
-                    f"/tmp/ffmpeg-gui/ptp4l_{self.hub_id}.log"
-                ]
+                    f"/tmp/ffmpeg-gui/ptp4l_{self.hub_id}.log",
+                    f"/tmp/ptp4l_{self.hub_id}.log",
+                    f"/var/log/ffmpeg-gui/ptp4l_{self.hub_id}.log"
+                ])
+
                 for lp in cand_log_paths:
                     if os.path.exists(lp):
                         try:
@@ -577,27 +601,47 @@ class AoIpDiscoverySupervisor:
                                 # Read tail of file
                                 f.seek(0, os.SEEK_END)
                                 fsize = f.tell()
-                                f.seek(max(0, fsize - 4096), os.SEEK_SET)
+                                f.seek(max(0, fsize - 8192), os.SEEK_SET)
                                 lines = f.readlines()
                                 for line in reversed(lines):
-                                    if "assuming the grand master role" in line or "MASTER on" in line:
+                                    line_clean = line.strip()
+                                    if not line_clean or line_clean.startswith("---") or line_clean.startswith("COMMAND:"):
+                                        continue
+                                    if "assuming the grand master role" in line_clean or "MASTER on" in line_clean or "to MASTER" in line_clean:
                                         role = "MASTER"
                                         break
-                                    elif "SLAVE on" in line or "LISTENING to SLAVE" in line:
+                                    elif "SLAVE on" in line_clean or "to SLAVE" in line_clean:
                                         role = "SLAVE"
                                         break
-                                    elif "LISTENING on" in line or "to LISTENING" in line:
+                                    elif "UNCALIBRATED on" in line_clean or "to UNCALIBRATED" in line_clean:
+                                        role = "UNCALIBRATED"
+                                        break
+                                    elif "PASSIVE on" in line_clean or "to PASSIVE" in line_clean:
+                                        role = "PASSIVE"
+                                        break
+                                    elif "LISTENING on" in line_clean or "to LISTENING" in line_clean:
                                         role = "LISTENING"
                                         break
-                                    elif "FAULT_DETECTED" in line or "to FAULTY" in line:
+                                    elif "FAULT_DETECTED" in line_clean or "to FAULTY" in line_clean:
                                         role = "FAULTY"
                                         break
-                            if role != "INACTIVE":
+                                    elif "to INITIALIZING" in line_clean or "INITIALIZING on" in line_clean:
+                                        role = "INITIALIZING"
+                                        break
+                            if role not in ("INACTIVE", "INITIALIZING"):
                                 break
                         except Exception:
                             pass
 
                 self._ptp_status["local_ptp4l_role"] = role
+
+                # 3. Dynamic change detection & immediate WebSocket broadcast
+                if (role != prev_role) or (self._ptp_status.get("source_ip") != prev_src) or (self._ptp_status.get("detected") != prev_det):
+                    try:
+                        from core.websocket_subscription_hub import subscription_hub
+                        subscription_hub.invalidate_pipewire_graph(self.hub_id)
+                    except Exception:
+                        pass
 
             except asyncio.CancelledError:
                 break
@@ -664,12 +708,22 @@ class AoIpDiscoverySupervisor:
                 "origin_ip": active_stream.get("origin_ip") if active_stream else None,
             })
 
+        ptp_stat = dict(self._ptp_status)
+        ptp_role = self._ptp_status.get("local_ptp4l_role") or "INACTIVE"
+        ptp_stat["state"] = ptp_role
+        ptp_stat["local_ptp4l_role"] = ptp_role
+        gm_ip = self._ptp_status.get("source_ip")
+        if not gm_ip and ptp_role == "MASTER":
+            gm_ip = self.nic_ip or "Local Node"
+        ptp_stat["grandmaster_ip"] = gm_ip
+        ptp_stat["source_ip"] = gm_ip
+
         return {
             "hub_id": self.hub_id,
             "running": self._running,
             "interface": self.interface,
             "ip": self.nic_ip,
-            "ptp_status": dict(self._ptp_status),
+            "ptp_status": ptp_stat,
             "discovered_streams": streams_list,
             "streams_count": len(streams_list),
             "remote_sinks_status": remote_sinks_status,
