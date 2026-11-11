@@ -215,14 +215,24 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   const [recalcFeedback, setRecalcFeedback] = useState<string | null>(null);
 
   // PTP Master Clock State
+  // 253 yields to hardware Dante consoles (e.g. AEQ 249, standard 247-252) while beating passive 254 slaves
+  const DANTE_BACKUP_DEFAULT_PRIORITY1 = 253;
   const initialPtp = aesNetCfg.ptp || {};
-  const [forceLocalMaster, setForceLocalMaster] = useState<boolean>(
-    Boolean(initialPtp.force_local_master)
-  );
+  const initialForceLocalMaster = Boolean(initialPtp.force_local_master);
+  const [forceLocalMaster, setForceLocalMaster] = useState<boolean>(initialForceLocalMaster);
   const [ptpEnabled, setPtpEnabled] = useState<boolean>(Boolean(initialPtp.enabled));
   const [ptpAutoInhibit, setPtpAutoInhibit] = useState<boolean>(
     initialPtp.auto_inhibit !== undefined ? Boolean(initialPtp.auto_inhibit) : true
   );
+  const [ptpPriority1, setPtpPriority1] = useState<number>(() => {
+    const raw = initialPtp.priority1;
+    const hasSavedPriority = raw !== undefined && raw !== null && raw !== '' && Number.isFinite(Number(raw));
+    if (aoipProfile === 'dante') {
+      if (!initialForceLocalMaster) return 254;
+      return hasSavedPriority ? Number(raw) : DANTE_BACKUP_DEFAULT_PRIORITY1;
+    }
+    return hasSavedPriority ? Number(raw) : 128;
+  });
 
   const handleProfileChange = (profile: 'standalone' | 'dante' | 'ravenna') => {
     setAoipProfile(profile);
@@ -230,7 +240,13 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       setSampleRate(48000);
       setRtpPtimeMode('1ms');
       setPtpDomain(0);
-      setPtpPriority1(forceLocalMaster ? (ptpPriority1 < 254 && ptpPriority1 > 0 ? ptpPriority1 : 240) : 254);
+      setPtpPriority1(
+        forceLocalMaster
+          ? (ptpPriority1 < 254 && ptpPriority1 >= 0 && ptpPriority1 !== 128
+              ? ptpPriority1
+              : DANTE_BACKUP_DEFAULT_PRIORITY1)
+          : 254
+      );
       setPtpAutoInhibit(true);
       setVirtualSinks((prev) => prev.map((s) => ({ ...s, rtp_port: 5004 })));
     }
@@ -239,13 +255,16 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   const handleForceLocalMasterToggle = (forced: boolean) => {
     setForceLocalMaster(forced);
     if (aoipProfile === 'dante') {
-      setPtpPriority1(forced ? (ptpPriority1 === 254 ? 240 : ptpPriority1) : 254);
+      setPtpPriority1(
+        forced
+          ? (ptpPriority1 === 254 || ptpPriority1 === 128
+              ? DANTE_BACKUP_DEFAULT_PRIORITY1
+              : ptpPriority1)
+          : 254
+      );
       setPtpAutoInhibit(true);
     }
   };
-  const [ptpPriority1, setPtpPriority1] = useState<number>(
-    initialPtp.priority1 !== undefined ? Number(initialPtp.priority1) : 128
-  );
   const [ptpDomain, setPtpDomain] = useState<number>(
     initialPtp.domain !== undefined ? Number(initialPtp.domain) : 0
   );
@@ -630,9 +649,11 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     const effectiveSampleRate = aoipProfile === 'dante' ? 48000 : Number(sampleRate);
     const effectivePtimeMode = aoipProfile === 'dante' ? '1ms' : rtpPtimeMode;
     const effectivePtpDomain = aoipProfile === 'dante' ? 0 : Math.max(0, Math.min(127, Number(ptpDomain) || 0));
+    const parsedPriority1 = Number(ptpPriority1);
+    const clampedPriority1 = Number.isFinite(parsedPriority1) ? Math.max(0, Math.min(255, parsedPriority1)) : null;
     const effectivePtpPriority1 = aoipProfile === 'dante'
-      ? (forceLocalMaster ? Math.max(0, Math.min(255, Number(ptpPriority1) || 240)) : 254)
-      : Math.max(0, Math.min(255, Number(ptpPriority1) || 128));
+      ? (forceLocalMaster ? (clampedPriority1 ?? DANTE_BACKUP_DEFAULT_PRIORITY1) : 254)
+      : (clampedPriority1 ?? 128);
 
     const configPayload = {
       aoip_profile: aoipProfile,
@@ -1352,7 +1373,9 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                         />
                         <span className="text-[9px] text-[var(--text-secondary)] mt-0.5 block leading-tight">
                           {aoipProfile === 'dante'
-                            ? (forceLocalMaster ? 'BMCA backup master priority (lower = higher priority; 240 recommended).' : 'Locked to 254 (passive client) in Dante profile.')
+                            ? (forceLocalMaster
+                                ? t('services.pipewire.ptpBackupPriorityHelp', 'BMCA backup master priority (0-255; lower = higher priority). 253 yields to hardware Dante consoles (typically 247-252) and leads only if no hardware master is present.')
+                                : t('services.pipewire.ptpSlavePriorityHelp', 'Locked to 254 (passive client) in Dante profile.'))
                             : t('services.pipewire.ptpPriority1Help', 'BMCA preference (0-255). 128 is default; 64 for primary, 200 for backup.')}
                         </span>
                       </div>

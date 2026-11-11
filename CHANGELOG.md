@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.9] - 2026-11-11
+
+### Fixed
+- **Dante BMCA Backup Default Priority & Legacy UI State (`backend/core/pipewire_config.py`, `frontend/src/components/forms/PipeWireConfigForm.tsx`, `frontend/src/components/cards/PipeWireServiceCard.tsx`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Updated Dante BMCA backup master default `priority1` from `240` to `253` after wire verification against AEQ hardware (`priority1 = 249`), ensuring Linux backup nodes yield gracefully to standard Dante consoles (`247-252`) while assuming Grandmaster only when no hardware clock is active (outranking passive `254` clients).
+  - Fixed `PipeWireConfigForm` state initialization and toggle logic so opening services with missing `priority1` or legacy DB values (`128` while backup mode was disabled) resolves cleanly to `254` / `253` without leaking `128` when enabling BMCA backup mode.
+  - Localized Dante `priority1` helper strings in `en.json`, `es.json`, and `ca.json`.
+- **SAP Radar Table Column Density & Badge Wrapping (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Folded stream `Origin` IP as a compact subtitle beneath `Multicast Endpoint` and enforced `whitespace-nowrap inline-flex items-center` on all `Status` and `Action / State` pills/buttons so badges never wrap or clip across multiple lines.
+
 ## [2.64.8] - 2026-11-11
 
 ### Added

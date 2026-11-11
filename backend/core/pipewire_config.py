@@ -564,7 +564,9 @@ class PipeWireConfigGenerator:
         if aoip_profile == "dante":
             domain = 0
             if force_local_master:
-                priority1 = max(0, min(255, int(ptp_cfg.get("priority1", 240))))
+                # 253 yields to hardware Dante consoles (e.g. AEQ 249, standard 247-252) while beating 254 slave nodes
+                raw_prio1 = ptp_cfg.get("priority1")
+                priority1 = max(0, min(255, int(raw_prio1))) if raw_prio1 is not None else 253
                 priority2 = max(0, min(255, int(ptp_cfg.get("priority2", priority1))))
                 client_only = 0
                 server_only = 0

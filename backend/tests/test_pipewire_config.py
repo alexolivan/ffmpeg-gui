@@ -552,7 +552,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("free_running            0", conf_hw)
 
     def test_dante_profile_ptp4l_lab_force_master(self):
-        """Verifies Dante profile with force_local_master acts as BMCA backup master (serverOnly=0, priority1 default 240)."""
+        """Verifies Dante profile with force_local_master acts as BMCA backup master (serverOnly=0, priority1 default 253)."""
         ptp_cfg = {
             "enabled": True,
             "aoip_profile": "dante",
@@ -565,10 +565,19 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
             ptp_support="software"
         )
         self.assertIn("domainNumber            0", conf)
-        self.assertIn("priority1               240", conf)
+        self.assertIn("priority1               253", conf)
         self.assertIn("clientOnly              0", conf)
         self.assertIn("serverOnly              0", conf)
         self.assertIn("free_running            1", conf)
+
+        # Explicitly null priority1 also falls back to 253 safely
+        conf_null = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=41,
+            ptp_cfg={**ptp_cfg, "priority1": None},
+            iface="eth0",
+            ptp_support="software"
+        )
+        self.assertIn("priority1               253", conf_null)
 
         # Custom priority1 when configured
         ptp_cfg_custom = {

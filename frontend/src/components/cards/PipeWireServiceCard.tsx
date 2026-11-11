@@ -253,7 +253,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
                 return (
                   <span
                     className={`px-1.5 py-0.5 rounded border text-[10px] font-bold flex items-center gap-1 ${roleColorClass}`}
-                    title={`PTPv2 Synchronization (${hasLiveRole ? `Role: ${livePtpRole} · ` : ''}BMCA Priority ${aes67Net.ptp?.priority1 ?? (aes67Net.aoip_profile === 'dante' ? 240 : 128)}, Domain ${aes67Net.ptp?.domain ?? 0})`}
+                    title={`PTPv2 Synchronization (${hasLiveRole ? `Role: ${livePtpRole} · ` : ''}BMCA Priority ${aes67Net.aoip_profile === 'dante' && !aes67Net.ptp?.force_local_master ? 254 : (aes67Net.ptp?.priority1 ?? (aes67Net.aoip_profile === 'dante' ? 253 : 128))}, Domain ${aes67Net.aoip_profile === 'dante' ? 0 : (aes67Net.ptp?.domain ?? 0)})`}
                   >
                     <span>⏱️ {roleBadgeText}</span>
                   </span>

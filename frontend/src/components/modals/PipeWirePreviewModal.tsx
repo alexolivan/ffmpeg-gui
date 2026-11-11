@@ -1235,7 +1235,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       BMCA Priority / Domain
                     </span>
                     <span className="font-mono text-[var(--text-secondary)]">
-                      Prio: {pwConfig.aes67_network?.aoip_profile === 'dante' && !pwConfig.aes67_network?.ptp?.force_local_master ? 254 : (pwConfig.aes67_network?.ptp?.priority1 ?? (pwConfig.aes67_network?.aoip_profile === 'dante' ? 240 : 128))} · Dom: {pwConfig.aes67_network?.aoip_profile === 'dante' ? 0 : (pwConfig.aes67_network?.ptp?.domain ?? 0)}
+                      Prio: {pwConfig.aes67_network?.aoip_profile === 'dante' && !pwConfig.aes67_network?.ptp?.force_local_master ? 254 : (pwConfig.aes67_network?.ptp?.priority1 ?? (pwConfig.aes67_network?.aoip_profile === 'dante' ? 253 : 128))} · Dom: {pwConfig.aes67_network?.aoip_profile === 'dante' ? 0 : (pwConfig.aes67_network?.ptp?.domain ?? 0)}
                     </span>
                   </div>
                 </div>
@@ -1382,16 +1382,17 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
-                    <table className="w-full text-left text-xs font-mono">
+                    <table className="w-full text-left text-[11px] font-mono">
                       <thead className="bg-[var(--input-bg)] border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                         <tr>
-                          <th className="py-2 px-3">{t('services.pipewire.remoteSinkName', 'Session / Stream Name')}</th>
-                          <th className="py-2 px-3">{t('services.pipewire.multicastEndpoint', 'Multicast Endpoint')}</th>
-                          <th className="py-2 px-3">{t('services.pipewire.audioProfile', 'Audio Profile')}</th>
-                          <th className="py-2 px-3">{t('services.pipewire.streamOrigin', 'Origin')}</th>
-                          <th className="py-2 px-3">{t('services.pipewire.streamClock', 'PTP Clock')}</th>
-                          <th className="py-2 px-3">{t('common.status', 'Status')}</th>
-                          <th className="py-2 px-3 text-right">{t('services.pipewire.actionState', 'Action / State')}</th>
+                          <th className="py-2 px-2.5">{t('services.pipewire.remoteSinkName', 'Session / Stream Name')}</th>
+                          <th className="py-2 px-2.5 whitespace-nowrap">
+                            {t('services.pipewire.multicastEndpoint', 'Multicast Endpoint')} / {t('services.pipewire.streamOrigin', 'Origin')}
+                          </th>
+                          <th className="py-2 px-2.5 whitespace-nowrap">{t('services.pipewire.audioProfile', 'Audio Profile')}</th>
+                          <th className="py-2 px-2.5 whitespace-nowrap">{t('services.pipewire.streamClock', 'PTP Clock')}</th>
+                          <th className="py-2 px-2.5 whitespace-nowrap">{t('common.status', 'Status')}</th>
+                          <th className="py-2 px-2.5 text-right whitespace-nowrap">{t('services.pipewire.actionState', 'Action / State')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--glass-border)]">
@@ -1405,52 +1406,52 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
                           return (
                             <tr key={sId} className="hover:bg-white/2 transition-colors">
-                              <td className="py-2.5 px-3">
-                                <div className="font-bold text-[var(--text-primary)] font-sans">{sName}</div>
-                                <div className="text-[10px] text-[var(--text-secondary)]">{sId}</div>
+                              <td className="py-2 px-2.5 max-w-[210px]">
+                                <div className="font-bold text-[var(--text-primary)] font-sans break-words">{sName}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)] truncate" title={sId}>{sId}</div>
                               </td>
-                              <td className="py-2.5 px-3 text-cyan-400 font-semibold">
-                                {stream.multicast_ip}:{stream.rtp_port}
+                              <td className="py-2 px-2.5 whitespace-nowrap">
+                                <div className="text-cyan-400 font-semibold">{stream.multicast_ip}:{stream.rtp_port}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)]">
+                                  {t('services.pipewire.streamOrigin', 'Origin')}: {stream.origin_ip || '-'}
+                                </div>
                               </td>
-                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                              <td className="py-2 px-2.5 text-[var(--text-secondary)] whitespace-nowrap">
                                 {stream.channels}ch · {stream.format || 'S24BE'} · {sRate}Hz
                               </td>
-                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
-                                {stream.origin_ip || '-'}
-                              </td>
-                              <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[120px]" title={stream.ptp_clock_id || '-'}>
+                              <td className="py-2 px-2.5 text-[var(--text-secondary)] truncate max-w-[115px]" title={stream.ptp_clock_id || '-'}>
                                 {stream.ptp_clock_id || '-'}
                               </td>
-                              <td className="py-2.5 px-3">
+                              <td className="py-2 px-2.5 whitespace-nowrap">
                                 {stream.status === 'waiting' ? (
-                                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
                                     {t('services.pipewire.statusWaiting', 'Waiting')}
                                   </span>
                                 ) : stream.status === 'online' ? (
-                                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
                                     {t('common.active', 'Active')}
                                   </span>
                                 ) : (
-                                  <span className="text-[10px] px-2 py-0.5 rounded text-[var(--text-secondary)] bg-white/5 border border-white/10">
+                                  <span className="text-[10px] px-2 py-0.5 rounded text-[var(--text-secondary)] bg-white/5 border border-white/10 inline-flex items-center whitespace-nowrap">
                                     -
                                   </span>
                                 )}
                               </td>
-                              <td className="py-2.5 px-3 text-right">
+                              <td className="py-2 px-2.5 text-right whitespace-nowrap">
                                 {stream.is_local ? (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 inline-flex items-center whitespace-nowrap">
                                     {t('services.pipewire.localTxStream', 'Local Tx')}
                                   </span>
                                 ) : isConfigured ? (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap">
                                     ✓ {t('services.pipewire.alreadyConfigured', 'Persisted')}
                                   </span>
                                 ) : (
                                   <button
                                     onClick={() => handleConfigureStreamInHub(stream)}
-                                    className="px-2.5 py-1 rounded-lg bg-brand-lime hover:bg-brand-lime/90 text-black text-xs font-bold transition-all shadow-sm"
+                                    className="px-2.5 py-1 rounded-lg bg-brand-lime hover:bg-brand-lime/90 text-black text-[11px] font-bold transition-all shadow-sm inline-flex items-center gap-1 whitespace-nowrap"
                                     title="Import this stream into PipeWire Hub configuration"
                                   >
                                     ⚙️ {t('services.pipewire.configureInHub', 'Configure in Hub')}

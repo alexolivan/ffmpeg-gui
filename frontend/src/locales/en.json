@@ -546,6 +546,8 @@
       "ptpSlaveModeHelp": "Under the Dante profile, this node acts strictly as a PTP client (clientOnly=1, priority=254) to synchronize to the console/Grandmaster without causing clock conflicts.",
       "ptpBackupMasterModeHelp": "This node is configured as a BMCA backup master (serverOnly=0). It acts as Grandmaster if no external console is broadcasting, and automatically yields back to SLAVE whenever a hardware master (AEQ/Yamaha) is detected.",
       "ptpForceMasterLab": "Enable BMCA Backup Master (Fallback when external master is off)",
+      "ptpBackupPriorityHelp": "BMCA backup master priority (0-255; lower = higher priority). 253 yields to hardware Dante consoles (typically 247-252) and leads only if no hardware master is present.",
+      "ptpSlavePriorityHelp": "Locked to 254 (passive client) in Dante profile.",
       "ptpForceMasterWarn": "ℹ️ BMCA BACKUP MASTER: Participates in IEEE 1588 BMCA election with priority {{prio}}. If an external hardware console (priority 128) is online, this node automatically defers and synchronizes as a slave.",
       "ptpHwCapableBadge": "Hardware PTP Capable (PHC + phc2sys support)",
       "ptpSwOnlyBadge": "Software PTP Only (Emulated Clock)"

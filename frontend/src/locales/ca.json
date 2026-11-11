@@ -546,6 +546,8 @@
       "ptpSlaveModeHelp": "Sota el perfil Dante, aquest node opera com a client pur PTP (clientOnly=1, prioritat=254) per a disciplinar-se al Grandmaster de la consola sense generar col·lisions.",
       "ptpBackupMasterModeHelp": "Aquest node està configurat com a master de recanvi BMCA (serverOnly=0). Actua com a Grandmaster si cap consola externa està emetent, i cedeix el lideratge automàticament a SLAVE tan bon punt es detecti una consola maquinari (AEQ/Yamaha).",
       "ptpForceMasterLab": "Habilitar Master de Recanvi BMCA (Fallback si el master extern s'apaga)",
+      "ptpBackupPriorityHelp": "Prioritat de master de recanvi BMCA (0-255; menor = més prioritat). 253 cedeix davant consoles Dante maquinari (típicament 247-252) i assumeix Master només si no hi ha rellotge maquinari actiu.",
+      "ptpSlavePriorityHelp": "Bloquejat a 254 (client passiu) al perfil Dante.",
       "ptpForceMasterWarn": "ℹ️ MASTER DE RECANVI BMCA: Participa en la negociació IEEE 1588 amb prioritat {{prio}}. Si una consola maquinari (prioritat 128) està encesa, aquest node cedeix el lideratge i sincronitza com a esclau.",
       "ptpHwCapableBadge": "PTP per Maquinari Disponible (Suport PHC + phc2sys)",
       "ptpSwOnlyBadge": "Només PTP per Programari (Rellotge Emulat)"

@@ -546,6 +546,8 @@
       "ptpSlaveModeHelp": "Bajo el perfil Dante, este nodo opera como cliente puro PTP (clientOnly=1, prioridad=254) para disciplinarse al Grandmaster de la consola sin generar colisiones.",
       "ptpBackupMasterModeHelp": "Este nodo está configurado como master de respaldo BMCA (serverOnly=0). Actúa como Grandmaster si ninguna consola externa está emitiendo, y cede el liderazgo automáticamente a SLAVE tan pronto se detecte una consola hardware (AEQ/Yamaha).",
       "ptpForceMasterLab": "Habilitar Master de Respaldo BMCA (Fallback si el master externo se apaga)",
+      "ptpBackupPriorityHelp": "Prioridad de master de respaldo BMCA (0-255; menor = más prioridad). 253 cede ante consolas Dante hardware (típicamente 247-252) y asume Master solo si no hay reloj hardware activo.",
+      "ptpSlavePriorityHelp": "Bloqueado en 254 (cliente pasivo) en el perfil Dante.",
       "ptpForceMasterWarn": "ℹ️ MASTER DE RESPALDO BMCA: Participa en la negociación IEEE 1588 con prioridad {{prio}}. Si una consola hardware (prioridad 128) está encendida, este nodo cede el liderazgo y sincroniza como esclavo.",
       "ptpHwCapableBadge": "PTP por Hardware Disponible (Soporte PHC + phc2sys)",
       "ptpSwOnlyBadge": "Solo PTP por Software (Reloj Emulado)"
