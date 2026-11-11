@@ -3925,6 +3925,14 @@ async def telemetry_broadcast_loop():
                         except Exception as rrd_err:
                             logger.warning(f"Error updating volatile RRD metrics for service {p.id}: {rrd_err}")
 
+                    ptp_role = None
+                    ptp_ts = None
+                    if getattr(p, "service_type", None) == "pipewire_hub" and hasattr(process_manager, "aoip_discovery_supervisors"):
+                        aoip_sup = process_manager.aoip_discovery_supervisors.get(p.id)
+                        if aoip_sup and hasattr(aoip_sup, "_ptp_status"):
+                            ptp_role = aoip_sup._ptp_status.get("local_ptp4l_role")
+                            ptp_ts = aoip_sup._ptp_status.get("time_stamping")
+
                     processes_data.append({
                         "id": p.id,
                         "name": p.name,
@@ -3975,6 +3983,8 @@ async def telemetry_broadcast_loop():
                         "sparkline": sparkline,
                         "sparkline_metric": "cpu",
                         "has_rrd_outlier": has_outlier,
+                        "ptp_role": ptp_role,
+                        "ptp_time_stamping": ptp_ts,
                     })
 
                 active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
@@ -5576,6 +5586,14 @@ def list_processes(db: Session = Depends(get_db)):
             p_deps.append(fed_dep)
         raw_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
         p_leases = [resolve_lease_display_name(l, services_lookup, tasks_lookup) for l in raw_leases]
+        ptp_role = None
+        ptp_ts = None
+        if getattr(p, "service_type", None) == "pipewire_hub" and hasattr(process_manager, "aoip_discovery_supervisors"):
+            aoip_sup = process_manager.aoip_discovery_supervisors.get(p.id)
+            if aoip_sup and hasattr(aoip_sup, "_ptp_status"):
+                ptp_role = aoip_sup._ptp_status.get("local_ptp4l_role")
+                ptp_ts = aoip_sup._ptp_status.get("time_stamping")
+
         processes_data.append({
             "id": p.id,
             "name": p.name,
@@ -5623,6 +5641,8 @@ def list_processes(db: Session = Depends(get_db)):
             "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
             "is_shared_with_peers": bool(getattr(p, 'is_shared_with_peers', False)),
             "allow_peer_lease": bool(getattr(p, 'allow_peer_lease', False)),
+            "ptp_role": ptp_role,
+            "ptp_time_stamping": ptp_ts,
         })
 
     return processes_data

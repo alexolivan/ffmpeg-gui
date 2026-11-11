@@ -230,8 +230,8 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
       setSampleRate(48000);
       setRtpPtimeMode('1ms');
       setPtpDomain(0);
-      setPtpPriority1(forceLocalMaster ? 128 : 254);
-      setPtpAutoInhibit(!forceLocalMaster);
+      setPtpPriority1(forceLocalMaster ? (ptpPriority1 < 254 && ptpPriority1 > 0 ? ptpPriority1 : 240) : 254);
+      setPtpAutoInhibit(true);
       setVirtualSinks((prev) => prev.map((s) => ({ ...s, rtp_port: 5004 })));
     }
   };
@@ -239,8 +239,8 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   const handleForceLocalMasterToggle = (forced: boolean) => {
     setForceLocalMaster(forced);
     if (aoipProfile === 'dante') {
-      setPtpPriority1(forced ? 128 : 254);
-      setPtpAutoInhibit(!forced);
+      setPtpPriority1(forced ? (ptpPriority1 === 254 ? 240 : ptpPriority1) : 254);
+      setPtpAutoInhibit(true);
     }
   };
   const [ptpPriority1, setPtpPriority1] = useState<number>(
@@ -631,7 +631,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     const effectivePtimeMode = aoipProfile === 'dante' ? '1ms' : rtpPtimeMode;
     const effectivePtpDomain = aoipProfile === 'dante' ? 0 : Math.max(0, Math.min(127, Number(ptpDomain) || 0));
     const effectivePtpPriority1 = aoipProfile === 'dante'
-      ? (forceLocalMaster ? 128 : 254)
+      ? (forceLocalMaster ? Math.max(0, Math.min(255, Number(ptpPriority1) || 240)) : 254)
       : Math.max(0, Math.min(255, Number(ptpPriority1) || 128));
 
     const configPayload = {
@@ -653,7 +653,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         ptp: aes67Enabled ? {
           aoip_profile: aoipProfile,
           enabled: Boolean(ptpEnabled && canEnableMasterClock),
-          auto_inhibit: aoipProfile === 'dante' ? !forceLocalMaster : Boolean(ptpAutoInhibit),
+          auto_inhibit: aoipProfile === 'dante' ? true : Boolean(ptpAutoInhibit),
           force_local_master: aoipProfile === 'dante' ? forceLocalMaster : false,
           priority1: effectivePtpPriority1,
           domain: effectivePtpDomain,
@@ -1177,11 +1177,15 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div className="flex items-center gap-2 font-bold text-xs text-[var(--text-primary)]">
                             <span>⏱️</span>
-                            <span>{t('services.pipewire.ptpSlaveModeLabel', 'PTP Synchronization (Slave Only · Dante Compatible)')}</span>
+                            <span>
+                              {forceLocalMaster
+                                ? t('services.pipewire.ptpBackupMasterModeLabel', 'PTP Synchronization (BMCA Backup Master · Dante Compatible)')
+                                : t('services.pipewire.ptpSlaveModeLabel', 'PTP Synchronization (Slave Only · Dante Compatible)')}
+                            </span>
                           </div>
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-400 font-mono text-[10px] font-bold">
-                              {forceLocalMaster ? 'serverOnly 1 · Priority 128' : 'clientOnly 1 · Priority 254'}
+                              {forceLocalMaster ? `serverOnly 0 · Priority ${ptpPriority1}` : 'clientOnly 1 · Priority 254'}
                             </span>
                             {selectedIfaceObj && (
                               (selectedIfaceObj.ptp_support === 'hardware' || selectedIfaceObj.ptp_hardware_capable) ? (
@@ -1198,7 +1202,9 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                         </div>
 
                         <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-                          {t('services.pipewire.ptpSlaveModeHelp', 'Under the Dante profile, this node acts strictly as a PTP client (clientOnly=1, priority=254) to synchronize to the console/Grandmaster without causing clock conflicts.')}
+                          {forceLocalMaster
+                            ? t('services.pipewire.ptpBackupMasterModeHelp', 'This node is configured as a BMCA backup master (serverOnly=0). It acts as Grandmaster if no external console is broadcasting, and automatically yields back to SLAVE whenever a hardware master (AEQ/Yamaha) is detected.')
+                            : t('services.pipewire.ptpSlaveModeHelp', 'Under the Dante profile, this node acts strictly as a PTP client (clientOnly=1, priority=254) to synchronize to the console/Grandmaster without causing clock conflicts.')}
                         </p>
 
                         {/* Collapsible Lab Override */}
@@ -1211,12 +1217,16 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                               className="accent-amber-500 w-3.5 h-3.5 cursor-pointer"
                             />
                             <span className="text-[11px] font-semibold text-[var(--text-primary)]">
-                              {t('services.pipewire.ptpForceMasterLab', 'Force local PTP Grandmaster (Lab / Isolated testing only)')}
+                              {t('services.pipewire.ptpForceMasterLab', 'Enable BMCA Backup Master (Fallback when external master is off)')}
                             </span>
                           </label>
                           {forceLocalMaster && (
-                            <div className="p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[10px] leading-relaxed">
-                              {t('services.pipewire.ptpForceMasterWarn', '⚠️ WARNING: Only enable this in isolated laboratory setups without Dante consoles or physical hardware clocks. Forcing Grandmaster on a production Dante network will cause clock collisions and muting.')}
+                            <div className="p-2.5 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-600 dark:text-blue-300 text-[10px] leading-relaxed">
+                              {t(
+                                'services.pipewire.ptpForceMasterWarn',
+                                'ℹ️ BMCA BACKUP MASTER: Participates in IEEE 1588 BMCA election with priority {{prio}}. If an external hardware console (priority 128) is online, this node automatically defers and synchronizes as a slave.',
+                                { prio: ptpPriority1 }
+                              )}
                             </div>
                           )}
                         </div>
@@ -1321,7 +1331,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                           </label>
                           {aoipProfile === 'dante' ? (
                             <span className="text-[9px] font-mono text-blue-400 font-bold">
-                              {forceLocalMaster ? '[Master 128]' : '[Slave 254]'}
+                              {forceLocalMaster ? `[Backup ${ptpPriority1}]` : '[Slave 254]'}
                             </span>
                           ) : ptpPriority1 >= 200 && (
                             <span className="text-[9px] font-mono text-emerald-500 font-bold">
@@ -1333,16 +1343,16 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                           type="number"
                           min={0}
                           max={255}
-                          disabled={aoipProfile === 'dante'}
-                          value={aoipProfile === 'dante' ? (forceLocalMaster ? 128 : 254) : ptpPriority1}
+                          disabled={aoipProfile === 'dante' && !forceLocalMaster}
+                          value={aoipProfile === 'dante' ? (forceLocalMaster ? ptpPriority1 : 254) : ptpPriority1}
                           onChange={(e) => setPtpPriority1(Math.max(0, Math.min(255, Number(e.target.value) || 0)))}
                           className={`w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime ${
-                            aoipProfile === 'dante' ? 'opacity-60 cursor-not-allowed' : ''
+                            aoipProfile === 'dante' && !forceLocalMaster ? 'opacity-60 cursor-not-allowed' : ''
                           }`}
                         />
                         <span className="text-[9px] text-[var(--text-secondary)] mt-0.5 block leading-tight">
                           {aoipProfile === 'dante'
-                            ? (forceLocalMaster ? 'Forced local Grandmaster for isolated lab testing.' : 'Locked to 254 (passive client) in Dante profile.')
+                            ? (forceLocalMaster ? 'BMCA backup master priority (lower = higher priority; 240 recommended).' : 'Locked to 254 (passive client) in Dante profile.')
                             : t('services.pipewire.ptpPriority1Help', 'BMCA preference (0-255). 128 is default; 64 for primary, 200 for backup.')}
                         </span>
                       </div>

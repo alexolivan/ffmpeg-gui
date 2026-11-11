@@ -66,6 +66,8 @@ export interface ServiceItem {
   is_pinned?: boolean;
   allow_auto_start_deps?: boolean;
   allow_auto_stop_deps?: boolean;
+  ptp_role?: string | null;
+  ptp_time_stamping?: string | null;
 }
 
 interface UnifiedServiceCardProps {

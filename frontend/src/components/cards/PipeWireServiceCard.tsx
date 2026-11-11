@@ -233,15 +233,32 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
                 <span>AES67 Tx</span>
                 {aes67Interface && <span className="opacity-70 font-normal">@{aes67Interface}</span>}
               </span>
-              {aes67Net.ptp?.enabled && (
-                <span
-                  className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold flex items-center gap-1"
-                  title={`PTP Master Clock active (BMCA Priority ${aes67Net.ptp?.priority1 ?? 128}, Domain ${aes67Net.ptp?.domain ?? 0})`}
-                >
-                  <span>⏱️ PTP Master</span>
-                  <span className="opacity-70 font-normal text-[9px]">(Prio {aes67Net.ptp?.priority1 ?? 128})</span>
-                </span>
-              )}
+              {aes67Net.ptp?.enabled && (() => {
+                const livePtpRole = telemetryItem?.ptp_role || service.ptp_role;
+                const hasLiveRole = isRunning && livePtpRole && livePtpRole !== 'INACTIVE' && livePtpRole !== 'UNKNOWN';
+                const roleBadgeText = hasLiveRole ? `PTP: ${livePtpRole}` : 'PTPv2';
+                const roleColorClass =
+                  !hasLiveRole
+                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                    : livePtpRole === 'MASTER'
+                    ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                    : livePtpRole === 'SLAVE' || livePtpRole === 'CALIBRATING'
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : livePtpRole === 'UNCALIBRATED'
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : livePtpRole === 'FAULTY'
+                    ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                    : 'bg-blue-500/15 text-blue-400 border-blue-500/30';
+
+                return (
+                  <span
+                    className={`px-1.5 py-0.5 rounded border text-[10px] font-bold flex items-center gap-1 ${roleColorClass}`}
+                    title={`PTPv2 Synchronization (${hasLiveRole ? `Role: ${livePtpRole} · ` : ''}BMCA Priority ${aes67Net.ptp?.priority1 ?? (aes67Net.aoip_profile === 'dante' ? 240 : 128)}, Domain ${aes67Net.ptp?.domain ?? 0})`}
+                  >
+                    <span>⏱️ {roleBadgeText}</span>
+                  </span>
+                );
+              })()}
             </>
           ) : (
             <span className="px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 border border-white/10 text-[10px]">

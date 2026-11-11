@@ -258,6 +258,8 @@ class AoIpDiscoverySupervisor:
             "source_ip": None,
             "clock_identity": None,
             "local_ptp4l_role": "UNKNOWN",
+            "time_stamping": "software",
+            "free_running": True,
             "is_local": False,
             "last_seen": None,
         }
@@ -565,9 +567,9 @@ class AoIpDiscoverySupervisor:
                         self._ptp_status["is_local"] = probe_res.get("is_local", False)
                         self._ptp_status["last_seen"] = time.time()
                     else:
-                        # Age out after 15 seconds without detection, but only if not actively locked in SLAVE/UNCALIBRATED
+                        # Age out after 15 seconds without detection, but only if not actively locked in SLAVE/UNCALIBRATED/CALIBRATING
                         current_role = self._ptp_status.get("local_ptp4l_role")
-                        if current_role not in ("SLAVE", "UNCALIBRATED"):
+                        if current_role not in ("SLAVE", "UNCALIBRATED", "CALIBRATING"):
                             last = self._ptp_status.get("last_seen")
                             if last and (time.time() - last > 15.0):
                                 self._ptp_status["detected"] = False
@@ -602,6 +604,30 @@ class AoIpDiscoverySupervisor:
                 best_master_clock = None
                 has_rms_reports = False
                 detected_role_in_tail = None
+                detected_ts_mode = None
+                detected_free_running = None
+
+                # Check generated config file for free_running / time_stamping
+                conf_paths = [
+                    f"/dev/shm/ptp4l_{self.hub_id}.conf",
+                    f"/tmp/ptp4l_{self.hub_id}.conf"
+                ]
+                for cp in conf_paths:
+                    if os.path.exists(cp):
+                        try:
+                            with open(cp, "r", errors="replace") as cf:
+                                conf_text = cf.read()
+                                if "time_stamping           hardware" in conf_text:
+                                    detected_ts_mode = "hardware"
+                                elif "time_stamping           software" in conf_text:
+                                    detected_ts_mode = "software"
+                                fr_m = re.search(r"free_running\s+(\d+)", conf_text)
+                                if fr_m:
+                                    detected_free_running = (fr_m.group(1) == "1")
+                            break
+                        except Exception:
+                            pass
+
                 for lp in cand_log_paths:
                     if os.path.exists(lp):
                         try:
@@ -613,7 +639,11 @@ class AoIpDiscoverySupervisor:
                                 lines = f.readlines()
                                 for line in reversed(lines):
                                     line_clean = line.strip()
-                                    if not line_clean or line_clean.startswith("---") or line_clean.startswith("COMMAND:"):
+                                    if not line_clean or line_clean.startswith("---"):
+                                        continue
+                                    if line_clean.startswith("COMMAND:"):
+                                        if detected_ts_mode is None:
+                                            detected_ts_mode = "software" if "-S" in line_clean else "hardware"
                                         continue
                                     if "rms " in line_clean and "freq " in line_clean:
                                         has_rms_reports = True
@@ -649,12 +679,31 @@ class AoIpDiscoverySupervisor:
                         except Exception:
                             pass
 
+                if detected_ts_mode is not None:
+                    self._ptp_status["time_stamping"] = detected_ts_mode
+                if detected_free_running is not None:
+                    self._ptp_status["free_running"] = detected_free_running
+                elif detected_ts_mode == "software":
+                    self._ptp_status["free_running"] = True
+
+                is_free_running = bool(self._ptp_status.get("free_running", False))
+
                 if ptp4l_alive:
                     if detected_role_in_tail:
                         role = detected_role_in_tail
                     elif has_rms_reports:
-                        # ptp4l is actively processing delay/sync reports: if we were previously SLAVE, stay SLAVE; otherwise UNCALIBRATED
+                        # ptp4l is actively processing delay/sync reports:
+                        # if we were previously SLAVE, stay SLAVE; otherwise UNCALIBRATED (or CALIBRATING if free_running)
                         role = self._last_ptp4l_role if self._last_ptp4l_role == "SLAVE" else "UNCALIBRATED"
+
+                    # Differentiate CALIBRATING vs UNCALIBRATED in free-running software mode:
+                    # When free_running is active, UNCALIBRATED is the permanent normal state during active sync;
+                    # if ptp4l is actively calibrating (rms/freq reports present or already locked), show CALIBRATING (OK/green).
+                    if role == "UNCALIBRATED" and is_free_running and has_rms_reports:
+                        role = "CALIBRATING"
+                    elif role == "CALIBRATING" and (not is_free_running):
+                        role = "UNCALIBRATED"
+
                     self._last_ptp4l_role = role
                 else:
                     role = "INACTIVE"

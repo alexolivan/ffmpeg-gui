@@ -522,7 +522,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('sess.ts-refclk = "ptp=IEEE1588-2008:', res)
 
     def test_dante_profile_ptp4l_slave_mode(self):
-        """Verifies Dante profile ptp4l configuration defaults to clientOnly=1, serverOnly=0, priority1=254, domain=0."""
+        """Verifies Dante profile ptp4l configuration defaults to clientOnly=1, serverOnly=0, priority1=254, domain=0 and free_running=1 in software mode."""
         ptp_cfg = {
             "enabled": True,
             "aoip_profile": "dante",
@@ -540,10 +540,19 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("priority2               254", conf)
         self.assertIn("clientOnly              1", conf)
         self.assertIn("serverOnly              0", conf)
-        self.assertIn("free_running            0", conf)
+        self.assertIn("free_running            1", conf)
+
+        # Hardware mode should keep free_running 0 to discipline PHC
+        conf_hw = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=40,
+            ptp_cfg=ptp_cfg,
+            iface="eth0",
+            ptp_support="hardware"
+        )
+        self.assertIn("free_running            0", conf_hw)
 
     def test_dante_profile_ptp4l_lab_force_master(self):
-        """Verifies Dante profile with force_local_master allows serverOnly=1 and priority1=128 in lab setups."""
+        """Verifies Dante profile with force_local_master acts as BMCA backup master (serverOnly=0, priority1 default 240)."""
         ptp_cfg = {
             "enabled": True,
             "aoip_profile": "dante",
@@ -556,10 +565,25 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
             ptp_support="software"
         )
         self.assertIn("domainNumber            0", conf)
-        self.assertIn("priority1               128", conf)
+        self.assertIn("priority1               240", conf)
         self.assertIn("clientOnly              0", conf)
-        self.assertIn("serverOnly              1", conf)
-        self.assertIn("free_running            0", conf)
+        self.assertIn("serverOnly              0", conf)
+        self.assertIn("free_running            1", conf)
+
+        # Custom priority1 when configured
+        ptp_cfg_custom = {
+            "enabled": True,
+            "aoip_profile": "dante",
+            "force_local_master": True,
+            "priority1": 200
+        }
+        conf_custom = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=41,
+            ptp_cfg=ptp_cfg_custom,
+            iface="eth0",
+            ptp_support="software"
+        )
+        self.assertIn("priority1               200", conf_custom)
 
     def test_rt_module_headless_rlimits_no_rtkit(self):
         """Verifies headless config disables core D-Bus plugin and RTKit/Portal probing."""

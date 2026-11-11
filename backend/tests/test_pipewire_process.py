@@ -971,7 +971,7 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             mock_ptp_proc.terminate.assert_called()
 
     async def test_start_ptp4l_sidecar_dante_hardware_spawns_phc2sys(self):
-        """Verifies that Dante profile with hardware PTP spawns phc2sys companion daemon."""
+        """Verifies that Dante profile with hardware PTP does NOT spawn phc2sys to preserve system CLOCK_REALTIME."""
         with self.Session() as session:
             hub = Service(
                 id=41,
@@ -998,13 +998,10 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
 
         mock_pw_proc = self._create_mock_proc(pid=41001)
         mock_ptp_proc = self._create_mock_proc(pid=41002)
-        mock_phc_proc = self._create_mock_proc(pid=41003)
 
         def mock_exec(*cmd, **kwargs):
             if "ptp4l" in cmd[0]:
                 return mock_ptp_proc
-            if "phc2sys" in cmd[0]:
-                return mock_phc_proc
             return mock_pw_proc
 
         def mock_find_bin(name):
@@ -1034,27 +1031,20 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             self.assertIn("-i", ptp_call)
             self.assertIn("enp9s0", ptp_call)
 
-            # 2. phc2sys spawned with -s enp9s0 -c CLOCK_REALTIME -w
+            # 2. phc2sys must NOT be spawned to prevent overwriting host OS CLOCK_REALTIME
             phc_call = next((c for c in spawn_calls if any("phc2sys" in str(arg) for arg in c)), None)
-            self.assertIsNotNone(phc_call)
-            self.assertIn("-s", phc_call)
-            self.assertIn("enp9s0", phc_call)
-            self.assertIn("-c", phc_call)
-            self.assertIn("CLOCK_REALTIME", phc_call)
-            self.assertIn("-w", phc_call)
+            self.assertIsNone(phc_call)
 
-            # 3. Both processes tracked in auxiliary_processes and auxiliary_pids
+            # 3. Only ptp4l tracked in auxiliary_processes and auxiliary_pids
             aux_procs = self.pm.auxiliary_processes.get(41, [])
             self.assertIn(mock_ptp_proc, aux_procs)
-            self.assertIn(mock_phc_proc, aux_procs)
             aux_pids = self.pm.auxiliary_pids.get(41, [])
             self.assertIn(41002, aux_pids)
-            self.assertIn(41003, aux_pids)
+            self.assertEqual(len(aux_pids), 1)
 
-            # 4. Stop process and verify both terminate
+            # 4. Stop process and verify ptp4l terminates
             await self.pm.stop_process(41)
             mock_ptp_proc.terminate.assert_called()
-            mock_phc_proc.terminate.assert_called()
 
     def test_get_aoip_discovery_endpoint(self):
         """Verifies GET /api/pipewire/aoip-discovery returns discovery status."""
@@ -1134,9 +1124,10 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
         from core.pipewire_config import PipeWireConfigGenerator
         ptp_cfg = {
             "enabled": True,
-            "force_local_master": True,
+            "force_local_master": False,
             "domain": 0,
-            "aoip_profile": "dante"
+            "auto_inhibit": False,
+            "aoip_profile": "standalone"
         }
         cfg_str = PipeWireConfigGenerator.generate_ptp4l_config(
             service_id=7,

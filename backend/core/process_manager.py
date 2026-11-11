@@ -2444,53 +2444,11 @@ class ProcessManager:
         except Exception as e:
             self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch ptp4l sidecar: {e}")
 
-        # In Dante profile with hardware PTP timestamping (and not forcing local master),
-        # spawn phc2sys to synchronize CLOCK_REALTIME from the hardware PTP interface (PHC).
-        aoip_profile = str(ptp_cfg.get("aoip_profile", "")).lower()
-        force_local_master = bool(ptp_cfg.get("force_local_master", False))
-        if ptp_support == "hardware" and aoip_profile == "dante" and not force_local_master:
-            phc2sys_bin = find_system_binary("phc2sys")
-            if phc2sys_bin:
-                phc_cmd = [phc2sys_bin, "-s", iface, "-c", "CLOCK_REALTIME", "-w"]
-                self.logger.info(
-                    f"[PipeWire Hub #{process_id}] Spawning managed phc2sys companion daemon: {' '.join(phc_cmd)}"
-                )
-                try:
-                    phc_log_path = os.path.join(logs_dir, f"phc2sys_{process_id}.log")
-                    if not is_restart:
-                        phc_header = f"--- PHC2SYS LAUNCH AT {now_iso} ---\nCOMMAND: {' '.join(phc_cmd)}\n"
-                        with open(phc_log_path, "wb") as f:
-                            f.write(phc_header.encode("utf-8"))
-                    else:
-                        phc_header = f"\n--- PHC2SYS RESTART AT {now_iso} ---\nCOMMAND: {' '.join(phc_cmd)}\n"
-                        with open(phc_log_path, "ab") as f:
-                            f.write(phc_header.encode("utf-8"))
-
-                    phc_log_file = open(phc_log_path, "ab", buffering=0)
-                    phc_proc = await asyncio.create_subprocess_exec(
-                        *phc_cmd,
-                        stdout=phc_log_file,
-                        stderr=asyncio.subprocess.STDOUT,
-                        stdin=asyncio.subprocess.DEVNULL
-                    )
-                    try:
-                        phc_log_file.close()
-                    except Exception:
-                        pass
-
-                    self.auxiliary_processes.setdefault(process_id, []).append(phc_proc)
-                    if process_id not in self.auxiliary_pids:
-                        self.auxiliary_pids[process_id] = []
-                    if phc_proc.pid and phc_proc.pid not in self.auxiliary_pids[process_id]:
-                        self.auxiliary_pids[process_id].append(phc_proc.pid)
-
-                    phc_key = f"{process_id}:phc2sys"
-                    self.sidecar_log_buffers[phc_key] = collections.deque(maxlen=100)
-                    asyncio.create_task(
-                        self._file_log_tailer(process_id, phc_log_path, proc=phc_proc, sidecar_name="phc2sys")
-                    )
-                except Exception as e:
-                    self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch phc2sys companion daemon: {e}")
+        # Note: CLOCK_REALTIME protection
+        # We deliberately do NOT spawn phc2sys to synchronize CLOCK_REALTIME from NIC PHC or Dante PTP,
+        # preserving the Linux host system clock (NTP / systemd-timesyncd) and preventing timescale
+        # collisions with arbitrary hardware PTP epochs (e.g. 1970 ARB). When hardware timestamping
+        # is available, ptp4l directly disciplines the NIC PHC (/dev/ptpX).
 
     def _get_pipewire_sidecar_status(self, process_id: int) -> Dict[str, bool]:
         """Returns live status of auxiliary ptp4l and phc2sys sidecars for a PipeWire Hub."""

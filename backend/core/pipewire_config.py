@@ -564,10 +564,10 @@ class PipeWireConfigGenerator:
         if aoip_profile == "dante":
             domain = 0
             if force_local_master:
-                priority1 = 128
-                priority2 = 128
+                priority1 = max(0, min(255, int(ptp_cfg.get("priority1", 240))))
+                priority2 = max(0, min(255, int(ptp_cfg.get("priority2", priority1))))
                 client_only = 0
-                server_only = 1
+                server_only = 0
             else:
                 priority1 = 254
                 priority2 = 254
@@ -587,10 +587,9 @@ class PipeWireConfigGenerator:
         is_hw = (ptp_support == "hardware")
         ts_mode = "hardware" if is_hw else "software"
 
-        # In software and hardware timestamping modes, free_running defaults to 0 so the servo
-        # actively disciplines the clock, achieves SERVO_LOCKED, and transitions UNCALIBRATED to SLAVE.
-        # step_threshold 1.0 steps initial offsets (> 1.0s) safely and slews offsets (< 1.0s).
-        free_running = int(ptp_cfg.get("free_running", 0))
+        # In software timestamping mode, free_running defaults to 1 to protect CLOCK_REALTIME from NTP/timescale collisions.
+        # In hardware timestamping mode, ptp4l disciplines the PHC directly (/dev/ptpX).
+        free_running = 1 if ts_mode == "software" else int(ptp_cfg.get("free_running", 0))
 
         # Dedicated ephemeral UDS IPC socket paths in /dev/shm (or /tmp) to prevent permission errors in /var/run
         shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"

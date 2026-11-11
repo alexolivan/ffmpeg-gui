@@ -542,9 +542,11 @@
       "profileRavennaDesc": "Estàndard de difusió AES67 amb tramat d'1 ms o 4 ms i domini PTP configurable.",
       "danteLockedBadge": "Blocat per Perfil Dante",
       "ptpSlaveModeLabel": "Sincronització PTP (Mode Esclau · Compatible amb Dante)",
+      "ptpBackupMasterModeLabel": "Sincronització PTP (Master de Recanvi BMCA · Compatible amb Dante)",
       "ptpSlaveModeHelp": "Sota el perfil Dante, aquest node opera com a client pur PTP (clientOnly=1, prioritat=254) per a disciplinar-se al Grandmaster de la consola sense generar col·lisions.",
-      "ptpForceMasterLab": "Forçar PTP Grandmaster local (Només per a lab sense consola)",
-      "ptpForceMasterWarn": "⚠️ ATENCIÓ: Emprar exclusivament en laboratoris de prova aïllats sense consoles ni rellotges maquinari Dante. Forçar Grandmaster en una xarxa Dante de producció causarà conflictes i silenciament.",
+      "ptpBackupMasterModeHelp": "Aquest node està configurat com a master de recanvi BMCA (serverOnly=0). Actua com a Grandmaster si cap consola externa està emetent, i cedeix el lideratge automàticament a SLAVE tan bon punt es detecti una consola maquinari (AEQ/Yamaha).",
+      "ptpForceMasterLab": "Habilitar Master de Recanvi BMCA (Fallback si el master extern s'apaga)",
+      "ptpForceMasterWarn": "ℹ️ MASTER DE RECANVI BMCA: Participa en la negociació IEEE 1588 amb prioritat {{prio}}. Si una consola maquinari (prioritat 128) està encesa, aquest node cedeix el lideratge i sincronitza com a esclau.",
       "ptpHwCapableBadge": "PTP per Maquinari Disponible (Suport PHC + phc2sys)",
       "ptpSwOnlyBadge": "Només PTP per Programari (Rellotge Emulat)"
     },

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.8] - 2026-11-11
+
+### Added
+- **PTP4L Free-Running Calibration vs Uncalibrated State Semantics (`backend/core/aoip_discovery_supervisor.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Differentiated continuous calibration in software timestamping mode (`free_running 1`) as an active healthy state (`CALIBRATING` in emerald/green) rather than an alarming error condition (`UNCALIBRATED` in amber).
+  - Added discreet clock operating mode badges (`SW · Free-Running` vs `HW · PHC`) on the local PTP status badge in `PipeWirePreviewModal`.
+- **Dedicated Status Column in SAP Radar Stream Table (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Extracted inline stream status badges (`Active` / `Waiting`) from the description/session name cell into a dedicated `Status` column, maintaining visual consistency with all other modal tables.
+- **Dynamic Real-Time PTP Role Telemetry on Service Cards (`frontend/src/components/cards/PipeWireServiceCard.tsx`, `backend/main.py`)**:
+  - Replaced static `PTP Master (prio ...)` badge on PipeWire service cards with a reactive, compact badge displaying real-time PTP status (`PTP: SLAVE`, `PTP: CALIBRATING`, `PTP: MASTER`, etc.) with semantic status colors.
+
+### Changed
+- **Dante Profile BMCA Backup Master Architecture (`backend/core/pipewire_config.py`, `frontend/src/components/forms/PipeWireConfigForm.tsx`, locales `en.json`, `es.json`, `ca.json`)**:
+  - Reformed `force_local_master` in Dante profile: replaced restrictive `serverOnly 1` with `serverOnly 0` and `clientOnly 0`, transforming the node into a true IEEE 1588 BMCA Backup Master.
+  - Unlocked `Priority 1 (BMCA)` input field when backup master is active, defaulting to lower-priority fallback `240` (instead of locked `128`), allowing the node to act as Grandmaster when hardware consoles are off and automatically yield back to SLAVE when a hardware console (AEQ/Yamaha) powers on.
+  - Updated localized descriptions and warnings to clearly reflect BMCA backup behavior.
+
+### Fixed
+- **Host System Clock Protection Against Arbitrary PTP Epochs (`backend/core/pipewire_config.py`, `backend/core/process_manager.py`, `backend/tests/test_pipewire_process.py`)**:
+  - Enforced `free_running 1` for software timestamping (`-S`), preventing `ptp4l` from attempting to step/slew the Linux host `CLOCK_REALTIME` and eliminating timescale collisions and `Invalid argument` errors with legacy 1970 ARB hardware clocks.
+  - Completely stopped spawning `phc2sys -s <iface> -c CLOCK_REALTIME` in slave mode, ensuring host OS system time (NTP / `systemd-timesyncd`) is never disrupted by AoIP networks.
+
 ## [2.64.7] - 2026-11-10
 
 ### Fixed

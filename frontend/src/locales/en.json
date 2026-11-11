@@ -542,9 +542,11 @@
       "profileRavennaDesc": "Standard broadcast AES67 with 1ms or 4ms packet framing and configurable PTP domain.",
       "danteLockedBadge": "Locked by Dante Profile",
       "ptpSlaveModeLabel": "PTP Synchronization (Slave Only · Dante Compatible)",
+      "ptpBackupMasterModeLabel": "PTP Synchronization (BMCA Backup Master · Dante Compatible)",
       "ptpSlaveModeHelp": "Under the Dante profile, this node acts strictly as a PTP client (clientOnly=1, priority=254) to synchronize to the console/Grandmaster without causing clock conflicts.",
-      "ptpForceMasterLab": "Force local PTP Grandmaster (Lab / Isolated testing only)",
-      "ptpForceMasterWarn": "⚠️ WARNING: Only enable this in isolated laboratory setups without Dante consoles or physical hardware clocks. Forcing Grandmaster on a production Dante network will cause clock collisions and muting.",
+      "ptpBackupMasterModeHelp": "This node is configured as a BMCA backup master (serverOnly=0). It acts as Grandmaster if no external console is broadcasting, and automatically yields back to SLAVE whenever a hardware master (AEQ/Yamaha) is detected.",
+      "ptpForceMasterLab": "Enable BMCA Backup Master (Fallback when external master is off)",
+      "ptpForceMasterWarn": "ℹ️ BMCA BACKUP MASTER: Participates in IEEE 1588 BMCA election with priority {{prio}}. If an external hardware console (priority 128) is online, this node automatically defers and synchronizes as a slave.",
       "ptpHwCapableBadge": "Hardware PTP Capable (PHC + phc2sys support)",
       "ptpSwOnlyBadge": "Software PTP Only (Emulated Clock)"
     },

@@ -120,6 +120,8 @@ interface AoIpTelemetry {
     clock_identity?: string | null;
     state?: string | null;
     local_ptp4l_role?: string | null;
+    time_stamping?: 'software' | 'hardware' | string;
+    free_running?: boolean;
     priority1?: number;
     domain?: number;
   };
@@ -1182,7 +1184,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                           return ptpStat.grandmaster_ip || ptpStat.source_ip;
                         }
                         if (role === 'MASTER') return pwConfig.aes67_network?.ip || t('services.pipewire.ptpLocalNode', 'Local Node');
-                        if (role === 'SLAVE' || role === 'UNCALIBRATED' || role === 'LISTENING') {
+                        if (role === 'SLAVE' || role === 'CALIBRATING' || role === 'UNCALIBRATED' || role === 'LISTENING') {
                           return t('services.pipewire.ptpSearching', 'Searching Grandmaster...');
                         }
                         return '-';
@@ -1208,14 +1210,22 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       const role = ptpStat?.state || ptpStat?.local_ptp4l_role || (pwConfig.aes67_network?.ptp?.enabled ? (pwConfig.aes67_network?.ptp?.force_local_master ? 'MASTER' : 'LISTENING') : 'INACTIVE');
                       const roleColor =
                         role === 'MASTER' ? 'text-purple-400' :
-                        role === 'SLAVE' ? 'text-emerald-400' :
+                        (role === 'SLAVE' || role === 'CALIBRATING') ? 'text-emerald-400' :
                         role === 'UNCALIBRATED' ? 'text-amber-400' :
                         role === 'LISTENING' ? 'text-cyan-400' :
                         role === 'FAULTY' ? 'text-red-400' : 'text-zinc-500';
+                      const isSw = ptpStat?.time_stamping === 'software' || ptpStat?.free_running;
                       return (
-                        <span className={`font-mono font-bold uppercase ${roleColor}`}>
-                          {role}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`font-mono font-bold uppercase ${roleColor}`}>
+                            {role}
+                          </span>
+                          {pwConfig.aes67_network?.ptp?.enabled && role !== 'INACTIVE' && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/5 border border-white/10 text-[var(--text-secondary)]">
+                              {isSw ? 'SW · Free-Running' : 'HW · PHC'}
+                            </span>
+                          )}
+                        </div>
                       );
                     })()}
                   </div>
@@ -1225,7 +1235,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       BMCA Priority / Domain
                     </span>
                     <span className="font-mono text-[var(--text-secondary)]">
-                      Prio: {pwConfig.aes67_network?.aoip_profile === 'dante' && !pwConfig.aes67_network?.ptp?.force_local_master ? 254 : (pwConfig.aes67_network?.ptp?.priority1 ?? 128)} · Dom: {pwConfig.aes67_network?.aoip_profile === 'dante' ? 0 : (pwConfig.aes67_network?.ptp?.domain ?? 0)}
+                      Prio: {pwConfig.aes67_network?.aoip_profile === 'dante' && !pwConfig.aes67_network?.ptp?.force_local_master ? 254 : (pwConfig.aes67_network?.ptp?.priority1 ?? (pwConfig.aes67_network?.aoip_profile === 'dante' ? 240 : 128))} · Dom: {pwConfig.aes67_network?.aoip_profile === 'dante' ? 0 : (pwConfig.aes67_network?.ptp?.domain ?? 0)}
                     </span>
                   </div>
                 </div>
@@ -1380,6 +1390,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                           <th className="py-2 px-3">{t('services.pipewire.audioProfile', 'Audio Profile')}</th>
                           <th className="py-2 px-3">{t('services.pipewire.streamOrigin', 'Origin')}</th>
                           <th className="py-2 px-3">{t('services.pipewire.streamClock', 'PTP Clock')}</th>
+                          <th className="py-2 px-3">{t('common.status', 'Status')}</th>
                           <th className="py-2 px-3 text-right">{t('services.pipewire.actionState', 'Action / State')}</th>
                         </tr>
                       </thead>
@@ -1395,18 +1406,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                           return (
                             <tr key={sId} className="hover:bg-white/2 transition-colors">
                               <td className="py-2.5 px-3">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-bold text-[var(--text-primary)] font-sans">{sName}</span>
-                                  {stream.status === 'waiting' ? (
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
-                                      🟡 {t('services.pipewire.statusWaiting', 'Waiting')}
-                                    </span>
-                                  ) : stream.status === 'online' ? (
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                                      🟢 {t('common.active', 'Active')}
-                                    </span>
-                                  ) : null}
-                                </div>
+                                <div className="font-bold text-[var(--text-primary)] font-sans">{sName}</div>
                                 <div className="text-[10px] text-[var(--text-secondary)]">{sId}</div>
                               </td>
                               <td className="py-2.5 px-3 text-cyan-400 font-semibold">
@@ -1420,6 +1420,23 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                               </td>
                               <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[120px]" title={stream.ptp_clock_id || '-'}>
                                 {stream.ptp_clock_id || '-'}
+                              </td>
+                              <td className="py-2.5 px-3">
+                                {stream.status === 'waiting' ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                    {t('services.pipewire.statusWaiting', 'Waiting')}
+                                  </span>
+                                ) : stream.status === 'online' ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                    {t('common.active', 'Active')}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-2 py-0.5 rounded text-[var(--text-secondary)] bg-white/5 border border-white/10">
+                                    -
+                                  </span>
+                                )}
                               </td>
                               <td className="py-2.5 px-3 text-right">
                                 {stream.is_local ? (
