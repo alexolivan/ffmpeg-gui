@@ -627,7 +627,23 @@ class ProcessManager:
             spawn_lock = self._get_spawn_lock()
             async with spawn_lock:
                 if svc_type in ("mediamtx_hub", "icecast_server", "pipewire_hub"):
+                    prestarted_ptp_iface: Optional[str] = None
                     if svc_type == "pipewire_hub":
+                        pw_pre_cfg = cfg.get("pipewire_config") or cfg
+                        aes_pre_net = pw_pre_cfg.get("aes67_network", {})
+                        pre_ptp_cfg = aes_pre_net.get("ptp", {})
+                        if aes_pre_net.get("enabled") and aes_pre_net.get("interface") and pre_ptp_cfg.get("enabled"):
+                            prestarted_ptp_iface = aes_pre_net["interface"]
+                            await self._start_ptp4l_sidecar(
+                                process_id, prestarted_ptp_iface, pre_ptp_cfg, logs_dir, is_restart=is_restart
+                            )
+                            from core.pipewire_config import PipeWireConfigGenerator
+                            _, uds_ro_path = PipeWireConfigGenerator.get_ptp_uds_paths(process_id)
+                            for _ in range(10):
+                                if os.path.exists(uds_ro_path):
+                                    break
+                                await asyncio.sleep(0.05)
+
                         if pw_runtime_dir:
                             sub_env["PIPEWIRE_RUNTIME_DIR"] = pw_runtime_dir
                             sub_env["XDG_RUNTIME_DIR"] = pw_runtime_dir
@@ -682,6 +698,9 @@ class ProcessManager:
                             self.logger.error(
                                 f"[PipeWire Hub #{process_id}] PipeWire process died immediately on startup (code: {proc.returncode}). Aborting companion daemon launch."
                             )
+                            if prestarted_ptp_iface:
+                                self._reap_orphan_ptp4l_for_service(process_id, prestarted_ptp_iface)
+                                self.auxiliary_pids.pop(process_id, None)
                             return
 
                         from core.pipewire_matrix_supervisor import PipeWireMatrixSupervisor
@@ -699,8 +718,8 @@ class ProcessManager:
                             self.aoip_discovery_supervisors[process_id] = aoip_sup
                             await aoip_sup.start()
 
-                        # Managed PTP Master Clock sidecar (ptp4l)
-                        if aes_net.get("enabled") and aes_net.get("interface"):
+                        # Fallback: launch ptp4l if not already started pre-spawn
+                        if aes_net.get("enabled") and aes_net.get("interface") and not prestarted_ptp_iface:
                             ptp_cfg = aes_net.get("ptp", {})
                             if ptp_cfg.get("enabled"):
                                 await self._start_ptp4l_sidecar(process_id, aes_net["interface"], ptp_cfg, logs_dir, is_restart=is_restart)
@@ -2301,9 +2320,8 @@ class ProcessManager:
             config_path = os.path.join(runtime_dir, "pipewire.conf")
 
         pw_cfg = (media_proc.config or {}).get("pipewire_config") or media_proc.config or {}
-        PipeWireConfigGenerator.write_config_file(process_id, pw_cfg, config_path, runtime_dir)
-
         aes67_net = pw_cfg.get("aes67_network", {})
+        ptp_support = "software"
         if aes67_net.get("enabled") and aes67_net.get("interface"):
             iface = aes67_net["interface"]
             ok_nic, err_nic, _ = resource_manager.claim_resource(
@@ -2315,9 +2333,27 @@ class ProcessManager:
             )
             if not ok_nic:
                 raise RuntimeError(err_nic or f"Network interface '{iface}' is already in use.")
+            ptp_support = self._resolve_pipewire_nic_ptp_support(process_id, iface)
+            if ptp_support == "none":
+                ptp_support = "software"
+
+        PipeWireConfigGenerator.write_config_file(
+            process_id, pw_cfg, config_path, runtime_dir, ptp_support=ptp_support
+        )
 
         cmd = [pipewire_bin, "-c", config_path]
         return cmd, config_path, runtime_dir
+
+    def _resolve_pipewire_nic_ptp_support(self, process_id: int, iface: str) -> str:
+        """Audit NIC timestamping capability ('hardware', 'software', or 'none')."""
+        from core.network_inspector import audit_pipewire_network_capabilities
+        try:
+            audit_info = audit_pipewire_network_capabilities(probe_network_ptp=False)
+            matched = next((i for i in audit_info.get("interfaces", []) if i.get("name") == iface), None)
+            return matched.get("ptp_support", "software") if matched else "software"
+        except Exception as e:
+            self.logger.warning(f"[PipeWire Hub #{process_id}] Failed to audit NIC for PTP: {e}. Defaulting to software.")
+            return "software"
 
     def _reap_orphan_ptp4l_for_service(self, service_id: int, iface: Optional[str] = None):
         """
@@ -2353,7 +2389,7 @@ class ProcessManager:
         In Dante profile with hardware PTP timestamping (and not forcing local master), also launches
         phc2sys to synchronize CLOCK_REALTIME from the hardware PTP interface (PHC).
         """
-        from core.network_inspector import find_system_binary, audit_pipewire_network_capabilities
+        from core.network_inspector import find_system_binary
         from core.pipewire_config import PipeWireConfigGenerator
 
         # Pre-flight cleanup: terminate any lingering orphan ptp4l or phc2sys process for this service
@@ -2367,14 +2403,7 @@ class ProcessManager:
             )
             return
 
-        # Audit NIC capability for this specific interface
-        try:
-            audit_info = audit_pipewire_network_capabilities(probe_network_ptp=False)
-            matched = next((i for i in audit_info.get("interfaces", []) if i.get("name") == iface), None)
-            ptp_support = matched.get("ptp_support", "software") if matched else "software"
-        except Exception as e:
-            self.logger.warning(f"[PipeWire Hub #{process_id}] Failed to audit NIC for PTP: {e}. Defaulting to software.")
-            ptp_support = "software"
+        ptp_support = self._resolve_pipewire_nic_ptp_support(process_id, iface)
 
         if ptp_support == "none":
             self.logger.warning(

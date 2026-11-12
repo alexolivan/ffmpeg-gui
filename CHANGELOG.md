@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.10] - 2026-11-12
+
+### Fixed
+- **AES67 / Dante SDP & PTPv2 Clock Compliance (`backend/core/pipewire_config.py`, `backend/core/process_manager.py`)**:
+  - Replaced unrecognized `sess.mediaclk = "direct=0"` with PipeWire's actual `sess.ts-offset = 0`, `device.api = "aes67"`, and `rtp.ntp = 0` properties so SAP SDP announcements properly emit `a=mediaclk:direct=0` instead of random 32-bit offsets.
+  - Enabled live PTP Grandmaster clock identity resolution in PipeWire via `ptp.management-socket` (`ptp4lro_{id}.uds`) on `libpipewire-module-rtp-sap` and `rtp.fetch-ts-refclk = true` on `libpipewire-module-rtp-sink`, ensuring `a=ts-refclk` dynamically advertises the active network Grandmaster (e.g., AEQ hardware) instead of a local fallback ID.
+  - Fixed `PipeWireConfigGenerator.get_canonical_eui64` to reject IPv4 strings (preventing decimal IP octets like `192.168.100.154` from being formatted into bogus `19-21-68-FF-FE-10-01-54` MACs) and read the NIC hardware MAC from `/sys/class/net/<iface>/address`.
+  - Pre-spawns managed `ptp4l` before PipeWire startup (waiting briefly for `ptp4lro_{id}.uds` socket readiness) and enables PipeWire `PTP0-Driver` (`clock.interface`) + `aes67.driver-group = "pipewire.ptp0"` automatically when hardware PTP timestamping (`/dev/ptpX`) is detected.
+
 ## [2.64.9] - 2026-11-11
 
 ### Fixed

@@ -82,19 +82,55 @@ class PipeWireConfigGenerator:
         return f"{clean_prefix}.{idx}"
 
     @classmethod
-    def get_canonical_eui64(cls, mac_or_ip: Optional[str] = None) -> str:
+    def get_ptp_uds_paths(cls, service_id: int) -> Tuple[str, str]:
+        """Return (rw_uds_path, ro_uds_path) under /dev/shm when writable, else /tmp."""
+        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
+        return (
+            os.path.join(shm_dir, f"ptp4l_{service_id}.uds"),
+            os.path.join(shm_dir, f"ptp4lro_{service_id}.uds"),
+        )
+
+    @classmethod
+    def get_interface_mac(cls, iface: Optional[str]) -> Optional[str]:
+        """Read hardware MAC address for a Linux network interface from sysfs."""
+        if not iface:
+            return None
+        clean_iface = re.sub(r'[^a-zA-Z0-9_.:-]', '', str(iface).strip())
+        if not clean_iface:
+            return None
+        sysfs_path = f"/sys/class/net/{clean_iface}/address"
+        try:
+            if os.path.isfile(sysfs_path):
+                with open(sysfs_path, "r", encoding="utf-8") as f:
+                    mac = f.read().strip()
+                if mac and mac != "00:00:00:00:00:00":
+                    return mac
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def get_canonical_eui64(cls, mac_or_ip: Optional[str] = None, nic_name: Optional[str] = None) -> str:
         """
         Derive canonical EUI-64 clock identifier (IEEE 1588-2008 / RFC 7273).
+        Rejects IPv4/IPv6 strings so decimal octets are never mangled into fake MACs.
         Example: '00:15:5d:11:22:33' -> '00-15-5D-FF-FE-11-22-33'
         """
-        if mac_or_ip:
-            clean = re.sub(r'[^a-fA-F0-9]', '', str(mac_or_ip))
+        candidates = [mac_or_ip, cls.get_interface_mac(nic_name)]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            raw = str(candidate).strip()
+            # Reject IPv4/IPv6 literals or hostnames; only accept hex MAC/EUI-64 separated by : or -
+            if "." in raw or re.match(r'^\d{1,3}(?:\.\d{1,3}){3}$', raw):
+                continue
+            clean = re.sub(r'[:\-\s]', '', raw)
+            if not re.fullmatch(r'[0-9a-fA-F]+', clean):
+                continue
             if len(clean) == 12:
-                # 48-bit MAC -> EUI-64: insert FFFE in the middle
                 eui = f"{clean[:6]}fffe{clean[6:]}".upper()
                 return "-".join(eui[i:i+2] for i in range(0, 16, 2))
             if len(clean) == 16:
-                # Already 64-bit
                 return "-".join(clean[i:i+2].upper() for i in range(0, 16, 2))
 
         # Fallback to system node MAC address
@@ -182,7 +218,8 @@ class PipeWireConfigGenerator:
         cls,
         service_id: int,
         config: Dict[str, Any],
-        runtime_dir: str
+        runtime_dir: str,
+        ptp_support: str = "software"
     ) -> str:
         """
         Generate PipeWire SPA/JSON configuration.
@@ -191,6 +228,7 @@ class PipeWireConfigGenerator:
             service_id: Unique identifier of the service.
             config: Dictionary containing audio parameters and virtual sink configurations.
             runtime_dir: Path to runtime directory where sockets (e.g. pulse.sock) will be created.
+            ptp_support: NIC PTP timestamping mode ('hardware' or 'software').
 
         Returns:
             Formatted PipeWire SPA/JSON configuration string.
@@ -207,7 +245,10 @@ class PipeWireConfigGenerator:
         nic_name = aes67_net.get("interface")
         nic_mac = aes67_net.get("mac") or aes67_net.get("interface_mac")
         base_prefix = aes67_net.get("base_multicast_prefix") or cls.get_canonical_base_multicast_prefix(nic_ip)
-        eui64 = cls.get_canonical_eui64(nic_mac or nic_ip)
+        eui64 = cls.get_canonical_eui64(nic_mac, nic_name=nic_name)
+        ptp_cfg = aes67_net.get("ptp", {})
+        ptp_enabled = bool(ptp_cfg.get("enabled") and aes67_net.get("enabled", True) and nic_name)
+        _, uds_ro_path = cls.get_ptp_uds_paths(service_id)
 
         if aoip_profile == "dante":
             ptime_mode = "1ms"
@@ -273,6 +314,7 @@ class PipeWireConfigGenerator:
         virtual_sinks = config.get("virtual_sinks", [])
         remote_sinks = config.get("remote_sinks", [])
         has_aes67_tx = any(sink.get("aes67_enabled", False) for sink in virtual_sinks)
+        use_hw_ptp_driver = bool(ptp_enabled and ptp_support == "hardware" and nic_name and has_aes67_tx)
         sap_ip = aes67_net.get("sap_ip") or config.get("sap_ip") or "239.255.255.255"
 
         if has_aes67_tx:
@@ -286,6 +328,9 @@ class PipeWireConfigGenerator:
                 sap_args.append(f"            local.ifname = {cls._spa_val(nic_name)}")
             if nic_ip and nic_ip != "0.0.0.0":
                 sap_args.append(f"            source.ip = {cls._spa_val(nic_ip)}")
+            if ptp_enabled:
+                # Query ptp4l read-only management UDS for live Grandmaster Clock ID (a=ts-refclk)
+                sap_args.append(f"            ptp.management-socket = {cls._spa_val(uds_ro_path)}")
 
             # Restrict stream.rules strictly to announce-stream.
             # CRITICAL: If create-stream is not explicitly suppressed, libpipewire-module-rtp-sap
@@ -340,7 +385,7 @@ class PipeWireConfigGenerator:
                     f"            destination.port = {dest_port}",
                     f"            sess.name = {cls._spa_val(sap_name)}",
                     "            sess.media = \"audio\"",
-                    "            sess.mediaclk = \"direct=0\"",
+                    "            sess.ts-offset = 0",
                     f"            sess.ts-refclk = {cls._spa_val(f'ptp=IEEE1588-2008:{eui64}:0')}",
                     f"            audio.format = {cls._spa_val(audio_fmt)}",
                     f"            audio.rate = {sample_rate}",
@@ -351,10 +396,16 @@ class PipeWireConfigGenerator:
                     f"            sess.latency.msec = {effective_latency_ms}",
                     "            net.ttl = 32",
                     "            net.loop = false",
+                ])
+                if use_hw_ptp_driver:
+                    rtp_args.append("            aes67.driver-group = \"pipewire.ptp0\"")
+
+                stream_props_lines = [
                     "            stream.props = {",
                     f"                node.name = {cls._spa_val(f'rtp_tx_{sink_id}')}",
                     f"                node.description = {cls._spa_val(f'AES67 Tx for {sink_name}')}",
                     f"                target.object = {cls._spa_val(sink_id)}",
+                    "                device.api = \"aes67\"",
                     f"                sess.name = {cls._spa_val(sap_name)}",
                     f"                rtp.destination.ip = {cls._spa_val(dest_ip)}",
                     f"                rtp.destination.port = {dest_port}",
@@ -363,12 +414,18 @@ class PipeWireConfigGenerator:
                     f"                rtp.rate = {sample_rate}",
                     f"                rtp.channels = {channels}",
                     f"                rtp.ptime = {1.0 if aoip_profile == 'dante' else float(min_ptime)}",
+                    "                rtp.ntp = 0",
                     f"                rtp.ts-refclk = {cls._spa_val(f'ptp=IEEE1588-2008:{eui64}:0')}",
+                ]
+                if ptp_enabled:
+                    stream_props_lines.append("                rtp.fetch-ts-refclk = true")
+                stream_props_lines.extend([
                     "                sess.sap.announce = true",
                     "                stream.dont-remix = true",
                     "                node.always-process = true",
                     "            }",
                 ])
+                rtp_args.extend(stream_props_lines)
 
                 lines.extend([
                     "    {",
@@ -450,6 +507,21 @@ class PipeWireConfigGenerator:
             "        }",
             "    }",
         ])
+        if use_hw_ptp_driver:
+            lines.extend([
+                "    { factory = spa-node-factory",
+                "        args = {",
+                "            factory.name    = support.node.driver",
+                "            node.name       = PTP0-Driver",
+                "            node.group      = pipewire.ptp0",
+                "            priority.driver = 100000",
+                "            clock.name      = \"clock.system.ptp0\"",
+                f"            clock.interface = {cls._spa_val(nic_name)}",
+                "            resync.ms       = 1.5",
+                "            object.export   = true",
+                "        }",
+                "    }",
+            ])
 
         # Virtual Sinks (Nodes created via adapter factory for all virtual sinks to provide playback and monitor ports)
         for sink in virtual_sinks:
@@ -520,7 +592,8 @@ class PipeWireConfigGenerator:
         service_id: int,
         config: Dict[str, Any],
         target_path: str,
-        runtime_dir: str
+        runtime_dir: str,
+        ptp_support: str = "software"
     ) -> str:
         """
         Write generated PipeWire configuration to file atomically.
@@ -530,11 +603,12 @@ class PipeWireConfigGenerator:
             config: PipeWire configuration parameters.
             target_path: Destination file path.
             runtime_dir: Path to runtime directory.
+            ptp_support: NIC PTP timestamping mode ('hardware' or 'software').
 
         Returns:
             target_path written.
         """
-        config_content = cls.generate_config(service_id, config, runtime_dir)
+        config_content = cls.generate_config(service_id, config, runtime_dir, ptp_support=ptp_support)
         target_abs = os.path.abspath(target_path)
         target_dir = os.path.dirname(target_abs)
         os.makedirs(target_dir, exist_ok=True)
@@ -594,9 +668,7 @@ class PipeWireConfigGenerator:
         free_running = 1 if ts_mode == "software" else int(ptp_cfg.get("free_running", 0))
 
         # Dedicated ephemeral UDS IPC socket paths in /dev/shm (or /tmp) to prevent permission errors in /var/run
-        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
-        uds_path = os.path.join(shm_dir, f"ptp4l_{service_id}.uds")
-        uds_ro_path = os.path.join(shm_dir, f"ptp4lro_{service_id}.uds")
+        uds_path, uds_ro_path = cls.get_ptp_uds_paths(service_id)
 
         # AES67 specifies 8 sync packets per second (logSyncInterval -3), logAnnounceInterval 0 (1s)
         log_sync = -3 if profile == "aes67" else 0

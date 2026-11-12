@@ -133,10 +133,13 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('sess.min-ptime = 2', res)
         self.assertIn('sess.max-ptime = 20', res)
         self.assertIn('sess.latency.msec = 86', res)
-        self.assertIn('sess.mediaclk = "direct=0"', res)
+        self.assertIn('sess.ts-offset = 0', res)
+        self.assertNotIn('sess.mediaclk', res)
         self.assertIn('sess.ts-refclk = "ptp=IEEE1588-2008:', res)
         self.assertIn('node.name = "rtp_tx_aes67_pgm"', res)
         self.assertIn('target.object = "aes67_pgm"', res)
+        self.assertIn('device.api = "aes67"', res)
+        self.assertIn('rtp.ntp = 0', res)
         self.assertIn('sess.sap.announce = true', res)
         self.assertIn('node.always-process = true', res)
         self.assertNotIn('node.passive = true', res)
@@ -484,10 +487,14 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         eui3 = PipeWireConfigGenerator.get_canonical_eui64("00155dfffe112233")
         self.assertEqual(eui3, "00-15-5D-FF-FE-11-22-33")
 
-        # Fallback to host MAC when None or invalid
+        # Fallback to host MAC when None or invalid (never mangle IPv4 decimals into fake MAC)
         eui_fallback = PipeWireConfigGenerator.get_canonical_eui64(None)
         self.assertEqual(len(eui_fallback.split("-")), 8)
         self.assertIn("FF-FE", eui_fallback)
+
+        eui_ip_rejected = PipeWireConfigGenerator.get_canonical_eui64("192.168.100.154")
+        self.assertNotEqual(eui_ip_rejected, "19-21-68-FF-FE-10-01-54")
+        self.assertEqual(eui_ip_rejected, eui_fallback)
 
     def test_sap_ip_custom_override(self):
         """Verifies sap_ip can be explicitly configured if needed."""
@@ -518,8 +525,35 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('sess.min-ptime = 1', res)
         self.assertIn('sess.max-ptime = 1', res)
         self.assertIn('audio.format = "S24BE"', res)
-        self.assertIn('sess.mediaclk = "direct=0"', res)
+        self.assertIn('sess.ts-offset = 0', res)
+        self.assertIn('device.api = "aes67"', res)
+        self.assertIn('rtp.ntp = 0', res)
         self.assertIn('sess.ts-refclk = "ptp=IEEE1588-2008:', res)
+
+    def test_aes67_ptp_management_socket_and_hw_driver(self):
+        """Verifies ptp.management-socket / rtp.fetch-ts-refclk in SAP+RTP, and PTP0-Driver only in hardware mode."""
+        cfg = {
+            "aoip_profile": "dante",
+            "aes67_network": {
+                "enabled": True,
+                "interface": "enp9s0",
+                "ip": "192.168.100.154",
+                "ptp": {"enabled": True}
+            },
+            "virtual_sinks": [{"id": "bus0", "channels": 2, "aes67_enabled": True}]
+        }
+        sw_res = PipeWireConfigGenerator.generate_config(42, cfg, "/tmp/run", ptp_support="software")
+        self.assertIn('ptp.management-socket = "', sw_res)
+        self.assertIn('ptp4lro_42.uds"', sw_res)
+        self.assertIn('rtp.fetch-ts-refclk = true', sw_res)
+        self.assertNotIn("19-21-68-FF-FE-10-01-54", sw_res)
+        self.assertNotIn("PTP0-Driver", sw_res)
+        self.assertNotIn("aes67.driver-group", sw_res)
+
+        hw_res = PipeWireConfigGenerator.generate_config(42, cfg, "/tmp/run", ptp_support="hardware")
+        self.assertIn('node.name       = PTP0-Driver', hw_res)
+        self.assertIn('clock.interface = "enp9s0"', hw_res)
+        self.assertIn('aes67.driver-group = "pipewire.ptp0"', hw_res)
 
     def test_dante_profile_ptp4l_slave_mode(self):
         """Verifies Dante profile ptp4l configuration defaults to clientOnly=1, serverOnly=0, priority1=254, domain=0 and free_running=1 in software mode."""
