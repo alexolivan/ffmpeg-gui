@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.12] - 2026-11-12
+
+### Fixed
+- **Dante RTP Dynamic Payload Type Alignment (`backend/core/pipewire_config.py`)**:
+  - Explicitly emits `rtp.payload = 96` (or `sink.rtp_payload` override) in `libpipewire-module-rtp-sink` `stream.props` for the `dante` profile, matching Dante Virtual Soundcard (`RTP/AVP 96`) instead of PipeWire's default `127`.
+- **PTP4L Log Tail Session Boundary (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Extracted `_parse_ptp4l_log_lines` and stopped backward log scanning at `--- PTP4L` launch/restart markers so stale BMCA roles, `rms` reports, and master clock identities from previous runs never bleed into the freshly restarted session's discovery status.
+
 ## [2.64.11] - 2026-11-12
 
 ### Fixed

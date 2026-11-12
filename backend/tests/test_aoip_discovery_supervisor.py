@@ -464,6 +464,23 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
             if os.path.exists(log_path):
                 os.remove(log_path)
 
+    def test_ptp4l_log_tail_stops_at_restart_boundary(self):
+        """Verifies _parse_ptp4l_log_lines ignores stale roles, rms, and clock IDs before the latest PTP4L restart marker."""
+        lines = [
+            "ptp4l[1000.000]: selected best master clock 001dc1.fffe.910558\n",
+            "ptp4l[1000.010]: port 1 (enp6s0): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED\n",
+            "ptp4l[1001.000]: rms 12 max 25 freq +100 +/- 5 delay 500 +/- 10\n",
+            "\n",
+            "--- PTP4L RESTART AT 2026-11-12T12:30:00+00:00 ---\n",
+            "COMMAND: /usr/sbin/ptp4l -f /dev/shm/ptp4l_7.conf -i enp6s0 -m -S\n",
+            "ptp4l[1005.000]: port 1 (enp6s0): INITIALIZING to LISTENING on INIT_COMPLETE\n",
+        ]
+        parsed = AoIpDiscoverySupervisor._parse_ptp4l_log_lines(lines)
+        self.assertEqual(parsed["role"], "LISTENING")
+        self.assertFalse(parsed["has_rms_reports"])
+        self.assertIsNone(parsed["best_master_clock"])
+        self.assertEqual(parsed["ts_mode"], "software")
+
 
 if __name__ == "__main__":
     unittest.main()

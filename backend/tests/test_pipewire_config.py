@@ -528,6 +528,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('sess.ts-offset = 0', res)
         self.assertIn('device.api = "aes67"', res)
         self.assertIn('rtp.ntp = 0', res)
+        self.assertIn('rtp.payload = 96', res)
         self.assertIn('sess.ts-refclk = "ptp=IEEE1588-2008:', res)
 
     def test_aes67_ptp_management_socket_and_hw_driver(self):

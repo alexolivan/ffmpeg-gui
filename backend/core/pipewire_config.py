@@ -443,6 +443,10 @@ class PipeWireConfigGenerator:
                 if use_hw_ptp_driver:
                     rtp_args.append("            aes67.driver-group = \"pipewire.ptp0\"")
 
+                rtp_payload = sink.get("rtp_payload")
+                if rtp_payload is None and aoip_profile == "dante":
+                    rtp_payload = 96
+
                 stream_props_lines = [
                     "            stream.props = {",
                     f"                node.name = {cls._spa_val(f'rtp_tx_{sink_id}')}",
@@ -462,6 +466,8 @@ class PipeWireConfigGenerator:
                     "                rtp.ntp = 0",
                     f"                rtp.ts-refclk = {cls._spa_val(f'ptp=IEEE1588-2008:{eui64}:0')}",
                 ]
+                if rtp_payload is not None:
+                    stream_props_lines.append(f"                rtp.payload = {int(rtp_payload)}")
                 if ptp_enabled:
                     stream_props_lines.append("                rtp.fetch-ts-refclk = true")
                 stream_props_lines.extend([

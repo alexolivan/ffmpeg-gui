@@ -541,6 +541,62 @@ class AoIpDiscoverySupervisor:
                         pass
                     self._sap_transport = None
 
+    @staticmethod
+    def _parse_ptp4l_log_lines(lines: List[str]) -> Dict[str, Any]:
+        """
+        Parse ptp4l log lines from newest to oldest, stopping at the latest
+        '--- PTP4L' launch/restart marker so prior runs never bleed into current telemetry.
+        """
+        best_master_clock: Optional[str] = None
+        has_rms_reports = False
+        detected_role: Optional[str] = None
+        detected_ts_mode: Optional[str] = None
+
+        for line in reversed(lines):
+            line_clean = line.strip()
+            if not line_clean:
+                continue
+            if "--- PTP4L" in line_clean:
+                break
+            if line_clean.startswith("---"):
+                continue
+            if line_clean.startswith("COMMAND:"):
+                if detected_ts_mode is None:
+                    detected_ts_mode = "software" if "-S" in line_clean else "hardware"
+                continue
+            if "rms " in line_clean and "freq " in line_clean:
+                has_rms_reports = True
+            if not best_master_clock:
+                m_clock = re.search(r"selected best master clock\s+([0-9a-fA-F.]+)", line_clean)
+                if not m_clock:
+                    m_clock = re.search(r"new foreign master\s+([0-9a-fA-F.]+)", line_clean)
+                if m_clock:
+                    raw_id = m_clock.group(1).replace(".", "")
+                    if len(raw_id) == 16:
+                        best_master_clock = ":".join(raw_id[i:i+2] for i in range(0, 16, 2)).lower()
+            if not detected_role:
+                if "assuming the grand master role" in line_clean or "MASTER on" in line_clean or "to MASTER" in line_clean:
+                    detected_role = "MASTER"
+                elif "SLAVE on" in line_clean or "to SLAVE" in line_clean:
+                    detected_role = "SLAVE"
+                elif "UNCALIBRATED on" in line_clean or "to UNCALIBRATED" in line_clean:
+                    detected_role = "UNCALIBRATED"
+                elif "PASSIVE on" in line_clean or "to PASSIVE" in line_clean:
+                    detected_role = "PASSIVE"
+                elif "LISTENING on" in line_clean or "to LISTENING" in line_clean:
+                    detected_role = "LISTENING"
+                elif "FAULT_DETECTED" in line_clean or "to FAULTY" in line_clean:
+                    detected_role = "FAULTY"
+                elif "to INITIALIZING" in line_clean or "INITIALIZING on" in line_clean:
+                    detected_role = "INITIALIZING"
+
+        return {
+            "role": detected_role,
+            "has_rms_reports": has_rms_reports,
+            "best_master_clock": best_master_clock,
+            "ts_mode": detected_ts_mode,
+        }
+
     async def _run_ptp_monitor(self):
         """Periodic passive PTPv2 monitor and local ptp4l role inspector."""
         from core.network_inspector import probe_network_ptp_master
@@ -636,45 +692,16 @@ class AoIpDiscoverySupervisor:
                                 f.seek(0, os.SEEK_END)
                                 fsize = f.tell()
                                 f.seek(max(0, fsize - 65536), os.SEEK_SET)
-                                lines = f.readlines()
-                                for line in reversed(lines):
-                                    line_clean = line.strip()
-                                    if not line_clean or line_clean.startswith("---"):
-                                        continue
-                                    if line_clean.startswith("COMMAND:"):
-                                        if detected_ts_mode is None:
-                                            detected_ts_mode = "software" if "-S" in line_clean else "hardware"
-                                        continue
-                                    if "rms " in line_clean and "freq " in line_clean:
-                                        has_rms_reports = True
-                                    if not best_master_clock:
-                                        m_clock = re.search(r"selected best master clock\s+([0-9a-fA-F.]+)", line_clean)
-                                        if not m_clock:
-                                            m_clock = re.search(r"new foreign master\s+([0-9a-fA-F.]+)", line_clean)
-                                        if m_clock:
-                                            raw_id = m_clock.group(1).replace(".", "")
-                                            if len(raw_id) == 16:
-                                                best_master_clock = ":".join(raw_id[i:i+2] for i in range(0, 16, 2)).lower()
-
-                                    if not detected_role_in_tail:
-                                        if "assuming the grand master role" in line_clean or "MASTER on" in line_clean or "to MASTER" in line_clean:
-                                            detected_role_in_tail = "MASTER"
-                                        elif "SLAVE on" in line_clean or "to SLAVE" in line_clean:
-                                            detected_role_in_tail = "SLAVE"
-                                        elif "UNCALIBRATED on" in line_clean or "to UNCALIBRATED" in line_clean:
-                                            detected_role_in_tail = "UNCALIBRATED"
-                                        elif "PASSIVE on" in line_clean or "to PASSIVE" in line_clean:
-                                            detected_role_in_tail = "PASSIVE"
-                                        elif "LISTENING on" in line_clean or "to LISTENING" in line_clean:
-                                            detected_role_in_tail = "LISTENING"
-                                        elif "FAULT_DETECTED" in line_clean or "to FAULTY" in line_clean:
-                                            detected_role_in_tail = "FAULTY"
-                                        elif "to INITIALIZING" in line_clean or "INITIALIZING on" in line_clean:
-                                            detected_role_in_tail = "INITIALIZING"
-
-                                if best_master_clock:
-                                    self._ptp_status["clock_identity"] = best_master_clock
-                            if detected_role_in_tail:
+                                parsed_tail = self._parse_ptp4l_log_lines(f.readlines())
+                            if parsed_tail["has_rms_reports"]:
+                                has_rms_reports = True
+                            if parsed_tail["ts_mode"] and detected_ts_mode is None:
+                                detected_ts_mode = parsed_tail["ts_mode"]
+                            if parsed_tail["best_master_clock"] and not best_master_clock:
+                                best_master_clock = parsed_tail["best_master_clock"]
+                                self._ptp_status["clock_identity"] = best_master_clock
+                            if parsed_tail["role"]:
+                                detected_role_in_tail = parsed_tail["role"]
                                 break
                         except Exception:
                             pass
