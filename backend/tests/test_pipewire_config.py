@@ -718,6 +718,60 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("destination.port = 5010", conf_rav)
         self.assertIn("rtp.destination.port = 5010", conf_rav)
 
+    def test_multi_sink_and_multi_host_unique_sess_ids(self):
+        """Verifies every AES67 Tx sink gets a unique positive 31-bit sess.id across streams and across hosts."""
+        import re
+
+        base_sinks = [
+            {"id": "aes_bus0", "name": "Aes Mix Bus 0", "sap_name": "bus_0", "channels": 2, "aes67_enabled": True},
+            {"id": "aes_bus1", "name": "Aes Mix Bus 1", "sap_name": "bus_1", "channels": 2, "aes67_enabled": True},
+        ]
+        host_a_cfg = {
+            "aoip_profile": "dante",
+            "aes67_network": {"enabled": True, "ip": "192.168.100.154", "mac": "aa:bb:cc:dd:ee:01"},
+            "virtual_sinks": base_sinks,
+        }
+        host_b_cfg = {
+            "aoip_profile": "dante",
+            "aes67_network": {"enabled": True, "ip": "192.168.100.157", "mac": "aa:bb:cc:dd:ee:02"},
+            "virtual_sinks": base_sinks,
+        }
+        conf_a = PipeWireConfigGenerator.generate_config(7, host_a_cfg, "/tmp/run")
+        conf_b = PipeWireConfigGenerator.generate_config(7, host_b_cfg, "/tmp/run")
+
+        # Each sink emits sess.id and sess.version in args and stream.props (2 occurrences each)
+        ids_a = [int(x) for x in re.findall(r"^\s*sess\.id = (\d+)$", conf_a, re.MULTILINE)]
+        ids_b = [int(x) for x in re.findall(r"^\s*sess\.id = (\d+)$", conf_b, re.MULTILINE)]
+        vers_a = [int(x) for x in re.findall(r"^\s*sess\.version = (\d+)$", conf_a, re.MULTILINE)]
+
+        self.assertEqual(len(ids_a), 4)
+        self.assertEqual(len(ids_b), 4)
+        # args and stream.props match per sink, and bus0 != bus1
+        self.assertEqual(ids_a[0], ids_a[1])
+        self.assertEqual(ids_a[2], ids_a[3])
+        self.assertNotEqual(ids_a[0], ids_a[2])
+        self.assertEqual(ids_b[0], ids_b[1])
+        self.assertEqual(ids_b[2], ids_b[3])
+        self.assertNotEqual(ids_b[0], ids_b[2])
+        # Distinct across hosts even with identical service_id and sink IDs
+        self.assertEqual(len({ids_a[0], ids_a[2], ids_b[0], ids_b[2]}), 4)
+        # All IDs and versions fit strictly within PipeWire signed positive int32 bounds (1..2147483647)
+        for val in ids_a + ids_b + vers_a:
+            self.assertGreaterEqual(val, 1)
+            self.assertLessEqual(val, 2147483647)
+
+        # Verify explicit collision guard in get_rtp_session_id
+        used = set()
+        first_id = PipeWireConfigGenerator.get_rtp_session_id(
+            "70-85-C2-FF-FE-A8-E6-A6", "192.168.100.157", 7, "bus0", 1, "239.69.140.3", 5004, used
+        )
+        collided_id = PipeWireConfigGenerator.get_rtp_session_id(
+            "70-85-C2-FF-FE-A8-E6-A6", "192.168.100.157", 7, "bus0", 1, "239.69.140.3", 5004, used
+        )
+        self.assertNotEqual(first_id, collided_id)
+        self.assertGreaterEqual(collided_id, 1)
+        self.assertLessEqual(collided_id, 2147483647)
+
 
 
 if __name__ == "__main__":

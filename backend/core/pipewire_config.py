@@ -6,13 +6,15 @@ Generates isolated, secure, and daemonized PipeWire configuration files
 and AES67 RTP/SAP streams without probing physical ALSA devices.
 """
 
+import hashlib
 import json
 import math
 import os
 import re
 import socket
+import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 class PipeWireConfigGenerator:
@@ -213,6 +215,32 @@ class PipeWireConfigGenerator:
 
         return int(base_ms)
 
+    @staticmethod
+    def get_rtp_session_id(
+        eui64: str,
+        nic_ip: str,
+        service_id: int,
+        sink_id: str,
+        sink_index: int,
+        dest_ip: str,
+        dest_port: int,
+        used_ids: Optional[Set[int]] = None,
+    ) -> int:
+        """
+        Compute a deterministic, collision-free positive 31-bit SDP session ID
+        (1..2147483647 for PipeWire pw_properties_fetch_int32 compatibility).
+        Scopes identity by host (EUI-64, source IP) and stream tuple so multiple
+        streams on one host and multiple hosts on a shared AoIP LAN never collide.
+        """
+        seed = f"{eui64}|{nic_ip}|{service_id}|{sink_id}|{sink_index}|{dest_ip}|{dest_port}".encode("utf-8")
+        digest = hashlib.sha256(seed).digest()
+        sess_id = (int.from_bytes(digest[:4], "big") & 0x7FFFFFFF) or 1
+        if used_ids is not None:
+            while sess_id in used_ids:
+                sess_id = (sess_id % 0x7FFFFFFF) + 1
+            used_ids.add(sess_id)
+        return sess_id
+
     @classmethod
     def generate_config(
         cls,
@@ -359,6 +387,9 @@ class PipeWireConfigGenerator:
                 "    },",
             ])
 
+        used_sess_ids: Set[int] = set()
+        sess_version = (int(time.time()) & 0x7FFFFFFF) or 1
+
         for idx, sink in enumerate(virtual_sinks, start=1):
             if sink.get("aes67_enabled", False):
                 sink_id = sink.get("id", "sink")
@@ -373,6 +404,16 @@ class PipeWireConfigGenerator:
                 raw_sap = sink.get("sap_name") or sink.get("name") or sink_id
                 sap_name = cls.format_sap_name(raw_sap)
                 audio_fmt = "S24BE" if aoip_profile == "dante" else sink.get("format", "S24BE")
+                sess_id = cls.get_rtp_session_id(
+                    eui64=eui64,
+                    nic_ip=nic_ip or "0.0.0.0",
+                    service_id=service_id,
+                    sink_id=sink_id,
+                    sink_index=idx,
+                    dest_ip=dest_ip,
+                    dest_port=dest_port,
+                    used_ids=used_sess_ids,
+                )
 
                 rtp_args = []
                 if nic_name:
@@ -384,6 +425,8 @@ class PipeWireConfigGenerator:
                     f"            destination.ip = {cls._spa_val(dest_ip)}",
                     f"            destination.port = {dest_port}",
                     f"            sess.name = {cls._spa_val(sap_name)}",
+                    f"            sess.id = {sess_id}",
+                    f"            sess.version = {sess_version}",
                     "            sess.media = \"audio\"",
                     "            sess.ts-offset = 0",
                     f"            sess.ts-refclk = {cls._spa_val(f'ptp=IEEE1588-2008:{eui64}:0')}",
@@ -407,6 +450,8 @@ class PipeWireConfigGenerator:
                     f"                target.object = {cls._spa_val(sink_id)}",
                     "                device.api = \"aes67\"",
                     f"                sess.name = {cls._spa_val(sap_name)}",
+                    f"                sess.id = {sess_id}",
+                    f"                sess.version = {sess_version}",
                     f"                rtp.destination.ip = {cls._spa_val(dest_ip)}",
                     f"                rtp.destination.port = {dest_port}",
                     "                rtp.media = \"audio\"",

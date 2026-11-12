@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.11] - 2026-11-12
+
+### Fixed
+- **Unique AES67 SDP Session IDs (`o= <sess-id>`) Across Multi-Stream & Multi-Host Fleets (`backend/core/pipewire_config.py`)**:
+  - Added deterministic, collision-guarded 31-bit positive `sess.id` derivation (`PipeWireConfigGenerator.get_rtp_session_id`) scoped by host identity (`EUI-64`, `source.ip`) and stream tuple (`service_id`, `sink_id`, `sink_index`, `dest_ip`, `dest_port`), along with positive 31-bit `sess.version` per generation.
+  - Prevents PipeWire from assigning identical fallback `<sess-id>` values when multiple `libpipewire-module-rtp-sink` streams initialize in the same second with `rtp.ntp = 0`, which caused RFC 4566 `o=` collisions in Dante Controller (collapsing multiple buses down to only the last announced stream).
+
 ## [2.64.10] - 2026-11-12
 
 ### Fixed
