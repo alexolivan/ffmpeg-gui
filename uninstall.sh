@@ -63,6 +63,15 @@ if [ -f "/etc/systemd/system/ffmpeg-gui.service" ]; then
         rm -f /etc/systemd/system/nvidia-uvm-init.service
     fi
 
+    if [ -f "/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules" ]; then
+        echo "--> Removing PTP udev rule (/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules)..."
+        rm -f /etc/udev/rules.d/99-ffmpeg-gui-ptp.rules
+        if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload-rules 2>/dev/null || true
+            udevadm trigger --subsystem-match=ptp 2>/dev/null || true
+        fi
+    fi
+
     systemctl daemon-reload
 
     if [ "$PURGE" = true ]; then

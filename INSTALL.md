@@ -62,7 +62,7 @@ To allow the Python application to bind to port 80/443 and monitor Intel GPU met
    LimitNICE=-19
    LimitMEMLOCK=infinity
    ```
-3. If capabilities are modified or python packages are updated, capabilities can be verified and re-applied using:
+3. If capabilities are modified or python packages are updated, capabilities and PTP hardware clock device permissions (`/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules` for `/dev/ptp*`) can be verified and re-applied using:
    ```bash
    sudo bash scripts/setup-system-capabilities.sh
    ```

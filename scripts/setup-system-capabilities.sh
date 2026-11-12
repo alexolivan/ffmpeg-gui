@@ -127,6 +127,45 @@ else
     echo "--> Note: ptp4l not found. If running PipeWire PTP Master Clocks, install linuxptp system package."
 fi
 
+# ------------------------------------------------------------------------------
+# 5. PTP Hardware Clock (/dev/ptp*) Device Node Permissions (udev rule)
+# ------------------------------------------------------------------------------
+PTP_UDEV_RULE="/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules"
+PTP_GROUP=""
+if getent group ffmpeg-gui >/dev/null 2>&1; then
+    PTP_GROUP="ffmpeg-gui"
+elif [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    PTP_GROUP="$(id -gn "$SUDO_USER" 2>/dev/null || true)"
+fi
+
+if [ -n "$PTP_GROUP" ]; then
+    PTP_RULE_LINE="SUBSYSTEM==\"ptp\", KERNEL==\"ptp[0-9]*\", GROUP=\"${PTP_GROUP}\", MODE=\"0660\""
+else
+    PTP_RULE_LINE='SUBSYSTEM=="ptp", KERNEL=="ptp[0-9]*", MODE="0660", TAG+="uaccess"'
+fi
+
+if [ -d "/etc/udev/rules.d" ]; then
+    CURRENT_RULE=""
+    if [ -f "$PTP_UDEV_RULE" ]; then
+        CURRENT_RULE="$(grep -v '^#' "$PTP_UDEV_RULE" | grep -v '^[[:space:]]*$' | head -n 1 || true)"
+    fi
+    if [ "$CURRENT_RULE" != "$PTP_RULE_LINE" ]; then
+        echo "--> Installing udev rule $PTP_UDEV_RULE ($PTP_RULE_LINE)..."
+        cat <<EOF > "$PTP_UDEV_RULE"
+# Managed by ffmpeg-gui (allows unprivileged ptp4l and PipeWire PTP0-Driver access to /dev/ptp*)
+$PTP_RULE_LINE
+EOF
+        chmod 0644 "$PTP_UDEV_RULE"
+        if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload-rules 2>/dev/null || true
+            udevadm trigger --subsystem-match=ptp 2>/dev/null || true
+            udevadm settle --timeout=2 2>/dev/null || true
+        fi
+    else
+        echo "--> udev rule $PTP_UDEV_RULE already up to date."
+    fi
+fi
+
 echo "================================================================="
 echo "--> Setup complete! System capabilities configured."
 echo "================================================================="

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.64.13] - 2026-11-12
+
+### Fixed
+- **Non-Root `/dev/ptp*` Hardware Clock Access (`scripts/setup-system-capabilities.sh`, `uninstall.sh`)**:
+  - Installs `/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules` (`SUBSYSTEM=="ptp", KERNEL=="ptp[0-9]*"`, `GROUP="ffmpeg-gui"` / `MODE="0660"`) and triggers `udevadm` so both `ptp4l` and PipeWire `PTP0-Driver` can open hardware `/dev/ptpX` clocks without running as `root` or requiring `CAP_DAC_OVERRIDE`.
+  - Cleans up `/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules` during system service uninstallation (`uninstall.sh`).
+
 ## [2.64.12] - 2026-11-12
 
 ### Fixed
