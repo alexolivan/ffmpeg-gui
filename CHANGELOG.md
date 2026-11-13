@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.67.1] - 2026-11-13
+
+### Fixed
+- **Watchdog UI & Failover Candidate Guardrails (`frontend/src/components/form/WatchdogFormSection.tsx`, `backend/main.py`, `frontend/src/locales/{en,es,ca}.json`)**:
+  - Disabled the `AND / OR` trigger logic selector (defaulting to `OR`) when fewer than 2 signal sensors are active (including audio-only services).
+  - Restricted signal-watchdog backup service candidates to `ffmpeg_stream` services in both UI and backend validation (`_validate_signal_watchdog_config`), excluding hubs, Icecast, MediaMTX, Desktop, and Kiosk services.
+  - Marked any service that already uses the currently edited service as its backup as `disabled` in the backup selector dropdown to prevent circular failover loops at the UI level.
+
 ## [2.67.0] - 2026-11-13
 
 ### Added

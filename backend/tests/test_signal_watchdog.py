@@ -262,6 +262,18 @@ class TestSignalWatchdogAPIAndBackup(unittest.TestCase):
             )
         self.assertEqual(ctx2.exception.status_code, 400)
 
+        # Non-FFmpeg service rejected as backup
+        hub = Service(name="Icecast Hub", service_type="icecast_server", config={})
+        self.db.add(hub)
+        self.db.commit()
+        with self.assertRaises(HTTPException) as ctx3:
+            _validate_signal_watchdog_config(
+                self.db,
+                svc_a.id,
+                {"reaction_mode": "activate_backup", "backup_service_id": hub.id},
+            )
+        self.assertEqual(ctx3.exception.status_code, 400)
+
     def test_serialize_and_preview_command_includes_signal_watchdog(self):
         from database.models import Service
         from main import _serialize_service, preview_command, ProcessCreate

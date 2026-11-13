@@ -2249,6 +2249,7 @@
     "conditionLogic": "Lògica de Dispar",
     "logicOr": "OR (Qualsevol sensor actiu dispara)",
     "logicAnd": "AND (Tots els sensors actius han de disparar)",
+    "singleSensorLogicHint": "Requereix 2 o més sensors actius per combinar condicions.",
     "recoveryDelay": "Retard d'Histèresi en Recuperació (s)",
     "reactionMode": "Reacció de Failover",
     "reactionAlertOnly": "Només Alerta (Log, Badge, Email i Mètriques)",
@@ -2256,7 +2257,8 @@
     "reactionActivateBackup": "Activar Servei de Backup (Lease de Failover)",
     "backupService": "Servei de Backup",
     "selectBackupService": "Seleccionar un servei de backup...",
-    "noBackupServices": "No hi ha altres serveis disponibles",
+    "noBackupServices": "No hi ha altres serveis FFmpeg disponibles",
+    "backupLoopBlocked": "usa aquest servei com a backup",
     "signalAlarmBadge": "ALARMA DE SENYAL"
   }
 }

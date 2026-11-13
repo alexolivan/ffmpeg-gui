@@ -2249,6 +2249,7 @@
     "conditionLogic": "Trigger Logic",
     "logicOr": "OR (Any enabled sensor trips)",
     "logicAnd": "AND (All enabled sensors must trip)",
+    "singleSensorLogicHint": "Requires 2+ active sensors to combine conditions.",
     "recoveryDelay": "Recovery Hold-off Delay (s)",
     "reactionMode": "Failover Reaction",
     "reactionAlertOnly": "Alert Only (Log, Badge, Email & Metrics)",
@@ -2256,7 +2257,8 @@
     "reactionActivateBackup": "Activate Backup Service (Failover Lease)",
     "backupService": "Backup Service",
     "selectBackupService": "Select a backup service...",
-    "noBackupServices": "No other services available",
+    "noBackupServices": "No other FFmpeg services available",
+    "backupLoopBlocked": "uses this service as backup",
     "signalAlarmBadge": "SIGNAL ALARM"
   }
 }

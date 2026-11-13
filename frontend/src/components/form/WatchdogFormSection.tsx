@@ -51,7 +51,13 @@ interface WatchdogFormSectionProps {
   isVideoCopy: boolean;
   isAudioCopy: boolean;
   isHardwareVideoCodec: boolean;
-  availableServices: Array<{ id: number; name: string; service_type?: string }>;
+  availableServices: Array<{
+    id: number;
+    name: string;
+    service_type?: string;
+    signal_watchdog?: any;
+    config?: any;
+  }>;
   currentProcessId?: number | null;
 }
 
@@ -79,13 +85,15 @@ export const WatchdogFormSection: React.FC<WatchdogFormSectionProps> = ({
 
   const audioDisabled = !hasAudio || isAudioCopy;
   const videoDisabled = !hasVideo || isVideoCopy;
-  const anySensorEnabled =
-    (sw.silence_enabled && !audioDisabled) ||
-    (sw.black_enabled && !videoDisabled) ||
-    (sw.freeze_enabled && !videoDisabled);
+  const enabledSensorCount =
+    Number(Boolean(sw.silence_enabled && !audioDisabled)) +
+    Number(Boolean(sw.black_enabled && !videoDisabled)) +
+    Number(Boolean(sw.freeze_enabled && !videoDisabled));
+  const anySensorEnabled = enabledSensorCount > 0;
+  const singleSensorOnly = enabledSensorCount <= 1;
 
   const backupCandidates = (availableServices || []).filter(
-    svc => svc.id !== currentProcessId && svc.service_type !== 'pipewire_hub'
+    svc => svc.id !== currentProcessId && (!svc.service_type || svc.service_type === 'ffmpeg_stream')
   );
 
   return (
@@ -453,13 +461,19 @@ export const WatchdogFormSection: React.FC<WatchdogFormSectionProps> = ({
                   {t('watchdog.conditionLogic', 'Trigger Logic')}
                 </label>
                 <select
-                  value={sw.condition_logic}
+                  disabled={singleSensorOnly}
+                  value={singleSensorOnly ? 'or' : sw.condition_logic}
                   onChange={e => onSignalWatchdogChange({ condition_logic: e.target.value as 'or' | 'and' })}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="or">{t('watchdog.logicOr', 'OR (Any enabled sensor trips)')}</option>
                   <option value="and">{t('watchdog.logicAnd', 'AND (All enabled sensors must trip)')}</option>
                 </select>
+                {singleSensorOnly && (
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-1">
+                    {t('watchdog.singleSensorLogicHint', 'Requires 2+ active sensors to combine conditions.')}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block mb-1">
@@ -515,11 +529,21 @@ export const WatchdogFormSection: React.FC<WatchdogFormSectionProps> = ({
                         ? t('watchdog.noBackupServices', 'No other services available')
                         : t('watchdog.selectBackupService', 'Select a backup service...')}
                     </option>
-                    {backupCandidates.map(svc => (
-                      <option key={svc.id} value={svc.id}>
-                        {svc.name}
-                      </option>
-                    ))}
+                    {backupCandidates.map(svc => {
+                      const bSw = svc.signal_watchdog || svc.config?.signal_watchdog;
+                      const createsLoop =
+                        currentProcessId !== null &&
+                        currentProcessId !== undefined &&
+                        bSw?.reaction_mode === 'activate_backup' &&
+                        Number(bSw?.backup_service_id) === Number(currentProcessId);
+                      return (
+                        <option key={svc.id} value={svc.id} disabled={createsLoop}>
+                          {createsLoop
+                            ? `${svc.name} (${t('watchdog.backupLoopBlocked', 'uses this service as backup')})`
+                            : svc.name}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               )}
