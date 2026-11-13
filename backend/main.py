@@ -379,6 +379,7 @@ class ProcessCreate(BaseModel):
     log_storage_id: Optional[int] = None
     is_shared_with_peers: Optional[bool] = False
     allow_peer_lease: Optional[bool] = False
+    signal_watchdog: Optional[dict] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -419,6 +420,7 @@ class ProcessUpdate(BaseModel):
     log_storage_id: Optional[int] = None
     is_shared_with_peers: Optional[bool] = None
     allow_peer_lease: Optional[bool] = None
+    signal_watchdog: Optional[dict] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -1836,11 +1838,25 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     if req.services:
         from database.models import Service
         procs = db.query(Service).filter(Service.service_type.notin_(["desktop", "kiosk_browser", "pipewire_hub"])).all()
-        sections["services"] = [
-            {
+        id_to_name = {svc.id: svc.name for svc in procs}
+        serialized_services = []
+        for p in procs:
+            p_cfg = copy.deepcopy(p.config or {})
+            sw_cfg = p_cfg.get("signal_watchdog")
+            if isinstance(sw_cfg, dict) and sw_cfg.get("backup_service_id"):
+                try:
+                    b_name = id_to_name.get(int(sw_cfg["backup_service_id"]))
+                    if not b_name:
+                        b_svc = db.query(Service).get(int(sw_cfg["backup_service_id"]))
+                        b_name = b_svc.name if b_svc else None
+                    if b_name:
+                        sw_cfg["backup_service_name"] = b_name
+                except Exception:
+                    pass
+            serialized_services.append({
                 "name": p.name,
                 "service_type": p.service_type or "ffmpeg_stream",
-                "config": p.config or {},
+                "config": p_cfg,
                 "input_config": p.input_config,
                 "output_config": p.output_config,
                 "codec_config": p.codec_config,
@@ -1870,9 +1886,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "is_shared_with_peers": getattr(p, "is_shared_with_peers", False),
                 "allow_peer_lease": getattr(p, "allow_peer_lease", False),
                 "log_storage_id": getattr(p, "log_storage_id", None),
-            }
-            for p in procs
-        ]
+            })
+        sections["services"] = serialized_services
 
     # 7b. PipeWire Audio Hubs
     if getattr(req, "pipewire_hubs", True):
@@ -2334,6 +2349,34 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     imported_summary["pipewire_hubs"] += 1
                 else:
                     imported_summary["services"] += 1
+
+        # Second pass: re-link signal_watchdog.backup_service_name -> backup_service_id
+        db.flush()
+        from sqlalchemy.orm.attributes import flag_modified
+        for p_data in sections["services"]:
+            svc_obj = db.query(Service).filter(Service.name == p_data.get("name")).first()
+            if not svc_obj or not isinstance(svc_obj.config, dict):
+                continue
+            sw_cfg = svc_obj.config.get("signal_watchdog")
+            if not isinstance(sw_cfg, dict):
+                continue
+            b_name = sw_cfg.get("backup_service_name")
+            if b_name:
+                target_svc = db.query(Service).filter(Service.name == b_name).first()
+                if target_svc and target_svc.id != svc_obj.id:
+                    sw_cfg["backup_service_id"] = target_svc.id
+                else:
+                    sw_cfg["backup_service_id"] = None
+                    if sw_cfg.get("reaction_mode") == "activate_backup":
+                        sw_cfg["reaction_mode"] = "alert_only"
+                flag_modified(svc_obj, "config")
+            elif sw_cfg.get("backup_service_id") is not None:
+                target_svc = db.query(Service).filter(Service.id == sw_cfg.get("backup_service_id")).first()
+                if not target_svc or target_svc.id == svc_obj.id:
+                    sw_cfg["backup_service_id"] = None
+                    if sw_cfg.get("reaction_mode") == "activate_backup":
+                        sw_cfg["reaction_mode"] = "alert_only"
+                    flag_modified(svc_obj, "config")
 
     # Restore PipeWire Audio Hubs
     if "pipewire_hubs" in sections and isinstance(sections["pipewire_hubs"], list):
@@ -5647,6 +5690,38 @@ def list_processes(db: Session = Depends(get_db)):
 
     return processes_data
 
+def _validate_signal_watchdog_config(db: Session, service_id: Optional[int], sw: Optional[dict]):
+    if not isinstance(sw, dict):
+        return
+    if sw.get("reaction_mode") != "activate_backup":
+        return
+    backup_id = sw.get("backup_service_id")
+    if backup_id is None or backup_id == "":
+        return
+    try:
+        b_id = int(backup_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid signal watchdog backup_service_id")
+
+    if service_id is not None and b_id == int(service_id):
+        raise HTTPException(status_code=400, detail="Service cannot reference itself as its own signal watchdog backup")
+
+    backup_svc = db.query(MediaProcess).get(b_id)
+    if not backup_svc:
+        raise HTTPException(status_code=400, detail="Selected signal watchdog backup service does not exist")
+
+    if service_id is not None:
+        b_sw = (backup_svc.config or {}).get("signal_watchdog") or {}
+        if isinstance(b_sw, dict) and b_sw.get("reaction_mode") == "activate_backup":
+            b_target = b_sw.get("backup_service_id")
+            if b_target is not None:
+                try:
+                    if int(b_target) == int(service_id):
+                        raise HTTPException(status_code=400, detail="Circular signal watchdog failover dependency detected")
+                except (ValueError, TypeError):
+                    pass
+
+
 @app.post("/processes")
 def create_process(proc_in: ProcessCreate, request: Request, db: Session = Depends(get_db)):
     svc_type = proc_in.service_type or "ffmpeg_stream"
@@ -5706,10 +5781,15 @@ def create_process(proc_in: ProcessCreate, request: Request, db: Session = Depen
         if output_cfg is not None:
             sanitize_output_config_data(output_cfg)
 
+    proc_cfg = dict(proc_in.config) if proc_in.config is not None else {}
+    if proc_in.signal_watchdog is not None:
+        proc_cfg["signal_watchdog"] = proc_in.signal_watchdog
+    _validate_signal_watchdog_config(db, None, proc_cfg.get("signal_watchdog"))
+
     db_proc = MediaProcess(
         name=proc_in.name,
         service_type=svc_type,
-        config=proc_in.config if proc_in.config is not None else {},
+        config=proc_cfg,
         input_config=input_cfg,
         output_config=output_cfg,
         codec_config=codec_cfg,
@@ -5779,10 +5859,15 @@ def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(No
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
     sanitize_process_config_data(input_cfg, filter_cfg)
 
+    preview_cfg = dict(proc_in.config) if proc_in.config is not None else {}
+    if proc_in.signal_watchdog is not None:
+        preview_cfg["signal_watchdog"] = proc_in.signal_watchdog
+
     db_proc = MediaProcess(
         id=process_id,
         name=proc_in.name,
         type=proc_in.type,
+        config=preview_cfg,
         input_config=input_cfg,
         output_config=proc_in.output_config,
         codec_config=proc_in.codec_config,
@@ -5834,6 +5919,18 @@ def update_process(process_id: int, proc_in: ProcessUpdate, request: Request, db
             flag_modified(db_proc, "config")
         except Exception:
             pass
+    if proc_in.signal_watchdog is not None:
+        cfg_copy = dict(db_proc.config or {})
+        cfg_copy["signal_watchdog"] = proc_in.signal_watchdog
+        db_proc.config = cfg_copy
+        try:
+            flag_modified(db_proc, "config")
+        except Exception:
+            pass
+
+    sw_to_validate = (db_proc.config or {}).get("signal_watchdog")
+    if proc_in.signal_watchdog is not None or proc_in.config is not None:
+        _validate_signal_watchdog_config(db, process_id, sw_to_validate)
 
     # Handle config sanitization on update for ffmpeg streams
     if db_proc.service_type == "ffmpeg_stream":
@@ -5997,6 +6094,18 @@ async def delete_process(process_id: int, request: Request, db: Session = Depend
         ip_address=actor_info["ip_address"],
         details=f"Service '{proc_name}' ({proc_type}) permanently deleted",
     )
+
+    # Clear any dangling signal_watchdog backup_service_id references to this service
+    from sqlalchemy.orm.attributes import flag_modified
+    for other_svc in db.query(MediaProcess).filter(MediaProcess.id != process_id).all():
+        o_cfg = other_svc.config
+        if isinstance(o_cfg, dict) and isinstance(o_cfg.get("signal_watchdog"), dict):
+            o_sw = o_cfg["signal_watchdog"]
+            if o_sw.get("backup_service_id") == process_id:
+                o_sw["backup_service_id"] = None
+                if o_sw.get("reaction_mode") == "activate_backup":
+                    o_sw["reaction_mode"] = "alert_only"
+                flag_modified(other_svc, "config")
 
     db.delete(db_proc)
     db.commit()
@@ -6700,6 +6809,21 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
                                 cfg_dict["icecast_password"] = real_source_pass
                 except Exception:
                     cfg_dict.pop("provider_service_id", None)
+
+    if isinstance(cfg.get("signal_watchdog"), dict):
+        sw_p = cfg["signal_watchdog"]
+        b_id = sw_p.get("backup_service_id")
+        if b_id is not None:
+            try:
+                b_exists = db.query(Service).filter(Service.id == int(b_id)).first()
+                if not b_exists:
+                    sw_p["backup_service_id"] = None
+                    if sw_p.get("reaction_mode") == "activate_backup":
+                        sw_p["reaction_mode"] = "alert_only"
+            except Exception:
+                sw_p["backup_service_id"] = None
+                if sw_p.get("reaction_mode") == "activate_backup":
+                    sw_p["reaction_mode"] = "alert_only"
 
     # 7. PipeWire Hub AoIP Network, Multicast & SAP Sanitization
     if service_type == "pipewire_hub":
@@ -8031,6 +8155,8 @@ def _serialize_service(p) -> dict:
         "log_storage_id": p.log_storage_id,
         "is_shared_with_peers": getattr(p, 'is_shared_with_peers', False),
         "allow_peer_lease": getattr(p, 'allow_peer_lease', False),
+        "signal_watchdog": (p.config or {}).get("signal_watchdog") or {},
+        "signal_watchdog_state": process_manager.get_signal_watchdog_state(p.id) if hasattr(process_manager, "get_signal_watchdog_state") else {"state": "normal"},
         "log_file_path": process_manager.get_process_log_path(p.id),
     }
 

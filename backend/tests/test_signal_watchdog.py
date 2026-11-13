@@ -211,3 +211,184 @@ class TestSignalWatchdogBackend(unittest.TestCase):
         self.pm.signal_watchdog_states[1] = {"state": "alarm"}
         payload = build_openmetrics_payload([svc], process_manager=self.pm)
         self.assertIn('ffmpeg_gui_service_signal_alarm{id="1",name="Main",type="ffmpeg_stream"} 1.0', payload)
+
+
+class TestSignalWatchdogAPIAndBackup(unittest.TestCase):
+    def setUp(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from database.models import Base
+
+        self.engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine)
+        self.db = self.Session()
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def test_validate_rejects_self_reference_and_2node_cycle(self):
+        from fastapi import HTTPException
+        from database.models import Service
+        from main import _validate_signal_watchdog_config
+
+        svc_a = Service(name="Svc A", service_type="ffmpeg_stream", config={})
+        svc_b = Service(
+            name="Svc B",
+            service_type="ffmpeg_stream",
+            config={"signal_watchdog": {"reaction_mode": "activate_backup", "backup_service_id": None}},
+        )
+        self.db.add_all([svc_a, svc_b])
+        self.db.commit()
+
+        # Self-reference
+        with self.assertRaises(HTTPException) as ctx1:
+            _validate_signal_watchdog_config(
+                self.db,
+                svc_a.id,
+                {"reaction_mode": "activate_backup", "backup_service_id": svc_a.id},
+            )
+        self.assertEqual(ctx1.exception.status_code, 400)
+
+        # 2-node cycle: B -> A, now try A -> B
+        svc_b.config = {"signal_watchdog": {"reaction_mode": "activate_backup", "backup_service_id": svc_a.id}}
+        self.db.commit()
+        with self.assertRaises(HTTPException) as ctx2:
+            _validate_signal_watchdog_config(
+                self.db,
+                svc_a.id,
+                {"reaction_mode": "activate_backup", "backup_service_id": svc_b.id},
+            )
+        self.assertEqual(ctx2.exception.status_code, 400)
+
+    def test_serialize_and_preview_command_includes_signal_watchdog(self):
+        from database.models import Service
+        from main import _serialize_service, preview_command, ProcessCreate
+
+        svc = Service(
+            name="Main",
+            service_type="ffmpeg_stream",
+            status="stopped",
+            config={"signal_watchdog": {"silence_enabled": True, "silence_threshold_db": -45}},
+        )
+        self.db.add(svc)
+        self.db.commit()
+
+        data = _serialize_service(svc)
+        self.assertEqual(data["signal_watchdog"]["silence_threshold_db"], -45)
+        self.assertIn("signal_watchdog_state", data)
+
+        proc_in = ProcessCreate(
+            name="PreviewTest",
+            input_config={"type": "file", "path": "/tmp/in.mp4", "has_video": True, "has_audio": True},
+            output_config={"outputs": [{"type": "file", "path": "/tmp/out.mp4"}]},
+            codec_config={"vcodec": "libx264", "acodec": "aac"},
+            signal_watchdog={"silence_enabled": True, "silence_threshold_db": -42, "silence_duration": 8},
+        )
+        res = preview_command(proc_in, process_id=None, db=self.db)
+        self.assertIn("silencedetect=n=-42dB:d=8", res["command"])
+
+    def test_backup_export_and_import_relinks_backup_service_name(self):
+        from database.models import Service
+        from main import export_backup_json, import_backup_json, BackupExportRequest, BackupImportPayload
+
+        backup = Service(name="Backup Loop", service_type="ffmpeg_stream", config={})
+        self.db.add(backup)
+        self.db.flush()
+        primary = Service(
+            name="Primary Stream",
+            service_type="ffmpeg_stream",
+            config={
+                "signal_watchdog": {
+                    "silence_enabled": True,
+                    "reaction_mode": "activate_backup",
+                    "backup_service_id": backup.id,
+                }
+            },
+        )
+        self.db.add(primary)
+        self.db.commit()
+
+        req = BackupExportRequest(
+            services=True,
+            settings=False,
+            tasks=False,
+            storage_pools=False,
+            ffmpeg_builds=False,
+            presets=False,
+            pipewire_hubs=False,
+            virtual_desktops=False,
+            web_kiosks=False,
+            users=False,
+        )
+        exported = export_backup_json(req=req, db=self.db)
+        svc_entries = {s["name"]: s for s in exported["sections"]["services"]}
+        self.assertEqual(
+            svc_entries["Primary Stream"]["config"]["signal_watchdog"]["backup_service_name"],
+            "Backup Loop",
+        )
+
+        # Simulate restore into a fresh DB where IDs shift (Primary gets id=1, Backup gets id=2, or vice versa)
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from database.models import Base
+
+        engine2 = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        Base.metadata.create_all(engine2)
+        Session2 = sessionmaker(bind=engine2)
+        db2 = Session2()
+        try:
+            # Dummy service to shift IDs
+            db2.add(Service(name="PreExisting", service_type="ffmpeg_stream", config={}))
+            db2.commit()
+            # Mutate exported backup_service_id to stale id 999 to verify name-based re-linking
+            svc_entries["Primary Stream"]["config"]["signal_watchdog"]["backup_service_id"] = 999
+            import_backup_json(payload=BackupImportPayload(**exported), db=db2)
+
+            restored_primary = db2.query(Service).filter(Service.name == "Primary Stream").first()
+            restored_backup = db2.query(Service).filter(Service.name == "Backup Loop").first()
+            self.assertIsNotNone(restored_primary)
+            self.assertIsNotNone(restored_backup)
+            self.assertEqual(
+                restored_primary.config["signal_watchdog"]["backup_service_id"],
+                restored_backup.id,
+            )
+        finally:
+            db2.close()
+            engine2.dispose()
+
+    def test_delete_backup_service_clears_dangling_references(self):
+        import asyncio
+        from database.models import Service
+        from main import delete_process
+
+        backup = Service(name="Backup Target", service_type="ffmpeg_stream", config={})
+        self.db.add(backup)
+        self.db.flush()
+        primary = Service(
+            name="Primary Consumer",
+            service_type="ffmpeg_stream",
+            config={
+                "signal_watchdog": {
+                    "silence_enabled": True,
+                    "reaction_mode": "activate_backup",
+                    "backup_service_id": backup.id,
+                }
+            },
+        )
+        self.db.add(primary)
+        self.db.commit()
+
+        mock_req = MagicMock()
+        mock_req.client.host = "127.0.0.1"
+        mock_req.headers = {}
+        with patch("main.process_manager") as mock_pm:
+            mock_pm.stop_process = AsyncMock()
+            mock_pm.cleanup_service_artifacts = MagicMock()
+            asyncio.run(delete_process(backup.id, mock_req, db=self.db))
+
+        self.db.refresh(primary)
+        sw = primary.config["signal_watchdog"]
+        self.assertIsNone(sw["backup_service_id"])
+        self.assertEqual(sw["reaction_mode"], "alert_only")
