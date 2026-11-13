@@ -178,11 +178,17 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
       );
     }
     // Standard FFmpeg stream services render with FfmpegServiceCard / UnifiedServiceCard
+    const swCfg = proc.signal_watchdog || proc.config?.signal_watchdog;
+    const backupTarget =
+      swCfg?.reaction_mode === 'activate_backup' && swCfg?.backup_service_id
+        ? telemetry.find((p: any) => p.id === swCfg.backup_service_id)
+        : undefined;
     return (
       <FfmpegServiceCard
         key={proc.id}
         service={proc as ServiceItem}
         telemetryItem={proc}
+        backupServiceName={backupTarget?.name || swCfg?.backup_service_name}
         actionPending={actionPending[proc.id]}
         onStartService={onStartService}
         onStopService={onStopService}
