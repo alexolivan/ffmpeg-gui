@@ -688,11 +688,24 @@ class AoIpDiscoverySupervisor:
                     if os.path.exists(lp):
                         try:
                             with open(lp, "r", errors="replace") as f:
-                                # Read tail of file (64 KB window to catch transitions even after high log volume)
                                 f.seek(0, os.SEEK_END)
                                 fsize = f.tell()
-                                f.seek(max(0, fsize - 65536), os.SEEK_SET)
-                                parsed_tail = self._parse_ptp4l_log_lines(f.readlines())
+                                window = 65536
+                                max_window = 8 * 1024 * 1024
+                                parsed_tail = None
+                                while True:
+                                    start_pos = max(0, fsize - window)
+                                    f.seek(start_pos, os.SEEK_SET)
+                                    chunk_text = f.read()
+                                    parsed_tail = self._parse_ptp4l_log_lines(chunk_text.splitlines())
+                                    if (
+                                        parsed_tail["role"] is not None
+                                        or start_pos == 0
+                                        or "--- PTP4L" in chunk_text
+                                        or window >= max_window
+                                    ):
+                                        break
+                                    window *= 8
                             if parsed_tail["has_rms_reports"]:
                                 has_rms_reports = True
                             if parsed_tail["ts_mode"] and detected_ts_mode is None:

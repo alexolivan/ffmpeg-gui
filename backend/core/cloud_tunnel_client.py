@@ -28,6 +28,7 @@ except ImportError:
 
 
 logger = logging.getLogger("ffmpeg_gui.cloud_tunnel")
+MAX_TUNNEL_FRAME_BYTES = 15_500_000
 
 
 def encode_body(data: Optional[bytes]) -> Optional[str]:
@@ -625,7 +626,29 @@ class CloudTunnelClient:
                 "headers": resp_headers,
                 "body": encode_body(full_body),
             }
-            await ws.send(json.dumps(resp_frame))
+            payload_str = json.dumps(resp_frame)
+            if len(payload_str.encode("utf-8")) > MAX_TUNNEL_FRAME_BYTES:
+                logger.warning(
+                    "CloudHub tunnel HTTP response too large (%d bytes > %d) for %s %s; returning 413",
+                    len(payload_str),
+                    MAX_TUNNEL_FRAME_BYTES,
+                    scope.get("method", "?"),
+                    scope.get("path", "?"),
+                )
+                err_body = json.dumps({
+                    "detail": "Response payload exceeds CloudHub tunnel frame limit",
+                    "max_frame_bytes": MAX_TUNNEL_FRAME_BYTES,
+                    "original_status": resp_status,
+                }).encode("utf-8")
+                resp_frame = {
+                    "type": "http_resp",
+                    "stream_id": stream_id,
+                    "status_code": 413,
+                    "headers": [["content-type", "application/json"]],
+                    "body": encode_body(err_body),
+                }
+                payload_str = json.dumps(resp_frame)
+            await ws.send(payload_str)
         except Exception as err:
             logger.error("In-memory ASGI HTTP dispatch error: %s", err)
             err_frame = {
@@ -722,29 +745,36 @@ class CloudTunnelClient:
             elif msg_type == "websocket.send":
                 text = message.get("text")
                 bytes_data = message.get("bytes")
-                if text is not None:
+                if text is not None or bytes_data is not None:
+                    is_binary = bytes_data is not None
                     out = {
                         "type": "ws_frame",
                         "stream_id": stream_id,
-                        "is_binary": False,
-                        "data": text,
+                        "is_binary": is_binary,
+                        "data": encode_body(bytes_data) if is_binary else text,
                     }
+                    payload_str = json.dumps(out)
+                    if len(payload_str.encode("utf-8")) > MAX_TUNNEL_FRAME_BYTES:
+                        logger.warning(
+                            "CloudHub tunnel WS frame too large (%d bytes > %d) for stream %s; closing stream",
+                            len(payload_str),
+                            MAX_TUNNEL_FRAME_BYTES,
+                            stream_id,
+                        )
+                        try:
+                            await ws.send(json.dumps({
+                                "type": "ws_close",
+                                "stream_id": stream_id,
+                                "code": 1009,
+                            }))
+                        except Exception:
+                            pass
+                        await queue.put(None)
+                        return
                     try:
-                        await ws.send(json.dumps(out))
+                        await ws.send(payload_str)
                     except Exception:
                         # Reverse tunnel socket closed or restarting; disconnect in-memory queue
-                        await queue.put(None)
-                        raise
-                elif bytes_data is not None:
-                    out = {
-                        "type": "ws_frame",
-                        "stream_id": stream_id,
-                        "is_binary": True,
-                        "data": encode_body(bytes_data),
-                    }
-                    try:
-                        await ws.send(json.dumps(out))
-                    except Exception:
                         await queue.put(None)
                         raise
             elif msg_type == "websocket.close":

@@ -235,6 +235,9 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   });
 
   const handleProfileChange = (profile: 'standalone' | 'dante' | 'ravenna') => {
+    if (profile === 'dante' && isDanteBlocked) {
+      return;
+    }
     setAoipProfile(profile);
     if (profile === 'dante') {
       setSampleRate(48000);
@@ -429,6 +432,12 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
     if (target?.canonical_base_multicast_prefix) {
       setBaseMulticastPrefix(target.canonical_base_multicast_prefix);
     }
+    if (target && aoipProfile === 'dante') {
+      const nextPtpSupport = target.ptp_support || (target.ptp_hardware_capable ? 'hardware' : (target.ptp_software_capable ? 'software' : 'none'));
+      if (nextPtpSupport !== 'hardware') {
+        setAoipProfile('ravenna');
+      }
+    }
   };
 
   // Virtual Sink actions
@@ -506,6 +515,7 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
   // Derived PTP capabilities & detection flags
   const selectedIfaceObj = networkAudit?.interfaces?.find((i) => i.name === selectedInterface);
   const currentNicPtpSupport = selectedIfaceObj?.ptp_support || (selectedIfaceObj?.ptp_hardware_capable ? 'hardware' : (selectedIfaceObj?.ptp_software_capable ? 'software' : 'none'));
+  const isDanteBlocked = Boolean(selectedIfaceObj) && currentNicPtpSupport !== 'hardware';
   const isPtpInstalled = Boolean(networkAudit?.host_ptp?.ptp4l_installed);
   const canEnableMasterClock = isPtpInstalled && currentNicPtpSupport !== 'none';
   const isPtpMasterDetected = Boolean(selectedIfaceObj?.active_ptp_master?.detected || networkAudit?.host_ptp?.active_master_detected);
@@ -877,16 +887,26 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
 
                   <button
                     type="button"
+                    disabled={isDanteBlocked}
                     onClick={() => handleProfileChange('dante')}
-                    className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
-                      aoipProfile === 'dante'
-                        ? 'border-blue-500 bg-blue-500/10 shadow-sm ring-1 ring-blue-500/30'
-                        : 'border-[var(--glass-border)] hover:border-[var(--text-secondary)] bg-[var(--bg-card)]'
+                    className={`p-3 rounded-lg border text-left transition-all ${
+                      isDanteBlocked
+                        ? 'opacity-55 cursor-not-allowed border-[var(--glass-border)] bg-[var(--bg-card)]'
+                        : aoipProfile === 'dante'
+                          ? 'cursor-pointer border-blue-500 bg-blue-500/10 shadow-sm ring-1 ring-blue-500/30'
+                          : 'cursor-pointer border-[var(--glass-border)] hover:border-[var(--text-secondary)] bg-[var(--bg-card)]'
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-primary)]">
-                      <span>⚡</span>
-                      <span className="text-blue-400">{t('services.pipewire.profileDante', 'Audinate Dante / AES67 (Strict)')}</span>
+                    <div className="flex items-center justify-between gap-1.5 font-bold text-xs text-[var(--text-primary)]">
+                      <div className="flex items-center gap-1.5">
+                        <span>⚡</span>
+                        <span className="text-blue-400">{t('services.pipewire.profileDante', 'Audinate Dante / AES67 (Strict)')}</span>
+                      </div>
+                      {isDanteBlocked && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                          {t('services.pipewire.danteRequiresPhc', 'Requires Hardware PHC')}
+                        </span>
+                      )}
                     </div>
                     <p className="text-[10px] text-[var(--text-secondary)] mt-1 leading-snug">
                       {t('services.pipewire.profileDanteDesc', 'Strict 1ms packetization (1000 pkt/s), 48kHz S24BE, RFC 7273 SDP timing, and passive PTP slave clocking for Dante Controller integration.')}
@@ -904,13 +924,18 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs text-[var(--text-primary)]">
                       <span>🌐</span>
-                      <span>{t('services.pipewire.profileRavenna', 'Ravenna / Broadcast AES67')}</span>
+                      <span>{t('services.pipewire.profileRavenna', 'Broadcast / AES67 (Standard)')}</span>
                     </div>
                     <p className="text-[10px] text-[var(--text-secondary)] mt-1 leading-snug">
-                      {t('services.pipewire.profileRavennaDesc', 'Standard broadcast AES67 with 1ms or 4ms packet framing and configurable PTP domain.')}
+                      {t('services.pipewire.profileRavennaDesc', 'Standard broadcast AES67 (1ms or 4ms framing, configurable PTP domain). Supports expanded interoperability with Ravenna, AES67 standard devices, and receiving (RX) Audinate Dante AES67 streams.')}
                     </p>
                   </button>
                 </div>
+                {isDanteBlocked && (
+                  <p className="text-[10px] text-amber-400 mt-1.5 leading-snug">
+                    {t('services.pipewire.dantePhcBlockedWarning', 'Audinate Dante / AES67 (Strict) is disabled because the selected NIC lacks a Hardware PTP Clock (PHC). Select a PHC-capable NIC or use Broadcast / AES67 (Standard).')}
+                  </p>
+                )}
               </div>
 
               {/* NIC Selector */}

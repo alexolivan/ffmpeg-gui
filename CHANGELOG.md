@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.65.0] - 2026-11-13
+
+### Changed
+- **AoIP Profile Gating & Broadcast Standard Naming (`frontend/src/components/forms/PipeWireConfigForm.tsx`, `frontend/src/locales/{en,es,ca}.json`)**:
+  - Disabled `Audinate Dante / AES67 (Strict)` when the selected NIC lacks a hardware PTP clock (`ptp_support !== 'hardware'`), automatically switching to `Broadcast / AES67 (Standard)` when changing to a non-PHC NIC.
+  - Renamed the `ravenna` profile title to `Broadcast / AES67 (Standard)` with updated descriptions covering Ravenna, AES67 standard devices, and receiving (RX) Audinate Dante AES67 streams.
+
+### Fixed
+- **Dante / AES67 Hardware TX Silence & DSCP (`backend/core/pipewire_config.py`)**:
+  - Set `sess.latency.msec = 3` (configurable via `tx_latency_ms`) on `libpipewire-module-rtp-sink` instead of inheriting the ~171 ms RX jitter buffer, eliminating excessive RTP timestamp presentation offsets rejected by Dante hardware receivers (e.g., AEQ).
+  - Emitted `net.dscp = 46` (EF) on `libpipewire-module-rtp-sink` and clamped `default.clock.min-quantum = 32` when `1ms` AES67 packetization is active.
+- **PTP `UNCALIBRATED` False Positive on Long-Running Nodes (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Expanded `_run_ptp_monitor` log tail window dynamically (up to 8 MB or until `--- PTP4L` boundary / role transition) when >64 KB of `rms` telemetry lines push the `UNCALIBRATED to SLAVE` line out of the initial 64 KB tail.
+- **CloudHub Reverse Tunnel `1009` Disconnect Guard (`backend/core/cloud_tunnel_client.py`)**:
+  - Added a `MAX_TUNNEL_FRAME_BYTES` (`15_500_000`) guard in `_handle_asgi_http` (returning `413 Payload Too Large`) and `_handle_asgi_ws_open` (closing only the oversized virtual stream with `ws_close` `1009`) to prevent crashing the multiplexed CloudHub WebSocket tunnel.
+
 ## [2.64.13] - 2026-11-12
 
 ### Fixed

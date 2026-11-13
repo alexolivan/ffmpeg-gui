@@ -309,6 +309,61 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["lcd"]["leds"][0], "blink_green")
         self.assertEqual(payload["lcd"]["leds"][3], "green")
 
+    async def test_handle_asgi_http_returns_413_when_exceeding_max_frame_bytes(self):
+        """Verify _handle_asgi_http guards against >MAX_TUNNEL_FRAME_BYTES frames to prevent 1009 disconnects."""
+        import sys
+        async def big_app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": [[b"content-type", b"application/json"]]})
+            await send({"type": "http.response.body", "body": b"x" * 2048, "more_body": False})
+
+        self.client.app = big_app
+        sent_frames = []
+
+        class FakeWS:
+            async def send(self, data):
+                sent_frames.append(json.loads(data))
+
+        with patch.object(sys.modules[self.client.__class__.__module__], "MAX_TUNNEL_FRAME_BYTES", 512):
+            await self.client._handle_asgi_http(FakeWS(), {
+                "stream_id": "s_big_http",
+                "method": "GET",
+                "path": "/api/services/7/pipewire/nodes",
+                "headers": {},
+            }, "secret", False)
+
+        self.assertEqual(len(sent_frames), 1)
+        frame = sent_frames[0]
+        self.assertEqual(frame["type"], "http_resp")
+        self.assertEqual(frame["stream_id"], "s_big_http")
+        self.assertEqual(frame["status_code"], 413)
+
+    async def test_handle_asgi_ws_open_closes_stream_when_exceeding_max_frame_bytes(self):
+        """Verify _handle_asgi_ws_open sends ws_close(1009) instead of an oversized ws_frame."""
+        import sys
+        async def big_ws_app(scope, receive, send):
+            await receive()
+            await send({"type": "websocket.accept"})
+            await send({"type": "websocket.send", "text": "y" * 2048})
+
+        self.client.app = big_ws_app
+        sent_frames = []
+
+        class FakeWS:
+            async def send(self, data):
+                sent_frames.append(json.loads(data))
+
+        with patch.object(sys.modules[self.client.__class__.__module__], "MAX_TUNNEL_FRAME_BYTES", 512):
+            await self.client._handle_asgi_ws_open(FakeWS(), {
+                "stream_id": "s_big_ws",
+                "path": "/ws/logs",
+                "headers": {},
+            }, "secret", False)
+
+        self.assertEqual(len(sent_frames), 1)
+        self.assertEqual(sent_frames[0]["type"], "ws_close")
+        self.assertEqual(sent_frames[0]["stream_id"], "s_big_ws")
+        self.assertEqual(sent_frames[0]["code"], 1009)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -265,7 +265,6 @@ class PipeWireConfigGenerator:
         aoip_profile = str(config.get("aoip_profile") or aes67_net.get("aoip_profile") or "standalone").lower()
         sample_rate = 48000 if aoip_profile == "dante" else int(config.get("sample_rate", 48000))
         quantum = int(config.get("quantum", 1024))
-        min_quantum = int(config.get("min_quantum", 128))
         max_quantum = int(config.get("max_quantum", 2048))
         debug_mode = bool(config.get("debug_mode", False))
         log_level = int(config.get("log_level", 2 if debug_mode else 1))
@@ -283,6 +282,9 @@ class PipeWireConfigGenerator:
         else:
             ptime_mode = aes67_net.get("rtp_ptime_mode") or config.get("rtp_ptime_mode") or "auto"
         min_ptime, max_ptime = cls.resolve_rtp_ptime_limits(ptime_mode)
+        raw_min_quantum = int(config.get("min_quantum", 32 if (aes67_net.get("enabled", True) and ptime_mode == "1ms") else 128))
+        # Clamp min-quantum <= 32 when 1ms packetization is active so PTP0-Driver can request 48-sample (1ms) cycles
+        min_quantum = min(raw_min_quantum, 32) if (aes67_net.get("enabled", True) and ptime_mode == "1ms") else raw_min_quantum
         raw_jitter_ms = aes67_net.get("jitter_buffer_ms", config.get("jitter_buffer_ms", "auto"))
         effective_latency_ms = cls.resolve_safe_jitter_latency_ms(raw_jitter_ms, quantum, sample_rate, ptime_mode)
 
@@ -421,6 +423,9 @@ class PipeWireConfigGenerator:
                 if nic_ip and nic_ip != "0.0.0.0":
                     rtp_args.append(f"            source.ip = {cls._spa_val(nic_ip)}")
 
+                # TX sink latency must stay tight (3 ms per PipeWire AES67 reference) so RTP timestamps
+                # are not pushed +170ms ahead of the hardware receiver's playout window.
+                tx_latency_ms = int(sink.get("tx_latency_ms", 3))
                 rtp_args.extend([
                     f"            destination.ip = {cls._spa_val(dest_ip)}",
                     f"            destination.port = {dest_port}",
@@ -436,9 +441,10 @@ class PipeWireConfigGenerator:
                     f"            audio.position = {pos_formatted}",
                     f"            sess.min-ptime = {min_ptime}",
                     f"            sess.max-ptime = {max_ptime}",
-                    f"            sess.latency.msec = {effective_latency_ms}",
+                    f"            sess.latency.msec = {tx_latency_ms}",
                     "            net.ttl = 32",
                     "            net.loop = false",
+                    "            net.dscp = 46",
                 ])
                 if use_hw_ptp_driver:
                     rtp_args.append("            aes67.driver-group = \"pipewire.ptp0\"")

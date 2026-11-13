@@ -481,6 +481,48 @@ class TestAoIpDiscoverySupervisor(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(parsed["best_master_clock"])
         self.assertEqual(parsed["ts_mode"], "software")
 
+    async def test_ptp_monitor_recovers_slave_role_beyond_64kb_rms_tail(self):
+        """Verifies _run_ptp_monitor expands its read window when >64KB of rms lines follow SLAVE transition."""
+        import asyncio
+        import tempfile
+        import os
+
+        mock_pm = MagicMock()
+        mock_pm._get_pipewire_sidecar_status.return_value = {"ptp4l_active": True}
+        mock_pm.get_process_log_storage_path.return_value = "/tmp"
+
+        with tempfile.NamedTemporaryFile("w+", delete=False) as f:
+            log_path = f.name
+            f.write("--- PTP4L RESTART AT 2026-11-12T16:44:26+00:00 ---\n")
+            f.write("COMMAND: /usr/sbin/ptp4l -f /dev/shm/ptp4l_7.conf -i enp3s0 -m\n")
+            f.write("ptp4l[2369.800]: selected best master clock 001dc1.fffe.910558\n")
+            f.write("ptp4l[2369.848]: port 1 (enp3s0): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED\n")
+            # Write >80 KB of rms lines so the initial 64 KB tail contains only rms reports
+            rms_line = "ptp4l[3000.000]: rms 14 max 31 freq -12345 +/- 12 delay 10500 +/- 4\n"
+            f.write(rms_line * 1200)
+            f.flush()
+
+        try:
+            supervisor = AoIpDiscoverySupervisor(7, mock_pm)
+            supervisor.interface = "enp3s0"
+            supervisor._running = True
+
+            with patch("core.network_inspector.probe_network_ptp_master", return_value={"detected": True, "source_ip": "192.168.100.1"}), \
+                 patch("os.path.join", side_effect=lambda *args: log_path if "ptp4l_7.log" in args[-1] else os.path.sep.join(args)), \
+                 patch("asyncio.sleep", side_effect=asyncio.CancelledError):
+                try:
+                    await supervisor._run_ptp_monitor()
+                except asyncio.CancelledError:
+                    pass
+
+            status = supervisor.get_discovery_status()
+            self.assertEqual(status["ptp_status"]["local_ptp4l_role"], "SLAVE")
+            self.assertEqual(status["ptp_status"]["state"], "SLAVE")
+            self.assertEqual(status["ptp_status"]["clock_identity"], "00:1d:c1:ff:fe:91:05:58")
+        finally:
+            if os.path.exists(log_path):
+                os.remove(log_path)
+
 
 if __name__ == "__main__":
     unittest.main()
