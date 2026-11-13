@@ -5,13 +5,6 @@ interface LifecycleFormSectionProps {
   auto_start: boolean;
   startup_order?: number;
   startup_delay?: number;
-  watchdog_enabled: boolean;
-  watchdog_retries: number;
-  watchdog_circuit_breaker?: boolean;
-  watchdog_min_speed: number | null;
-  watchdog_min_speed_duration: number;
-  watchdog_max_memory_mb?: number | null;
-  watchdog_max_memory_duration?: number;
   debug_mode: boolean;
   log_storage_id: number | null;
   logsStorages: any[];
@@ -21,13 +14,6 @@ interface LifecycleFormSectionProps {
     auto_start?: boolean;
     startup_order?: number;
     startup_delay?: number;
-    watchdog_enabled?: boolean;
-    watchdog_retries?: number;
-    watchdog_circuit_breaker?: boolean;
-    watchdog_min_speed?: number | null;
-    watchdog_min_speed_duration?: number;
-    watchdog_max_memory_mb?: number | null;
-    watchdog_max_memory_duration?: number;
     debug_mode?: boolean;
     log_storage_id?: number | null;
     allow_auto_start_deps?: boolean;
@@ -39,13 +25,6 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
   auto_start,
   startup_order = 1,
   startup_delay = 0,
-  watchdog_enabled,
-  watchdog_retries,
-  watchdog_circuit_breaker = true,
-  watchdog_min_speed,
-  watchdog_min_speed_duration,
-  watchdog_max_memory_mb,
-  watchdog_max_memory_duration = 30,
   debug_mode,
   log_storage_id,
   logsStorages,
@@ -121,159 +100,6 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
           </div>
         )}
       </div>
-
-      {/* Watchdog Toggle */}
-      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold text-white">{t('lifecycle.enableWatchdog', 'Enable Watchdog')}</span>
-          <span className="text-[10px] text-text-secondary">{t('lifecycle.watchdogDesc', 'Monitor process health and auto-restart on unexpected crashes.')}</span>
-        </div>
-        <label className="relative inline-flex items-center cursor-pointer">
-          <input
-            type="checkbox"
-            checked={watchdog_enabled}
-            onChange={e => onChange({ watchdog_enabled: e.target.checked })}
-            className="sr-only peer"
-          />
-          <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
-        </label>
-      </div>
-
-      {/* Watchdog Retries */}
-      {watchdog_enabled && (
-        <div className="p-2 bg-white/5 rounded-lg border border-white/5 space-y-2 animate-in fade-in duration-200">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-semibold text-white">{t('lifecycle.infiniteRetries', 'Infinite Restart Attempts')}</span>
-              <span className="text-[10px] text-text-secondary">{t('lifecycle.infiniteRetriesDesc', 'Keep trying to restart the process indefinitely.')}</span>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={watchdog_retries === -1}
-                onChange={e => onChange({
-                  watchdog_retries: e.target.checked ? -1 : 5
-                })}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
-            </label>
-          </div>
-
-          {watchdog_retries !== -1 && (
-            <div className="flex items-center gap-2 pt-1.5 border-t border-white/5 animate-in fade-in duration-200">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
-                {t('lifecycle.maxRetries', 'Maximum consecutive retries:')}
-              </label>
-              <input
-                type="number"
-                min="1"
-                max="100"
-                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-20 focus:border-brand-lime"
-                value={watchdog_retries}
-                onChange={e => onChange({
-                  watchdog_retries: Math.max(1, parseInt(e.target.value) || 1)
-                })}
-              />
-            </div>
-          )}
-
-          {/* Minimum Speed Watchdog Settings */}
-          <div className="flex items-center gap-4 pt-2.5 border-t border-white/5 flex-wrap">
-            <div className="flex items-center gap-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
-                {t('lifecycle.minSpeed', 'Minimum Speed:')}
-              </label>
-              <input
-                type="number"
-                step="0.05"
-                min="0.05"
-                max="10.0"
-                placeholder={t('common.disabled', 'Disabled')}
-                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-28 focus:border-brand-lime"
-                value={watchdog_min_speed === null || watchdog_min_speed === undefined ? '' : watchdog_min_speed}
-                onChange={e => {
-                  const val = e.target.value ? parseFloat(e.target.value) : null;
-                  onChange({ watchdog_min_speed: val });
-                }}
-              />
-            </div>
-            {(watchdog_min_speed !== null && watchdog_min_speed !== undefined) && (
-              <div className="flex items-center gap-2 animate-in fade-in duration-200">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
-                  {t('lifecycle.tolerance', 'Tolerance (s):')}
-                </label>
-                <input
-                  type="number"
-                  min="5"
-                  max="3600"
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-20 focus:border-brand-lime"
-                  value={watchdog_min_speed_duration}
-                  onChange={e => onChange({
-                    watchdog_min_speed_duration: Math.max(5, parseInt(e.target.value) || 30)
-                  })}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Maximum RAM Memory Watchdog Settings */}
-          <div className="flex items-center gap-4 pt-2.5 border-t border-white/5 flex-wrap">
-            <div className="flex items-center gap-2">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
-                {t('lifecycle.maxMemory', 'Max RAM (MB):')}
-              </label>
-              <input
-                type="number"
-                step="64"
-                min="128"
-                max="65536"
-                placeholder={t('common.disabled', 'Disabled')}
-                className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-28 focus:border-brand-lime font-mono"
-                value={watchdog_max_memory_mb === null || watchdog_max_memory_mb === undefined ? '' : watchdog_max_memory_mb}
-                onChange={e => {
-                  const val = e.target.value ? parseInt(e.target.value, 10) : null;
-                  onChange({ watchdog_max_memory_mb: val });
-                }}
-              />
-            </div>
-            {(watchdog_max_memory_mb !== null && watchdog_max_memory_mb !== undefined) && (
-              <div className="flex items-center gap-2 animate-in fade-in duration-200">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-text-secondary block">
-                  {t('lifecycle.tolerance', 'Tolerance (s):')}
-                </label>
-                <input
-                  type="number"
-                  min="5"
-                  max="3600"
-                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-20 focus:border-brand-lime font-mono"
-                  value={watchdog_max_memory_duration ?? 30}
-                  onChange={e => onChange({
-                    watchdog_max_memory_duration: Math.max(5, parseInt(e.target.value, 10) || 30)
-                  })}
-                />
-              </div>
-            )}
-          </div>
-
-          {/* Watchdog Circuit Breaker */}
-          <div className="flex items-center justify-between pt-2 border-t border-white/5">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-semibold text-white">{t('lifecycle.circuitBreaker', 'Crash-Loop Circuit Breaker')}</span>
-              <span className="text-[10px] text-text-secondary">{t('lifecycle.circuitBreakerDesc', 'Abort retries automatically on fatal unrecoverable errors (missing binary protocol, format or codec).')}</span>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={watchdog_circuit_breaker}
-                onChange={e => onChange({ watchdog_circuit_breaker: e.target.checked })}
-                className="sr-only peer"
-              />
-              <div className="w-9 h-5 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-lime"></div>
-            </label>
-          </div>
-        </div>
-      )}
 
       {/* Debug Mode Toggle */}
       <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">

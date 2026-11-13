@@ -337,6 +337,14 @@ class Service(Base):
         self._set_config_key('watchdog_circuit_breaker', bool(val))
 
     @property
+    def signal_watchdog(self):
+        return self.config.get('signal_watchdog', {}) if self.config else {}
+
+    @signal_watchdog.setter
+    def signal_watchdog(self, val):
+        self._set_config_key('signal_watchdog', val or {})
+
+    @property
     def mediamtx_config(self):
         return self.config.get('mediamtx_config', {}) if self.config else {}
 

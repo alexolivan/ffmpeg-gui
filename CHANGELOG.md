@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.67.0] - 2026-11-13
+
+### Added
+- **In-Band Signal Watchdog & Continuity Failover (`backend/core/filter_graph.py`, `backend/core/process_manager.py`, `backend/core/notification_manager.py`, `backend/core/prometheus_exporter.py`, `backend/main.py`)**:
+  - Added pass-through FFmpeg signal detectors (`silencedetect`, `blackdetect` with `metadata=mode=print` real-time events, and `freezedetect`), automatically bridging hardware-accelerated pipelines (VAAPI/NVENC/QSV) via `hwdownload,format=nv12` / `hwupload` and skipping sensors on `Stream Copy`.
+  - Added real-time `stderr` event parsing and `OR`/`AND` anomaly evaluation with recovery hold-off hysteresis in `ProcessManager`, supporting `alert_only`, `restart_self`, and `activate_backup` reactions via `DependencyManager` `failover:<id>` leases with 1-hop anti-cascade protection.
+  - Added coalesced email alerts (`notify_signal_alarm` / `notify_signal_recovery`) and Prometheus gauge `ffmpeg_gui_service_signal_alarm{id,name,type}`.
+  - Added API cycle/self-reference validation, `backup_service_name` re-linking during JSON Backup/Restore, and dangling reference cleanup on service deletion.
+- **Dedicated Watchdog Tab & Service Alarm Badges (`frontend/src/components/form/WatchdogFormSection.tsx`, `frontend/src/components/ProcessConfigForm.tsx`, `frontend/src/components/cards/{FfmpegServiceCard,UnifiedServiceCard}.tsx`, `frontend/src/locales/{en,es,ca}.json`)**:
+  - Added a dedicated `Watchdog` tab between `General` and `Input` consolidating process crash-recovery controls (moved from `LifecycleFormSection`) and conditional in-band signal sensors.
+  - Added pulsing `SIGNAL ALARM` badges on service cards with tripped sensor indicators.
+
 ## [2.66.0] - 2026-11-13
 
 ### Added

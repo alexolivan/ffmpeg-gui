@@ -30,6 +30,7 @@ class ProcessManager:
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
         self.watchdog_low_speed_since: Dict[int, Optional[datetime]] = {}
         self.watchdog_high_memory_since: Dict[int, Optional[datetime]] = {}
+        self.signal_watchdog_states: Dict[int, Dict[str, Any]] = {}
         self.db_session_factory = db_session_factory
         if db_session_factory:
             self.dependency_manager.db_session_factory = db_session_factory
@@ -1041,6 +1042,8 @@ class ProcessManager:
     async def stop_process(self, process_id: int, graceful: bool = True, is_restart: bool = False):
         self.stopping_processes.add(process_id)
         try:
+            await self._release_failover_lease_if_active(process_id)
+            self.signal_watchdog_states.pop(process_id, None)
             watchdog_task = self.watchdog_tasks.pop(process_id, None)
             if watchdog_task:
                 try:
@@ -3718,6 +3721,188 @@ class ProcessManager:
                 except Exception:
                     pass
 
+    def _get_or_init_signal_state(self, process_id: int) -> Dict[str, Any]:
+        if process_id not in self.signal_watchdog_states:
+            self.signal_watchdog_states[process_id] = {
+                "state": "normal",
+                "silence": False,
+                "black": False,
+                "freeze": False,
+                "black_since": None,
+                "recovering_since": None,
+                "alarm_since": None,
+                "tripped_sensors": [],
+                "active_backup_id": None,
+            }
+        return self.signal_watchdog_states[process_id]
+
+    def get_signal_watchdog_state(self, process_id: int) -> Dict[str, Any]:
+        st = self.signal_watchdog_states.get(process_id)
+        if not st:
+            return {
+                "state": "normal",
+                "silence": False,
+                "black": False,
+                "freeze": False,
+                "black_since": None,
+                "recovering_since": None,
+                "alarm_since": None,
+                "tripped_sensors": [],
+                "active_backup_id": None,
+            }
+        return dict(st)
+
+    async def _release_failover_lease_if_active(self, process_id: int):
+        st = self.signal_watchdog_states.get(process_id)
+        if not st:
+            return
+        active_backup_id = st.get("active_backup_id")
+        if active_backup_id is not None:
+            st["active_backup_id"] = None
+            try:
+                await self.release_lease(
+                    int(active_backup_id),
+                    consumer_type="failover",
+                    consumer_id=process_id,
+                    allow_auto_stop=True,
+                    lease_holder=f"failover:{process_id}",
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to release failover lease for {process_id} -> {active_backup_id}: {e}")
+
+    async def _evaluate_signal_watchdog(
+        self, process_id: int, media_proc, proc, pid, start_time: datetime, session
+    ):
+        cfg = getattr(media_proc, "config", None) or {}
+        sw = cfg.get("signal_watchdog") or {}
+        if not isinstance(sw, dict):
+            return
+
+        input_cfg = getattr(media_proc, "input_config", None) or {}
+        codec_cfg = getattr(media_proc, "codec_config", None) or {}
+        has_video = input_cfg.get("has_video", True) and codec_cfg.get("vcodec") != "copy"
+        has_audio = input_cfg.get("has_audio", True) and codec_cfg.get("acodec") != "copy"
+
+        silence_active = bool(sw.get("silence_enabled")) and has_audio
+        black_active = bool(sw.get("black_enabled")) and has_video
+        freeze_active = bool(sw.get("freeze_enabled")) and has_video
+
+        if not (silence_active or black_active or freeze_active):
+            return
+
+        now = datetime.utcnow()
+        if start_time and (now - start_time).total_seconds() < 15:
+            return
+
+        st = self._get_or_init_signal_state(process_id)
+        if st.get("black_since") is not None:
+            black_dur = float(sw.get("black_duration", 5) or 5)
+            st["black"] = (now - st["black_since"]).total_seconds() >= black_dur
+        else:
+            st["black"] = False
+
+        tripped = []
+        if silence_active and st.get("silence"):
+            tripped.append("silence")
+        if black_active and st.get("black"):
+            tripped.append("black")
+        if freeze_active and st.get("freeze"):
+            tripped.append("freeze")
+        st["tripped_sensors"] = tripped
+
+        enabled_count = int(silence_active) + int(black_active) + int(freeze_active)
+        logic = (sw.get("condition_logic") or "or").lower()
+        is_anomaly = (len(tripped) == enabled_count) if logic == "and" else (len(tripped) > 0)
+
+        prev_state = st["state"]
+        reaction_mode = sw.get("reaction_mode") or "alert_only"
+        backup_id = sw.get("backup_service_id")
+        backup_name = None
+        if backup_id:
+            try:
+                from database.models import Service
+                b_svc = session.query(Service).get(int(backup_id))
+                if b_svc:
+                    backup_name = b_svc.name
+            except Exception:
+                pass
+
+        from core.notification_manager import NotificationManager
+        from database.models import ServiceLog
+
+        if is_anomaly:
+            st["recovering_since"] = None
+            if prev_state != "alarm":
+                st["state"] = "alarm"
+                st["alarm_since"] = now
+                try:
+                    session.add(ServiceLog(
+                        service_id=process_id,
+                        level="ERROR",
+                        message=f"Signal Watchdog ALARM ({', '.join(tripped)}). Reaction: {reaction_mode}",
+                    ))
+                    session.commit()
+                except Exception:
+                    pass
+
+                NotificationManager().notify_signal_alarm(
+                    process_id, media_proc.name, tripped, reaction_mode, backup_name
+                )
+
+                if reaction_mode == "restart_self":
+                    self.logger.warning(f"Signal Watchdog triggering self-restart for service {process_id}")
+                    if hasattr(self, "restart_process"):
+                        asyncio.create_task(self.restart_process(process_id))
+                    elif proc is not None:
+                        try:
+                            proc.terminate()
+                        except Exception:
+                            pass
+                elif reaction_mode == "activate_backup" and backup_id and int(backup_id) != int(process_id):
+                    is_on_failover_lease = False
+                    with self.dependency_manager.state_lock:
+                        leases = self.dependency_manager.active_leases.get(process_id, set())
+                        is_pinned = process_id in self.dependency_manager.pinned_services
+                        if any(str(l).startswith("failover:") for l in leases) and not is_pinned:
+                            is_on_failover_lease = True
+                    if is_on_failover_lease:
+                        self.logger.warning(
+                            f"Signal Watchdog 1-hop anti-cascade: suppressing backup {backup_id} for {process_id}"
+                        )
+                    else:
+                        await self.acquire_lease(
+                            int(backup_id),
+                            consumer_type="failover",
+                            consumer_id=process_id,
+                            allow_auto_start=True,
+                            lease_holder=f"failover:{process_id}",
+                        )
+                        st["active_backup_id"] = int(backup_id)
+        else:
+            if prev_state == "alarm":
+                st["state"] = "recovering"
+                st["recovering_since"] = now
+            elif prev_state == "recovering":
+                rec_delay = float(sw.get("recovery_delay", 15) or 0)
+                rec_since = st.get("recovering_since") or now
+                if (now - rec_since).total_seconds() >= rec_delay:
+                    st["state"] = "normal"
+                    st["recovering_since"] = None
+                    st["alarm_since"] = None
+                    await self._release_failover_lease_if_active(process_id)
+                    try:
+                        session.add(ServiceLog(
+                            service_id=process_id,
+                            level="INFO",
+                            message=f"Signal Watchdog RECOVERED for service {media_proc.name}",
+                        ))
+                        session.commit()
+                    except Exception:
+                        pass
+                    NotificationManager().notify_signal_recovery(
+                        process_id, media_proc.name, reaction_mode, backup_name
+                    )
+
     def _handle_log_msg(self, process_id: int, msg: str, status_re):
         lower_msg = msg.lower()
         if any(kw in lower_msg for kw in ["error", "failed", "invalid", "could not", "cannot"]):
@@ -3746,7 +3931,25 @@ class ProcessManager:
                         media_proc.bitrate = bitrate
                         media_proc.speed = speed
                         session.commit()
-        
+
+        # In-band signal watchdog stderr parsing
+        if "silence_start:" in msg:
+            self._get_or_init_signal_state(process_id)["silence"] = True
+        elif "silence_end:" in msg:
+            self._get_or_init_signal_state(process_id)["silence"] = False
+        elif "lavfi.freezedetect.freeze_start:" in msg:
+            self._get_or_init_signal_state(process_id)["freeze"] = True
+        elif "lavfi.freezedetect.freeze_end:" in msg:
+            self._get_or_init_signal_state(process_id)["freeze"] = False
+        elif "lavfi.black_start=" in msg:
+            st = self._get_or_init_signal_state(process_id)
+            if st["black_since"] is None:
+                st["black_since"] = datetime.utcnow()
+        elif "lavfi.black_end=" in msg:
+            st = self._get_or_init_signal_state(process_id)
+            st["black_since"] = None
+            st["black"] = False
+
         self.logger.debug(f"[{process_id}] {msg}")
 
     def _handle_sidecar_log_msg(self, process_id: int, sidecar_name: str, msg: str):
@@ -4423,6 +4626,10 @@ class ProcessManager:
                                             self.watchdog_stalled_since[process_id] = None
                                             prev_frame = frame
                                             prev_out_time_us = out_time_us
+
+                                await self._evaluate_signal_watchdog(
+                                    process_id, media_proc, proc, pid, start_time, session
+                                )
                 except Exception as db_err:
                     self.logger.error(f"Watchdog database error for process {process_id}: {db_err}")
 
@@ -4437,6 +4644,9 @@ class ProcessManager:
         finally:
             if self.watchdog_tasks.get(process_id) == asyncio.current_task():
                 self.watchdog_tasks.pop(process_id, None)
+
+            await self._release_failover_lease_if_active(process_id)
+            self.signal_watchdog_states.pop(process_id, None)
 
             if is_cancelled:
                 return

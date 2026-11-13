@@ -1958,6 +1958,7 @@
   "form": {
     "sections": {
       "general": "General",
+      "watchdog": "Watchdog",
       "input": "Origen",
       "output": "Destinació",
       "codecs": "Còdecs",
@@ -2224,5 +2225,38 @@
     "invalid_binary_warning": "Selecciona un binari vàlid de navegador o descarrega'n un a Paràmetres → Programari.",
     "inherited_audio_label": "Sortida d'Àudio Heredada",
     "inherited_audio_help": "L'enrutament d'àudio del navegador ve determinat per la configuració de l'escriptori virtual seleccionat."
+  },
+  "watchdog": {
+    "processSectionTitle": "Watchdog de Procés i Recuperació davant Caigudes",
+    "signalSectionTitle": "Watchdog de Senyal In-Band",
+    "signalSectionDesc": "Detecció d'anomalies de contingut àudio/vídeo en temps real mitjançant filtres pass-through d'FFmpeg.",
+    "streamCopyWarning": "Els sensors de senyal in-band no estan disponibles mentre el flux corresponent estigui en Stream Copy (passthrough).",
+    "silenceTitle": "Detecció de Silenci",
+    "silenceEnable": "Activar Detecció de Silenci",
+    "silenceThreshold": "Llindar de Soroll (dBFS)",
+    "silenceDuration": "Durada Mínima de Silenci (s)",
+    "blackTitle": "Detecció de Pantalla en Negre",
+    "blackEnable": "Activar Detecció de Negre",
+    "blackDuration": "Durada Mínima en Negre (s)",
+    "blackPictureRatio": "Llindar de Proporció de Píxels",
+    "blackThreshold": "Llindar de Luminància",
+    "freezeTitle": "Detecció d'Imatge Congelada",
+    "freezeEnable": "Activar Detecció de Congelament",
+    "freezeNoise": "Tolerància de Soroll (dBFS)",
+    "freezeDuration": "Durada Mínima Congelat (s)",
+    "vramBridgeHint": "Còdec maquinari actiu: els fotogrames es descarregaran a RAM de CPU per a inspecció i es pujaran si cal.",
+    "evaluationTitle": "Lògica d'Avaluació i Reacció",
+    "conditionLogic": "Lògica de Dispar",
+    "logicOr": "OR (Qualsevol sensor actiu dispara)",
+    "logicAnd": "AND (Tots els sensors actius han de disparar)",
+    "recoveryDelay": "Retard d'Histèresi en Recuperació (s)",
+    "reactionMode": "Reacció de Failover",
+    "reactionAlertOnly": "Només Alerta (Log, Badge, Email i Mètriques)",
+    "reactionRestartSelf": "Reiniciar Aquest Servei",
+    "reactionActivateBackup": "Activar Servei de Backup (Lease de Failover)",
+    "backupService": "Servei de Backup",
+    "selectBackupService": "Seleccionar un servei de backup...",
+    "noBackupServices": "No hi ha altres serveis disponibles",
+    "signalAlarmBadge": "ALARMA DE SENYAL"
   }
 }

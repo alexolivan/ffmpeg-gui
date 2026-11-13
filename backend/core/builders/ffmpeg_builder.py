@@ -991,6 +991,7 @@ class FFmpegCommandBuilder:
             codec_cfg = copy.deepcopy(cfg.get('codec_config', {}))
             filter_cfg = copy.deepcopy(cfg.get('filter_config', {}) or {})
             output_cfg = copy.deepcopy(cfg.get('output_config', {}))
+            signal_watchdog = copy.deepcopy(cfg.get('signal_watchdog', {}) or {})
             is_debug = cfg.get('debug_mode', False)
             net_timeout = cfg.get('network_timeout', 15)
         elif isinstance(media_proc, dict):
@@ -998,6 +999,7 @@ class FFmpegCommandBuilder:
             codec_cfg = copy.deepcopy(media_proc.get('codec_config', {}))
             filter_cfg = copy.deepcopy(media_proc.get('filter_config', {}) or {})
             output_cfg = copy.deepcopy(media_proc.get('output_config', {}))
+            signal_watchdog = copy.deepcopy(media_proc.get('signal_watchdog', {}) or {})
             is_debug = media_proc.get('debug_mode', False)
             net_timeout = media_proc.get('network_timeout', 15)
         else:
@@ -1005,8 +1007,13 @@ class FFmpegCommandBuilder:
             codec_cfg = copy.deepcopy(getattr(media_proc, 'codec_config', {}))
             filter_cfg = copy.deepcopy(getattr(media_proc, 'filter_config', {}) or {})
             output_cfg = copy.deepcopy(getattr(media_proc, 'output_config', {}))
+            raw_sw = getattr(media_proc, 'signal_watchdog', {})
+            signal_watchdog = copy.deepcopy(raw_sw) if isinstance(raw_sw, dict) else {}
             is_debug = getattr(media_proc, 'debug_mode', False)
             net_timeout = getattr(media_proc, 'network_timeout', 15)
+
+        if not isinstance(signal_watchdog, dict):
+            signal_watchdog = {}
 
         if type(is_debug).__name__ in ('MagicMock', 'Mock'):
             is_debug = False
@@ -1171,7 +1178,9 @@ class FFmpegCommandBuilder:
                     
                     v_filter_cfg = {**filter_cfg, 'scale': v['resolution'].replace(':', 'x')}
                     vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
-                        input_cfg, v_filter_cfg, is_vram, hwaccel
+                        input_cfg, v_filter_cfg, is_vram, hwaccel,
+                        signal_watchdog=signal_watchdog if idx == 0 else None,
+                        vcodec=vcodec,
                     )
                     
                     vf_list = []
@@ -1210,7 +1219,11 @@ class FFmpegCommandBuilder:
                     cmd += ["-map", f"{audio_map_idx}:a"]
                     cmd += [f"-c:a:{idx}", acodec]
                     
-                    af_str = FilterGraphBuilder.build_audio_filters(filter_cfg)
+                    af_str = FilterGraphBuilder.build_audio_filters(
+                        filter_cfg,
+                        signal_watchdog=signal_watchdog if idx == 0 else None,
+                        acodec=acodec,
+                    )
                     if af_str:
                         cmd += [f"-filter:a:{idx}", af_str]
                         
@@ -1335,8 +1348,11 @@ class FFmpegCommandBuilder:
                 if hwaccel == 'none' or not is_hw_supported:
                     is_vram = False
                     
+                vcodec = codec_cfg.get('vcodec', 'libx264')
                 vf_str, remains_vram = FilterGraphBuilder.build_video_filters(
-                    input_cfg, filter_cfg, is_vram, hwaccel
+                    input_cfg, filter_cfg, is_vram, hwaccel,
+                    signal_watchdog=signal_watchdog,
+                    vcodec=vcodec,
                 )
                 original_vf_str = vf_str
                 original_remains_vram = remains_vram
@@ -1405,11 +1421,15 @@ class FFmpegCommandBuilder:
                 cmd += ["-an"]
             else:
                 from core.filter_graph import FilterGraphBuilder
-                af_str = FilterGraphBuilder.build_audio_filters(filter_cfg)
+                acodec = codec_cfg.get('acodec', 'aac')
+                af_str = FilterGraphBuilder.build_audio_filters(
+                    filter_cfg,
+                    signal_watchdog=signal_watchdog,
+                    acodec=acodec,
+                )
                 if af_str:
                     cmd += ["-af", af_str]
                     
-                acodec = codec_cfg.get('acodec', 'aac')
                 is_raw_audio_input = primary_input_type in ('alsa', 'pipewire', 'decklink', 'lavfi_audio')
                 if output_type == 'alsa':
                     # ALSA hardware sinks require uncompressed PCM samples with explicit sample rate and channel layout.

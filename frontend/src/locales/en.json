@@ -1958,6 +1958,7 @@
   "form": {
     "sections": {
       "general": "General",
+      "watchdog": "Watchdog",
       "input": "Input",
       "output": "Output",
       "codecs": "Codecs",
@@ -2224,5 +2225,38 @@
     "invalid_binary_warning": "Please select a valid browser binary or install one in Settings → Software.",
     "inherited_audio_label": "Inherited Audio Output",
     "inherited_audio_help": "Browser audio routing is determined by the selected Virtual Desktop configuration."
+  },
+  "watchdog": {
+    "processSectionTitle": "Process Watchdog & Crash Recovery",
+    "signalSectionTitle": "In-Band Signal Watchdog",
+    "signalSectionDesc": "Real-time audio/video content anomaly detection via FFmpeg pass-through filters.",
+    "streamCopyWarning": "In-band signal sensors are unavailable while the corresponding stream is set to Stream Copy (passthrough).",
+    "silenceTitle": "Silence Detection",
+    "silenceEnable": "Enable Silence Detection",
+    "silenceThreshold": "Noise Threshold (dBFS)",
+    "silenceDuration": "Minimum Silence Duration (s)",
+    "blackTitle": "Black Frame Detection",
+    "blackEnable": "Enable Black Frame Detection",
+    "blackDuration": "Minimum Black Duration (s)",
+    "blackPictureRatio": "Pixel Ratio Threshold",
+    "blackThreshold": "Luma Threshold",
+    "freezeTitle": "Video Freeze Detection",
+    "freezeEnable": "Enable Freeze Detection",
+    "freezeNoise": "Noise Tolerance (dBFS)",
+    "freezeDuration": "Minimum Freeze Duration (s)",
+    "vramBridgeHint": "Hardware codec active: frames will be downloaded to CPU RAM for pixel inspection and re-uploaded if needed.",
+    "evaluationTitle": "Evaluation Logic & Reaction",
+    "conditionLogic": "Trigger Logic",
+    "logicOr": "OR (Any enabled sensor trips)",
+    "logicAnd": "AND (All enabled sensors must trip)",
+    "recoveryDelay": "Recovery Hold-off Delay (s)",
+    "reactionMode": "Failover Reaction",
+    "reactionAlertOnly": "Alert Only (Log, Badge, Email & Metrics)",
+    "reactionRestartSelf": "Restart This Service",
+    "reactionActivateBackup": "Activate Backup Service (Failover Lease)",
+    "backupService": "Backup Service",
+    "selectBackupService": "Select a backup service...",
+    "noBackupServices": "No other services available",
+    "signalAlarmBadge": "SIGNAL ALARM"
   }
 }
