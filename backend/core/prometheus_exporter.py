@@ -328,6 +328,7 @@ def build_openmetrics_payload(
     fps_lines: List[str] = []
     bitrate_lines: List[str] = []
     speed_lines: List[str] = []
+    signal_alarm_lines: List[str] = []
 
     # Subsystem lines
     icecast_global_lines: List[str] = []
@@ -377,6 +378,21 @@ def build_openmetrics_payload(
             if service_has_bitrate(s):
                 bitrate_val = parse_bitrate_kbps(s.bitrate) if is_running else 0.0
                 bitrate_lines.append(f"ffmpeg_gui_service_bitrate_kbps{{{base_labels}}} {bitrate_val}")
+
+            cfg = getattr(s, "config", None) or {}
+            if isinstance(cfg, str):
+                try:
+                    cfg = json.loads(cfg)
+                except Exception:
+                    cfg = {}
+            sw = cfg.get("signal_watchdog", {}) if isinstance(cfg, dict) else {}
+            if isinstance(sw, dict) and (sw.get("silence_enabled") or sw.get("black_enabled") or sw.get("freeze_enabled")):
+                alarm_val = 0.0
+                if is_running and process_manager and hasattr(process_manager, "get_signal_watchdog_state"):
+                    sw_state = process_manager.get_signal_watchdog_state(s.id) or {}
+                    if sw_state.get("state") in ("alarm", "recovering"):
+                        alarm_val = 1.0
+                signal_alarm_lines.append(f"ffmpeg_gui_service_signal_alarm{{{base_labels}}} {alarm_val}")
 
         # Icecast2 Server Telemetry
         elif s_type == "icecast_server":
@@ -486,6 +502,11 @@ def build_openmetrics_payload(
             "# HELP ffmpeg_gui_service_bitrate_kbps Service output stream bitrate in kbps",
             "# TYPE ffmpeg_gui_service_bitrate_kbps gauge",
         ] + bitrate_lines)
+    if signal_alarm_lines:
+        lines.extend([
+            "# HELP ffmpeg_gui_service_signal_alarm In-band signal watchdog alarm active (1=alarm/recovering, 0=normal)",
+            "# TYPE ffmpeg_gui_service_signal_alarm gauge",
+        ] + signal_alarm_lines)
 
     # Append Icecast metrics if any emitted
     if icecast_global_lines:
