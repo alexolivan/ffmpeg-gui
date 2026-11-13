@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.66.0] - 2026-11-13
+
+### Added
+- **Multi-NIC / Multi-Subnet Discovery Beacon (`backend/core/discovery_beacon.py`)**:
+  - Added `get_advertisable_interfaces()` and `_is_virtual_or_ignored_iface()` to enumerate all active physical/VLAN/LAN-bridge IPv4 interfaces with netmask, MAC address, and default-gateway flag while filtering loopback, container, hypervisor, and VPN virtual adapters (`lo`, `docker*`, `veth*`, `virbr*`, `br-<hex>`, `tun*`, `wg*`, `tailscale*`, etc.).
+  - Extended beacon JSON payload with the backward-compatible `"ips"` list while preserving `"ip"` and `"web_url"` for legacy scanners.
+  - Updated `DiscoveryBeaconService.send_beacon()` to emit passive broadcasts to every active subnet's directed broadcast address in addition to `255.255.255.255`, while keeping `DISCOVER_QUERY` replies unicast to the requesting scanner.
+
 ## [2.65.0] - 2026-11-13
 
 ### Changed
