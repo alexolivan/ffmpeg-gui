@@ -2249,6 +2249,7 @@
     "conditionLogic": "Lógica de Disparo",
     "logicOr": "OR (Cualquier sensor activo dispara)",
     "logicAnd": "AND (Todos los sensores activos deben disparar)",
+    "singleSensorLogicHint": "Requiere 2 o más sensores activos para combinar condiciones.",
     "recoveryDelay": "Retardo de Histéresis en Recuperación (s)",
     "reactionMode": "Reacción de Failover",
     "reactionAlertOnly": "Solo Alerta (Log, Badge, Email y Métricas)",
@@ -2256,7 +2257,8 @@
     "reactionActivateBackup": "Activar Servicio de Backup (Lease de Failover)",
     "backupService": "Servicio de Backup",
     "selectBackupService": "Seleccionar un servicio de backup...",
-    "noBackupServices": "No hay otros servicios disponibles",
+    "noBackupServices": "No hay otros servicios FFmpeg disponibles",
+    "backupLoopBlocked": "usa este servicio como backup",
     "signalAlarmBadge": "ALARMA DE SEÑAL"
   }
 }

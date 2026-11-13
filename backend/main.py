@@ -5709,6 +5709,8 @@ def _validate_signal_watchdog_config(db: Session, service_id: Optional[int], sw:
     backup_svc = db.query(MediaProcess).get(b_id)
     if not backup_svc:
         raise HTTPException(status_code=400, detail="Selected signal watchdog backup service does not exist")
+    if getattr(backup_svc, "service_type", "ffmpeg_stream") not in (None, "", "ffmpeg_stream"):
+        raise HTTPException(status_code=400, detail="Signal watchdog backup service must be an FFmpeg stream service")
 
     if service_id is not None:
         b_sw = (backup_svc.config or {}).get("signal_watchdog") or {}
