@@ -77,6 +77,7 @@ export interface ServiceItem {
 interface UnifiedServiceCardProps {
   service: ServiceItem;
   telemetryItem?: any;
+  backupServiceName?: string;
   actionPending?: 'starting' | 'stopping' | 'restarting';
   onStartService: (procId: number) => void;
   onStopService: (procId: number, name?: string) => void;
@@ -150,6 +151,7 @@ export const hasVideo = (proc: ServiceItem): boolean => {
 export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
   service,
   telemetryItem,
+  backupServiceName,
   actionPending,
   onStartService,
   onStopService,
@@ -270,14 +272,45 @@ export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
             </span>
           )}
 
-          {service.watchdog_enabled && (
-            <span 
-              className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" 
-              title={`Monitored by system watchdog${service.restart_count ? ` (${t('services.restartCount', 'Restarts')}: ${service.restart_count})` : ''}`}
-            >
-              <ShieldIcon size={10} /> WATCHDOG{service.restart_count && service.restart_count > 0 ? ` (${service.restart_count})` : ''}
-            </span>
-          )}
+          {(() => {
+            const sw = service.signal_watchdog || service.config?.signal_watchdog || {};
+            const hasSilence = Boolean(sw.silence_enabled);
+            const hasBlack = Boolean(sw.black_enabled);
+            const hasFreeze = Boolean(sw.freeze_enabled);
+            const showWatchdog = Boolean(service.watchdog_enabled || hasSilence || hasBlack || hasFreeze);
+            const activeModes = [
+              service.watchdog_enabled ? 'Process' : null,
+              hasSilence ? 'Silence' : null,
+              hasBlack ? 'Black' : null,
+              hasFreeze ? 'Freeze' : null,
+            ].filter(Boolean);
+            const hasBackup = sw.reaction_mode === 'activate_backup' && Boolean(sw.backup_service_id);
+            return (
+              <>
+                {showWatchdog && (
+                  <span
+                    className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+                    title={`Watchdog (${activeModes.join(' + ')})${service.restart_count ? ` — ${t('services.restartCount', 'Restarts')}: ${service.restart_count}` : ''}`}
+                  >
+                    {service.watchdog_enabled && <ShieldIcon size={10} />}
+                    {hasSilence && <span>🔇</span>}
+                    {hasBlack && <span>⬛</span>}
+                    {hasFreeze && <span>❄️</span>}
+                    <span>WATCHDOG{service.restart_count && service.restart_count > 0 ? ` (${service.restart_count})` : ''}</span>
+                  </span>
+                )}
+                {hasBackup && (
+                  <span
+                    className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1 max-w-[140px]"
+                    title={`${t('watchdog.backupService', 'Backup Service')}: ${backupServiceName || `#${sw.backup_service_id}`}`}
+                  >
+                    <span>🔁</span>
+                    <span className="truncate">{backupServiceName || `#${sw.backup_service_id}`}</span>
+                  </span>
+                )}
+              </>
+            );
+          })()}
 
           {service.dependencies && service.dependencies.length > 0 && service.dependencies.map((d: any, idx: number) => (
             <span 
