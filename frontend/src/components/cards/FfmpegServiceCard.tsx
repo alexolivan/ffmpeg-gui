@@ -49,6 +49,12 @@ export interface ServiceItem {
   watchdog_min_speed_duration?: number;
   watchdog_max_memory_mb?: number | null;
   watchdog_max_memory_duration?: number;
+  signal_watchdog?: any;
+  signal_watchdog_state?: {
+    state?: string;
+    tripped_sensors?: string[];
+    [key: string]: any;
+  };
   pending_changes?: boolean;
   last_start?: string | null;
   last_stop?: string | null;
@@ -298,6 +304,18 @@ export const FfmpegServiceCard: React.FC<UnifiedServiceCardProps> = ({
           {service.status === 'error' && !isRetrying && (
             <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Process exited with error / stopped abnormally">
               ⚠ ABNORMAL END
+            </span>
+          )}
+
+          {service.signal_watchdog_state?.state && service.signal_watchdog_state.state !== 'normal' && (
+            <span
+              className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1"
+              title={`Signal Watchdog: ${service.signal_watchdog_state.state} (${(service.signal_watchdog_state.tripped_sensors || []).join(', ')})`}
+            >
+              🚨 {t('watchdog.signalAlarmBadge', 'SIGNAL ALARM')}
+              {(service.signal_watchdog_state.tripped_sensors?.length ?? 0) > 0
+                ? `: ${(service.signal_watchdog_state.tripped_sensors || []).map((s: string) => s.toUpperCase()).join('+')}`
+                : ''}
             </span>
           )}
         </div>

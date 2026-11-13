@@ -13,6 +13,7 @@ import { ResourcePipelineDiagram } from './codec/ResourcePipelineDiagram';
 import FiltersFormSection from './form/FiltersFormSection';
 import SchedulingFormSection from './form/SchedulingFormSection';
 import LifecycleFormSection from './form/LifecycleFormSection';
+import { WatchdogFormSection, DEFAULT_SIGNAL_WATCHDOG, type SignalWatchdogConfig } from './form/WatchdogFormSection';
 import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
 import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
@@ -95,6 +96,7 @@ interface ProcessConfig {
   watchdog_min_speed_duration: number;
   watchdog_max_memory_mb: number | null;
   watchdog_max_memory_duration: number;
+  signal_watchdog?: SignalWatchdogConfig;
   allow_auto_start_deps?: boolean;
   allow_auto_stop_deps?: boolean;
 
@@ -491,6 +493,10 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         watchdog_min_speed_duration: initialConfig.watchdog_min_speed_duration ?? 30,
         watchdog_max_memory_mb: initialConfig.watchdog_max_memory_mb !== undefined ? initialConfig.watchdog_max_memory_mb : null,
         watchdog_max_memory_duration: initialConfig.watchdog_max_memory_duration ?? 30,
+        signal_watchdog: {
+          ...DEFAULT_SIGNAL_WATCHDOG,
+          ...(initialConfig.signal_watchdog || initialConfig.config?.signal_watchdog || {}),
+        },
         schedule_type: initialConfig.schedule_type || 'manual',
         schedule_cron: initialConfig.schedule_cron || '*/30 * * * *',
         schedule_datetime: initialConfig.schedule_datetime ? initialConfig.schedule_datetime.substring(0, 16) : '',
@@ -547,6 +553,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
       watchdog_min_speed_duration: 30,
       watchdog_max_memory_mb: null,
       watchdog_max_memory_duration: 30,
+      signal_watchdog: { ...DEFAULT_SIGNAL_WATCHDOG },
       schedule_type: 'manual',
       schedule_cron: '*/30 * * * *',
       schedule_datetime: '',
@@ -777,6 +784,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         watchdog_min_speed_duration: config.watchdog_min_speed_duration,
         watchdog_max_memory_mb: config.watchdog_max_memory_mb,
         watchdog_max_memory_duration: config.watchdog_max_memory_duration,
+        signal_watchdog: config.signal_watchdog,
         allow_auto_start_deps: config.allow_auto_start_deps ?? true,
         allow_auto_stop_deps: config.allow_auto_stop_deps ?? true,
       })
@@ -970,6 +978,17 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         ...prev.filters,
         ...updates,
       }
+    }));
+  }, []);
+
+  const handleSignalWatchdogChange = useCallback((updates: Partial<SignalWatchdogConfig>) => {
+    setConfig(prev => ({
+      ...prev,
+      signal_watchdog: {
+        ...DEFAULT_SIGNAL_WATCHDOG,
+        ...(prev.signal_watchdog || {}),
+        ...updates,
+      },
     }));
   }, []);
 
@@ -1236,6 +1255,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
 
   const sections = [
     { id: 'system', label: t('form.sections.general', 'General'), icon: <ShieldIcon size={14} /> },
+    ...(!isTask ? [{ id: 'watchdog', label: t('form.sections.watchdog', 'Watchdog'), icon: <ShieldIcon size={14} /> }] : []),
     { id: 'inputs', label: t('form.sections.input', 'Input'), icon: <SourceIcon size={14} /> },
     { id: 'output', label: t('form.sections.output', 'Output'), icon: <DestinationIcon size={14} /> },
     { id: 'encoding', label: t('form.sections.codecs', 'Codecs'), icon: <GearIcon size={14} /> },
@@ -1725,6 +1745,31 @@ const hasNDICodecIncompatibility = isNDIOutput && (
           </div>
         )}
 
+        {/* ═══ WATCHDOG SECTION ═══ */}
+        {!isTask && activeSection === 'watchdog' && (
+          <div className="space-y-4 animate-in fade-in duration-300">
+            <WatchdogFormSection
+              watchdog_enabled={config.watchdog_enabled}
+              watchdog_retries={config.watchdog_retries}
+              watchdog_circuit_breaker={config.watchdog_circuit_breaker ?? true}
+              watchdog_min_speed={config.watchdog_min_speed}
+              watchdog_min_speed_duration={config.watchdog_min_speed_duration}
+              watchdog_max_memory_mb={config.watchdog_max_memory_mb}
+              watchdog_max_memory_duration={config.watchdog_max_memory_duration}
+              onLifecycleChange={handleLifecycleOrSchedulingChange}
+              signal_watchdog={config.signal_watchdog || DEFAULT_SIGNAL_WATCHDOG}
+              onSignalWatchdogChange={handleSignalWatchdogChange}
+              hasVideo={config.has_video}
+              hasAudio={config.has_audio}
+              isVideoCopy={config.video_codec_id === 'copy'}
+              isAudioCopy={config.audio_codec_id === 'copy'}
+              isHardwareVideoCodec={['h264_vaapi', 'hevc_vaapi', 'h264_nvenc', 'hevc_nvenc', 'h264_qsv', 'hevc_qsv'].includes(config.video_codec_id)}
+              availableServices={existingConfigs.filter((x: any) => !x.is_task)}
+              currentProcessId={initialConfig?.id ?? null}
+            />
+          </div>
+        )}
+
         {/* ═══ SYSTEM & WATCHDOG SECTION ═══ */}
         {activeSection === 'system' && (
           <div className="space-y-4 animate-in fade-in duration-300">
@@ -1739,7 +1784,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                 }
                 codecId={config.video_codec_id}
                 audioCodecId={config.audio_codec_id}
-                hasCpuFilters={!!(config.filters.overlays && config.filters.overlays.length > 0)}
+                hasCpuFilters={!!((config.filters.overlays && config.filters.overlays.length > 0) || (!isTask && (config.signal_watchdog?.black_enabled || config.signal_watchdog?.freeze_enabled)))}
                 inputType={config.input1.type}
                 outputType={config.output.type}
                 filters={config.filters}
@@ -1769,13 +1814,6 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                   auto_start={config.auto_start}
                   startup_order={config.startup_order}
                   startup_delay={config.startup_delay}
-                  watchdog_enabled={config.watchdog_enabled}
-                  watchdog_retries={config.watchdog_retries}
-                  watchdog_circuit_breaker={config.watchdog_circuit_breaker ?? true}
-                  watchdog_min_speed={config.watchdog_min_speed}
-                  watchdog_min_speed_duration={config.watchdog_min_speed_duration}
-                  watchdog_max_memory_mb={config.watchdog_max_memory_mb}
-                  watchdog_max_memory_duration={config.watchdog_max_memory_duration}
                   debug_mode={config.debug_mode}
                   log_storage_id={config.log_storage_id}
                   logsStorages={storages.filter((s: any) => s.type === 'logs')}
