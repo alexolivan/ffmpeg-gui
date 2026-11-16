@@ -716,6 +716,8 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
         log_storage_id: logStorageId ? Number(logStorageId) : null,
         software_build_id: buildId,
         ffmpeg_build_id: buildId,
+        virtual_sinks: cleanSinks,
+        remote_sinks: cleanRemoteSinks,
         pipewire_config: configPayload,
       },
     });

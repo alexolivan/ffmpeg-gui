@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.67.3] - 2026-11-16
+
+### Fixed
+- **PipeWire Sink & Remote Sink Selector Resolution (`frontend/src/components/source/InputSourcePanel.tsx`, `frontend/src/components/destination/DestinationPanel.tsx`, `frontend/src/components/forms/PipeWireConfigForm.tsx`)**:
+  - Prioritized `config.pipewire_config.{virtual_sinks, remote_sinks}` over stale empty `[]` root arrays when resolving PipeWire Hub sinks in input/output selectors (preventing JavaScript's truthy `[] || [...]` from hiding newly imported `remote_sinks`).
+  - Added numeric `Number(id)` matching with fallback to `pipewire_service_id` and `pipewireHubs[0]` when switching an existing service to PipeWire input/output.
+  - Synchronized root `virtual_sinks` and `remote_sinks` alongside `pipewire_config` on `PipeWireConfigForm` submission.
+
 ## [2.67.2] - 2026-11-13
 
 ### Added

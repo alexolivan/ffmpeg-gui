@@ -71,6 +71,14 @@ interface InputSourcePanelProps {
   storages?: any[];
 }
 
+const getHubSinkList = (hub: any, key: 'virtual_sinks' | 'remote_sinks'): any[] => {
+  const nested = hub?.config?.pipewire_config?.[key];
+  const root = hub?.config?.[key];
+  if (Array.isArray(nested) && nested.length > 0) return nested;
+  if (Array.isArray(root) && root.length > 0) return root;
+  return Array.isArray(nested) ? nested : (Array.isArray(root) ? root : []);
+};
+
 const ALL_SOURCE_TYPES = [
   { value: 'file', labelKey: 'sources.types.file', label: 'Local File / VOD' },
   { value: 'desktop', labelKey: 'sources.types.desktop', label: 'Virtual Desktop (x11grab)' },
@@ -207,8 +215,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
   React.useEffect(() => {
     if (config.type === 'pipewire' && pipewireHubs.length > 0 && !config.provider_service_id) {
       const firstHub = pipewireHubs[0];
-      const virtualSinks = firstHub.config?.virtual_sinks || firstHub.config?.pipewire_config?.virtual_sinks || [];
-      const firstSinkId = virtualSinks[0]?.id || 'mix_bus';
+      const virtualSinks = getHubSinkList(firstHub, 'virtual_sinks');
+      const remoteSinks = getHubSinkList(firstHub, 'remote_sinks');
+      const firstSinkId = virtualSinks[0]?.id || remoteSinks[0]?.id || 'mix_bus';
       update({
         provider_service_id: firstHub.id,
         sink_id: firstSinkId,
@@ -650,11 +659,17 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               provider_service_id: defaultDesk ? defaultDesk.id : null,
               draw_mouse: 0,
             } : {}),
-            ...(newType === 'pipewire' ? {
-              provider_service_id: pipewireHubs[0]?.id || null,
-              sink_id: (pipewireHubs[0]?.config?.virtual_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.virtual_sinks?.[0]?.id) || (pipewireHubs[0]?.config?.remote_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.remote_sinks?.[0]?.id) || 'mix_bus',
-              device: `${(pipewireHubs[0]?.config?.virtual_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.virtual_sinks?.[0]?.id) || (pipewireHubs[0]?.config?.remote_sinks?.[0]?.id || pipewireHubs[0]?.config?.pipewire_config?.remote_sinks?.[0]?.id) || 'mix_bus'}.monitor`
-            } : {}),
+            ...(newType === 'pipewire' ? (() => {
+              const firstHub = pipewireHubs[0];
+              const vSinks = getHubSinkList(firstHub, 'virtual_sinks');
+              const rSinks = getHubSinkList(firstHub, 'remote_sinks');
+              const firstSink = vSinks[0]?.id || rSinks[0]?.id || 'mix_bus';
+              return {
+                provider_service_id: firstHub?.id || null,
+                sink_id: firstSink,
+                device: `${firstSink}.monitor`
+              };
+            })() : {}),
             ...(!isHwSupported ? {
               hwaccel: 'none',
               hwaccel_output_format: '',
@@ -3679,9 +3694,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
       )}
 
       {config.type === 'pipewire' && (() => {
-        const selectedHub = pipewireHubs.find(h => h.id === config.provider_service_id);
-        const virtualSinks: any[] = selectedHub?.config?.virtual_sinks || selectedHub?.config?.pipewire_config?.virtual_sinks || [];
-        const remoteSinks: any[] = selectedHub?.config?.remote_sinks || selectedHub?.config?.pipewire_config?.remote_sinks || [];
+        const targetHubId = Number(config.provider_service_id || config.pipewire_service_id);
+        const selectedHub = pipewireHubs.find(h => Number(h.id) === targetHubId) || pipewireHubs[0];
+        const virtualSinks: any[] = getHubSinkList(selectedHub, 'virtual_sinks');
+        const remoteSinks: any[] = getHubSinkList(selectedHub, 'remote_sinks');
         const currentSinkId = config.sink_id || (config.device ? config.device.replace(/\.monitor$/, '') : 'mix_bus');
 
         return (
@@ -3730,12 +3746,12 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   <select
                     id={`${idPrefix}-pw-provider`}
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
-                    value={config.provider_service_id || ''}
+                    value={selectedHub?.id || config.provider_service_id || ''}
                     onChange={e => {
                       const nextHubId = Number(e.target.value);
-                      const nextHub = pipewireHubs.find(h => h.id === nextHubId);
-                      const nextSinks = nextHub?.config?.virtual_sinks || nextHub?.config?.pipewire_config?.virtual_sinks || [];
-                      const nextRemoteSinks = nextHub?.config?.remote_sinks || nextHub?.config?.pipewire_config?.remote_sinks || [];
+                      const nextHub = pipewireHubs.find(h => Number(h.id) === nextHubId);
+                      const nextSinks = getHubSinkList(nextHub, 'virtual_sinks');
+                      const nextRemoteSinks = getHubSinkList(nextHub, 'remote_sinks');
                       const defaultSink = nextSinks[0]?.id || nextRemoteSinks[0]?.id || 'mix_bus';
                       update({
                         provider_service_id: nextHubId,
