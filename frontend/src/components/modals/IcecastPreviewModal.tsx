@@ -559,7 +559,6 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                         src={`${webStatusUrl}${webStatusUrl.includes('?') ? '&' : '?'}_preview_t=${previewTimestamp}`}
                         title="Icecast Web Status Preview"
                         className="w-[1280px] h-[720px] border-0 bg-white pointer-events-none select-none"
-                        sandbox="allow-same-origin"
                         tabIndex={-1}
                       />
                     </div>
