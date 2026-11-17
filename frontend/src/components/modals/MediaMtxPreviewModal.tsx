@@ -17,6 +17,8 @@ interface MediaMtxPreviewModalProps {
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
   API: string;
+  settings?: any;
+  isCloudHubSession?: boolean;
 }
 
 const formatUptime = (lastStartStr: string | null | undefined, isRunning: boolean = true): string => {
@@ -47,6 +49,8 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   onStopService,
   onRestartService,
   API,
+  settings,
+  isCloudHubSession = false,
 }) => {
   const { t } = useTranslation();
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -145,9 +149,13 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   }, [configuredPaths, activePathSlug, mtxCfg]);
 
   // Host resolver
-  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+  const isCloudHub = Boolean(
+    isCloudHubSession || (typeof window !== 'undefined' && window.location.pathname.includes('/proxy/'))
+  );
+  const windowHost = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+  const host = isCloudHub ? (settings?.primary_ip || windowHost) : windowHost;
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  const webScheme = mtxCfg.ssl_enabled || isHttps ? 'https' : 'http';
+  const webScheme = mtxCfg.ssl_enabled || (!isCloudHub && isHttps) ? 'https' : 'http';
 
   // Helper to cleanly extract target path slug from any output configuration or URL
   const extractPathFromOutput = (out: any): string | null => {

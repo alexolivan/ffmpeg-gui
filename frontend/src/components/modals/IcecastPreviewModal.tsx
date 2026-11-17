@@ -25,6 +25,8 @@ interface IcecastPreviewModalProps {
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
   API: string;
+  settings?: any;
+  isCloudHubSession?: boolean;
 }
 
 const formatUptime = (lastStartStr: string | null | undefined, isRunning: boolean = true): string => {
@@ -55,6 +57,8 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   onStopService,
   onRestartService,
   API,
+  settings,
+  isCloudHubSession = false,
 }) => {
   const { t } = useTranslation();
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -81,12 +85,21 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   const configuredMounts: any[] = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
 
   // Host & admin authentication resolver
+  const isCloudHub = Boolean(
+    isCloudHubSession || (typeof window !== 'undefined' && window.location.pathname.includes('/proxy/'))
+  );
   const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
+  const externalHost = isCloudHub ? (settings?.primary_ip || host) : host;
   const adminUser = iceCfg.admin_user || 'admin';
   const adminPass = iceCfg.admin_password || '';
   const adminAuthPrefix = adminPass ? `${encodeURIComponent(adminUser)}:${encodeURIComponent(adminPass)}@` : '';
-  const webConsoleUrl = sslEnabled ? `https://${adminAuthPrefix}${host}:${sslPort}/admin/` : `http://${adminAuthPrefix}${host}:${httpPort}/admin/`;
-  const webStatusUrl = sslEnabled ? `https://${host}:${sslPort}/status.xsl` : `http://${host}:${httpPort}/status.xsl`;
+  const icecastProxyBase = `${API}/api/processes/${currentProcess.id}/icecast-proxy`;
+  const webConsoleUrl = isCloudHub
+    ? `${icecastProxyBase}/admin/`
+    : (sslEnabled ? `https://${adminAuthPrefix}${host}:${sslPort}/admin/` : `http://${adminAuthPrefix}${host}:${httpPort}/admin/`);
+  const webStatusUrl = isCloudHub
+    ? `${icecastProxyBase}/status.xsl`
+    : (sslEnabled ? `https://${host}:${sslPort}/status.xsl` : `http://${host}:${httpPort}/status.xsl`);
 
   // Scale iframe to match 1280x720 virtual desktop in aspect-video box
   useEffect(() => {
@@ -670,7 +683,11 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                   <tbody className="divide-y divide-[var(--glass-border)] text-xs">
                     {mergedMountpoints.map((m: any, idx: number) => {
                       const mountPath = m.mount_name || '';
-                      const streamUrl = `${sslEnabled ? 'https' : 'http'}://${host}:${sslEnabled ? sslPort : httpPort}${mountPath}`;
+                      const normalizedMount = mountPath.startsWith('/') ? mountPath : `/${mountPath}`;
+                      const externalStreamUrl = `${sslEnabled ? 'https' : 'http'}://${externalHost}:${sslEnabled ? sslPort : httpPort}${normalizedMount}`;
+                      const playerStreamUrl = isCloudHub
+                        ? `${icecastProxyBase}${normalizedMount}`
+                        : externalStreamUrl;
                       const isSourceLive = m.isActive;
                       const activePublisher = getActiveMountPublisher(mountPath);
 
@@ -734,7 +751,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                               <audio
                                 controls
                                 preload="none"
-                                src={streamUrl}
+                                src={playerStreamUrl}
                                 className="h-7 w-48 rounded"
                               />
                             ) : (
@@ -747,9 +764,9 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                           <td className="py-2.5 px-2.5 text-right">
                             <button
                               type="button"
-                              onClick={() => handleCopyStreamUrl(mountPath, streamUrl)}
+                              onClick={() => handleCopyStreamUrl(mountPath, externalStreamUrl)}
                               className="px-2.5 py-1 rounded bg-[var(--input-bg)] hover:bg-[var(--bg-card)] border border-[var(--glass-border)] text-cyan-400 hover:text-white text-[10px] font-mono font-bold flex items-center gap-1.5 ml-auto transition-colors cursor-pointer"
-                              title={streamUrl}
+                              title={isCloudHub ? t('services.icecast.preview.directUrlHint', { url: externalStreamUrl, defaultValue: `Direct appliance URL: ${externalStreamUrl}` }) : externalStreamUrl}
                             >
                               {copiedUrlKey === mountPath ? (
                                 <>

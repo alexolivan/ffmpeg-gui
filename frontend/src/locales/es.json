@@ -345,6 +345,7 @@
         "titleCol": "Título de Emisión / Metadatos",
         "listenLive": "Reproductor en Vivo",
         "copyUrl": "Copiar URL del Stream",
+        "directUrlHint": "URL directa del appliance: {{url}}",
         "copied": "¡Copiado!",
         "logsTitle": "Registros del Servidor (Stdout / Error Log)",
         "ingestBy": "Ingesta por",

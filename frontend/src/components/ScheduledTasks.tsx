@@ -70,16 +70,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   };
 
   const { subscribe } = useTelemetry();
-  const isCloudHub = typeof window !== 'undefined' && window.location.pathname.includes('/proxy/');
-  const [snapshotKey, setSnapshotKey] = useState<number>(Date.now());
-
-  useEffect(() => {
-    if (!isCloudHub || viewingLogsExecutionId === null) return;
-    const interval = setInterval(() => {
-      setSnapshotKey(Date.now());
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [isCloudHub, viewingLogsExecutionId]);
 
   const fetchAllServices = async () => {
     try {
@@ -1288,7 +1278,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         <div className="flex flex-col justify-center">
                           <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
                             <img 
-                              src={`${API}/tasks/executions/${viewingLogsExecutionId}/preview${isCloudHub ? `?t=${snapshotKey}` : ''}`} 
+                              src={`${API}/tasks/executions/${viewingLogsExecutionId}/preview`} 
                               alt="Live Preview" 
                               className="max-h-full max-w-full object-contain" 
                               />

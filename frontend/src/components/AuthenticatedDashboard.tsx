@@ -664,6 +664,8 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            settings={settings}
+            isCloudHubSession={isCloudHubSession}
           />
         ) : selectedProcess.service_type === 'icecast_server' ? (
           <IcecastPreviewModal
@@ -678,6 +680,8 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            settings={settings}
+            isCloudHubSession={isCloudHubSession}
           />
         ) : selectedProcess.service_type === 'kiosk_browser' ? (
           <KioskPreviewModal
@@ -734,6 +738,8 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            settings={settings}
+            isCloudHubSession={isCloudHubSession}
           />
         )
       )}

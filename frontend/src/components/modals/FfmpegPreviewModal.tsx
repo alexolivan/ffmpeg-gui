@@ -19,6 +19,8 @@ interface FfmpegPreviewModalProps {
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
   API: string;
+  settings?: any;
+  isCloudHubSession?: boolean;
 }
 
 export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
@@ -33,6 +35,8 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   onStopService,
   onRestartService,
   API,
+  settings,
+  isCloudHubSession = false,
 }) => {
   const { t } = useTranslation();
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -61,12 +65,20 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   } else if (outputConfig.path && outputConfig.path.endsWith('.m3u8')) {
     hlsPlaylistName = outputConfig.path.split('/').pop() || 'stream.m3u8';
   }
+  const isCloudHub = Boolean(
+    isCloudHubSession || (typeof window !== 'undefined' && window.location.pathname.includes('/proxy/'))
+  );
   const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
   const port = typeof window !== 'undefined' && window.location.port ? `:${window.location.port}` : '';
   const protocol = typeof window !== 'undefined' && window.location.protocol ? window.location.protocol : 'http:';
+  const externalHost = isCloudHub ? (settings?.primary_ip || host) : host;
+  const externalPort = isCloudHub
+    ? (settings?.gui_port ? `:${settings.gui_port}` : '')
+    : port;
+  const externalProtocol = isCloudHub ? (settings?.ssl_enabled ? 'https:' : 'http:') : protocol;
 
   const publicHlsPath = currentProcess?.public_hls_path || selectedProcess?.public_hls_path || null;
-  const publicHlsUrl = publicHlsPath ? `${protocol}//${host}${port}${publicHlsPath}` : null;
+  const publicHlsUrl = publicHlsPath ? `${externalProtocol}//${externalHost}${externalPort}${publicHlsPath}` : null;
 
   const internalHlsUrl = `${API}/processes/${currentProcess.id}/hls/${hlsPlaylistName}`;
   const activePlayerHlsSrc = publicHlsPath || internalHlsUrl;
@@ -78,17 +90,6 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const [copySuccess, setCopySuccess] = useState(false);
   const [copyHlsSuccess, setCopyHlsSuccess] = useState(false);
   const [showDiagnosticLogs, setShowDiagnosticLogs] = useState<boolean>(false);
-  const isCloudHub = typeof window !== 'undefined' && window.location.pathname.includes('/proxy/');
-  const [snapshotKey, setSnapshotKey] = useState<number>(Date.now());
-
-  // Periodically refresh preview snapshot when viewing behind CloudHub reverse bastion
-  useEffect(() => {
-    if (!isCloudHub || !previewEnabled || !isRunning) return;
-    const interval = setInterval(() => {
-      setSnapshotKey(Date.now());
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [isCloudHub, previewEnabled, isRunning]);
 
   // Automatically expand diagnostic logs if the process is in an error or restarting state
   useEffect(() => {
@@ -366,7 +367,7 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 ) : previewEnabled ? (
                   <div className="aspect-video bg-black rounded-xl overflow-hidden border border-white/5 flex items-center justify-center relative shadow-2xl">
                     <img
-                      src={`${API}/processes/${currentProcess.id}/preview${isCloudHub ? `?t=${snapshotKey}` : ''}`}
+                      src={`${API}/processes/${currentProcess.id}/preview`}
                       alt="Live Preview"
                       className="max-h-full max-w-full object-contain"
                     />

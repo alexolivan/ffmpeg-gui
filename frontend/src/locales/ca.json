@@ -345,6 +345,7 @@
         "titleCol": "Títol d'Emissió / Metadades",
         "listenLive": "Reproductor en Viu",
         "copyUrl": "Copiar URL del Flux",
+        "directUrlHint": "URL directa de l'appliance: {{url}}",
         "copied": "Copiat!",
         "logsTitle": "Registres del Servidor (Stdout / Error Log)",
         "ingestBy": "Ingesta per",

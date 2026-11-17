@@ -345,6 +345,7 @@
         "titleCol": "Stream Title / Metadata",
         "listenLive": "Live Audio Player",
         "copyUrl": "Copy Stream URL",
+        "directUrlHint": "Direct appliance URL: {{url}}",
         "copied": "Copied!",
         "logsTitle": "Server Logs (Stdout / Error Log)",
         "ingestBy": "Ingest by",
