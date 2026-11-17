@@ -571,6 +571,9 @@ class CloudTunnelClient:
             asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
             asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
 
+        if bool(frame.get("supports_stream", False)):
+            asgi_headers.append((b"x-cloudhub-stream", b"1"))
+
 
         scope = {
             "type": "http",
@@ -777,6 +780,9 @@ class CloudTunnelClient:
             )
             asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
             asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
+
+        if bool(frame.get("supports_stream", False)):
+            asgi_headers.append((b"x-cloudhub-stream", b"1"))
 
 
         sec_subprotocols = []

@@ -6551,6 +6551,111 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
     return {"icestats": {"listeners": 0, "source": []}}
 
 
+def _rewrite_icecast_paths(text: str, proxy_base: str) -> str:
+    """Rewrite root-relative Icecast HTML/XSL/CSS links so they stay under the internal proxy prefix."""
+    text = re.sub(r'(href|src|action)=["\']/(?!/|api/processes/)', rf'\1="{proxy_base}/', text, flags=re.IGNORECASE)
+    text = re.sub(r"url\((['\"]?)/(?!/|api/processes/)", rf"url(\1{proxy_base}/", text, flags=re.IGNORECASE)
+    return text
+
+
+@app.api_route("/processes/{process_id}/icecast-proxy/{subpath:path}", methods=["GET", "POST", "HEAD"])
+@app.api_route("/api/processes/{process_id}/icecast-proxy/{subpath:path}", methods=["GET", "POST", "HEAD"])
+async def proxy_icecast_service(
+    process_id: int,
+    subpath: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Internal reverse proxy to a managed Icecast2 service (status, admin with Basic Auth, and live audio)."""
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if getattr(db_proc, "service_type", None) != "icecast_server":
+        raise HTTPException(status_code=400, detail="Service is not an Icecast2 server")
+
+    cfg = db_proc.config or {}
+    ice_cfg = cfg.get("icecast_config") or {}
+    http_enabled = ice_cfg.get("http_enabled", True)
+    ssl_enabled = ice_cfg.get("ssl_enabled", False)
+    use_ssl = (not http_enabled) and ssl_enabled
+    port = int(ice_cfg.get("ssl_port", 7443) if use_ssl else ice_cfg.get("port", 7000))
+    scheme = "https" if use_ssl else "http"
+
+    subpath_clean = subpath.lstrip("/")
+    query = request.url.query
+    target_url = f"{scheme}://127.0.0.1:{port}/{subpath_clean}" + (f"?{query}" if query else "")
+
+    fwd_headers: Dict[str, str] = {}
+    for h_name in ("accept", "range", "icy-metadata", "user-agent", "content-type"):
+        if h_name in request.headers:
+            fwd_headers[h_name] = request.headers[h_name]
+
+    admin_user = ice_cfg.get("admin_user", "admin")
+    admin_password = ice_cfg.get("admin_password", "")
+    if subpath_clean.startswith("admin") and admin_password:
+        import base64 as _b64
+        creds = _b64.b64encode(f"{admin_user}:{admin_password}".encode("utf-8")).decode("ascii")
+        fwd_headers["authorization"] = f"Basic {creds}"
+
+    req_body = await request.body() if request.method == "POST" else None
+
+    import httpx
+    client = httpx.AsyncClient(verify=False, timeout=httpx.Timeout(10.0, read=None))
+    try:
+        upstream_req = client.build_request(
+            request.method,
+            target_url,
+            headers=fwd_headers,
+            content=req_body,
+        )
+        upstream_resp = await client.send(upstream_req, stream=True)
+    except Exception as exc:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail=f"Failed to connect to Icecast on port {port}: {exc}")
+
+    ctype = upstream_resp.headers.get("content-type", "")
+    resp_headers: Dict[str, str] = {}
+    for hk, hv in upstream_resp.headers.items():
+        if hk.lower() not in ("content-length", "transfer-encoding", "content-encoding", "connection", "www-authenticate"):
+            resp_headers[hk] = hv
+
+    is_rewritable = any(
+        t in ctype.lower() for t in ("text/html", "application/xhtml+xml", "text/xml", "text/css")
+    )
+
+    if is_rewritable:
+        try:
+            raw_bytes = await upstream_resp.aread()
+        finally:
+            await upstream_resp.aclose()
+            await client.aclose()
+
+        proxy_base = f"/api/processes/{process_id}/icecast-proxy"
+        text_body = _rewrite_icecast_paths(raw_bytes.decode("utf-8", errors="replace"), proxy_base)
+        return Response(
+            content=text_body.encode("utf-8"),
+            status_code=upstream_resp.status_code,
+            headers=resp_headers,
+            media_type=ctype or None,
+        )
+
+    async def _stream_audio():
+        try:
+            async for chunk in upstream_resp.aiter_bytes(16384):
+                if chunk:
+                    yield chunk
+        finally:
+            await upstream_resp.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        _stream_audio(),
+        status_code=upstream_resp.status_code,
+        headers=resp_headers,
+        media_type=ctype or None,
+    )
+
+
 @app.get("/processes/{process_id}/mediamtx/paths")
 @app.get("/api/processes/{process_id}/mediamtx/paths")
 def get_mediamtx_live_paths(process_id: int, db: Session = Depends(get_db)):
@@ -7155,8 +7260,12 @@ async def get_preview(process_id: int, request: Request, db: Session = Depends(g
 
     is_running = media_proc.status == 'running'
 
-    # Single snapshot fallback for CloudHub proxy or explicit snapshot queries
-    if request.headers.get("x-authenticated-channel") == "cloudhub" or request.query_params.get("snapshot"):
+    # Single snapshot fallback for legacy CloudHub proxies (without http_stream) or explicit snapshot queries
+    is_legacy_cloudhub = (
+        request.headers.get("x-authenticated-channel") == "cloudhub"
+        and request.headers.get("x-cloudhub-stream") != "1"
+    )
+    if is_legacy_cloudhub or request.query_params.get("snapshot"):
         img = preview_manager.get_snapshot(media_proc.id, is_task=False)
         if img:
             return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
@@ -7583,8 +7692,12 @@ async def get_service_preview(service_id: int, request: Request, db: Session = D
     is_running = media_proc.status == 'running'
     input_config = media_proc.config.get("input_config", {}) if media_proc.config else {}
 
-    # Single snapshot fallback for CloudHub proxy or explicit snapshot queries
-    if request.headers.get("x-authenticated-channel") == "cloudhub" or request.query_params.get("snapshot"):
+    # Single snapshot fallback for legacy CloudHub proxies (without http_stream) or explicit snapshot queries
+    is_legacy_cloudhub = (
+        request.headers.get("x-authenticated-channel") == "cloudhub"
+        and request.headers.get("x-cloudhub-stream") != "1"
+    )
+    if is_legacy_cloudhub or request.query_params.get("snapshot"):
         img = preview_manager.get_snapshot(media_proc.id, is_task=False)
         if img:
             return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
@@ -7767,8 +7880,12 @@ async def get_task_preview(execution_id: int, request: Request, db: Session = De
     is_running = execution.status == 'running'
     input_config = execution.task.input_config if execution.task else {}
 
-    # Single snapshot fallback for CloudHub proxy or explicit snapshot queries
-    if request.headers.get("x-authenticated-channel") == "cloudhub" or request.query_params.get("snapshot"):
+    # Single snapshot fallback for legacy CloudHub proxies (without http_stream) or explicit snapshot queries
+    is_legacy_cloudhub = (
+        request.headers.get("x-authenticated-channel") == "cloudhub"
+        and request.headers.get("x-cloudhub-stream") != "1"
+    )
+    if is_legacy_cloudhub or request.query_params.get("snapshot"):
         img = preview_manager.get_snapshot(execution.id, is_task=True)
         if img:
             return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
