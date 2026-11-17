@@ -70,6 +70,7 @@ class CloudTunnelClient:
         self._last_connected_at: Optional[float] = None
         self._last_error: Optional[str] = None
         self._active_ws_streams: Dict[str, asyncio.Queue] = {}
+        self._active_http_streams: Dict[str, asyncio.Event] = {}
 
     def get_status(self) -> Dict[str, Any]:
         """Return real-time connection status for Web UI settings card."""
@@ -451,6 +452,9 @@ class CloudTunnelClient:
                     "node_name": node_name,
                     "logo_text": logo_text,
                     "logo_path": logo_path,
+                    "capabilities": {
+                        "http_stream": True,
+                    },
                     "lcd": {
                         "enabled": lcd_enabled,
                         "connected": lcd_connected,
@@ -506,6 +510,11 @@ class CloudTunnelClient:
 
             elif msg_type == "http_req":
                 await self._handle_asgi_http(ws, msg, tunnel_secret, sso_enabled)
+
+            elif msg_type == "http_req_cancel":
+                ev = self._active_http_streams.pop(stream_id, None)
+                if ev:
+                    ev.set()
 
             elif msg_type == "ws_open":
                 await self._handle_asgi_ws_open(ws, msg, tunnel_secret, sso_enabled)
@@ -577,8 +586,10 @@ class CloudTunnelClient:
         }
 
         # Body stream
+        supports_stream = bool(frame.get("supports_stream", False))
         body_sent = False
         disconnect_event = asyncio.Event()
+        self._active_http_streams[stream_id] = disconnect_event
 
         async def receive():
             nonlocal body_sent
@@ -596,70 +607,143 @@ class CloudTunnelClient:
         resp_status = 500
         resp_headers = []
         resp_body_chunks = []
+        streaming_started = False
+        stream_end_sent = False
+        is_streaming_headers = False
+        has_content_length = False
 
         async def send(message):
-            nonlocal resp_status, resp_headers
+            nonlocal resp_status, resp_headers, streaming_started, stream_end_sent, is_streaming_headers, has_content_length
             msg_type = message.get("type")
             if msg_type == "http.response.start":
                 resp_status = message.get("status", 200)
                 for hk, hv in message.get("headers", []):
-                    resp_headers.append(
-                        [hk.decode("latin1"), hv.decode("latin1")]
-                    )
+                    k_str = hk.decode("latin1")
+                    v_str = hv.decode("latin1")
+                    resp_headers.append([k_str, v_str])
+                    k_low = k_str.lower()
+                    v_low = v_str.lower()
+                    if k_low == "content-length":
+                        has_content_length = True
+                    elif k_low == "transfer-encoding" and "chunked" in v_low:
+                        is_streaming_headers = True
+                    elif k_low == "content-type" and (
+                        v_low.startswith("audio/")
+                        or v_low.startswith("video/")
+                        or "multipart/x-mixed-replace" in v_low
+                        or "application/ogg" in v_low
+                        or "application/octet-stream" in v_low
+                    ):
+                        is_streaming_headers = True
+
             elif msg_type == "http.response.body":
                 chunk = message.get("body", b"")
-                if chunk:
-                    resp_body_chunks.append(chunk)
-                # If streaming response (e.g. MJPEG multipart), terminate after first frame to avoid infinite hang
-                for hk, hv in resp_headers:
-                    if hk.lower() == "content-type" and "multipart/x-mixed-replace" in hv.lower():
-                        disconnect_event.set()
-                        break
+                more_body = bool(message.get("more_body", False))
+
+                if (
+                    not streaming_started
+                    and supports_stream
+                    and (is_streaming_headers or (not has_content_length and more_body))
+                ):
+                    streaming_started = True
+                    await ws.send(json.dumps({
+                        "type": "http_resp_start",
+                        "stream_id": stream_id,
+                        "status_code": resp_status,
+                        "headers": resp_headers,
+                    }))
+
+                if streaming_started:
+                    if chunk and not disconnect_event.is_set():
+                        # Keep each base64 chunk well below MAX_TUNNEL_FRAME_BYTES
+                        max_raw_chunk = 8_000_000
+                        for offset in range(0, len(chunk), max_raw_chunk):
+                            sub = chunk[offset : offset + max_raw_chunk]
+                            await ws.send(json.dumps({
+                                "type": "http_resp_chunk",
+                                "stream_id": stream_id,
+                                "data_b64": encode_body(sub),
+                            }))
+                    if (not more_body or disconnect_event.is_set()) and not stream_end_sent:
+                        stream_end_sent = True
+                        await ws.send(json.dumps({
+                            "type": "http_resp_end",
+                            "stream_id": stream_id,
+                        }))
+                else:
+                    if chunk:
+                        resp_body_chunks.append(chunk)
+                    # Legacy fallback when CloudHub does not support chunked streaming
+                    for hk, hv in resp_headers:
+                        if hk.lower() == "content-type" and "multipart/x-mixed-replace" in hv.lower():
+                            disconnect_event.set()
+                            break
 
         try:
             await self.app(scope, receive, send)
-            full_body = b"".join(resp_body_chunks)
-            resp_frame = {
-                "type": "http_resp",
-                "stream_id": stream_id,
-                "status_code": resp_status,
-                "headers": resp_headers,
-                "body": encode_body(full_body),
-            }
-            payload_str = json.dumps(resp_frame)
-            if len(payload_str.encode("utf-8")) > MAX_TUNNEL_FRAME_BYTES:
-                logger.warning(
-                    "CloudHub tunnel HTTP response too large (%d bytes > %d) for %s %s; returning 413",
-                    len(payload_str),
-                    MAX_TUNNEL_FRAME_BYTES,
-                    scope.get("method", "?"),
-                    scope.get("path", "?"),
-                )
-                err_body = json.dumps({
-                    "detail": "Response payload exceeds CloudHub tunnel frame limit",
-                    "max_frame_bytes": MAX_TUNNEL_FRAME_BYTES,
-                    "original_status": resp_status,
-                }).encode("utf-8")
+            if streaming_started:
+                if not stream_end_sent:
+                    stream_end_sent = True
+                    await ws.send(json.dumps({
+                        "type": "http_resp_end",
+                        "stream_id": stream_id,
+                    }))
+            else:
+                full_body = b"".join(resp_body_chunks)
                 resp_frame = {
                     "type": "http_resp",
                     "stream_id": stream_id,
-                    "status_code": 413,
-                    "headers": [["content-type", "application/json"]],
-                    "body": encode_body(err_body),
+                    "status_code": resp_status,
+                    "headers": resp_headers,
+                    "body": encode_body(full_body),
                 }
                 payload_str = json.dumps(resp_frame)
-            await ws.send(payload_str)
+                if len(payload_str.encode("utf-8")) > MAX_TUNNEL_FRAME_BYTES:
+                    logger.warning(
+                        "CloudHub tunnel HTTP response too large (%d bytes > %d) for %s %s; returning 413",
+                        len(payload_str),
+                        MAX_TUNNEL_FRAME_BYTES,
+                        scope.get("method", "?"),
+                        scope.get("path", "?"),
+                    )
+                    err_body = json.dumps({
+                        "detail": "Response payload exceeds CloudHub tunnel frame limit",
+                        "max_frame_bytes": MAX_TUNNEL_FRAME_BYTES,
+                        "original_status": resp_status,
+                    }).encode("utf-8")
+                    resp_frame = {
+                        "type": "http_resp",
+                        "stream_id": stream_id,
+                        "status_code": 413,
+                        "headers": [["content-type", "application/json"]],
+                        "body": encode_body(err_body),
+                    }
+                    payload_str = json.dumps(resp_frame)
+                await ws.send(payload_str)
         except Exception as err:
             logger.error("In-memory ASGI HTTP dispatch error: %s", err)
-            err_frame = {
-                "type": "http_resp",
-                "stream_id": stream_id,
-                "status_code": 500,
-                "headers": [["content-type", "application/json"]],
-                "body": encode_body(json.dumps({"detail": str(err)}).encode("utf-8")),
-            }
-            await ws.send(json.dumps(err_frame))
+            if streaming_started:
+                if not stream_end_sent:
+                    stream_end_sent = True
+                    try:
+                        await ws.send(json.dumps({
+                            "type": "http_resp_end",
+                            "stream_id": stream_id,
+                            "error": str(err),
+                        }))
+                    except Exception:
+                        pass
+            else:
+                err_frame = {
+                    "type": "http_resp",
+                    "stream_id": stream_id,
+                    "status_code": 500,
+                    "headers": [["content-type", "application/json"]],
+                    "body": encode_body(json.dumps({"detail": str(err)}).encode("utf-8")),
+                }
+                await ws.send(json.dumps(err_frame))
         finally:
+            self._active_http_streams.pop(stream_id, None)
             disconnect_event.set()
 
     async def _handle_asgi_ws_open(

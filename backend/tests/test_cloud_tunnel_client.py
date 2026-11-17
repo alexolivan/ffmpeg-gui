@@ -299,6 +299,8 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(sent_frames), 1)
         payload = sent_frames[0]
+        self.assertIn("capabilities", payload)
+        self.assertTrue(payload["capabilities"]["http_stream"])
         self.assertIn("lcd", payload)
         self.assertTrue(payload["lcd"]["enabled"])
         self.assertEqual(payload["lcd"]["alias"], "RACK-ENC-01")
@@ -363,6 +365,83 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent_frames[0]["type"], "ws_close")
         self.assertEqual(sent_frames[0]["stream_id"], "s_big_ws")
         self.assertEqual(sent_frames[0]["code"], 1009)
+
+    async def test_handle_asgi_http_streaming_chunks_when_supported(self):
+        """Verify streaming ASGI responses emit http_resp_start, chunks, and http_resp_end."""
+        async def audio_stream_app(scope, receive, send):
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"audio/mpeg"]],
+            })
+            await send({"type": "http.response.body", "body": b"part1-", "more_body": True})
+            await send({"type": "http.response.body", "body": b"part2", "more_body": False})
+
+        self.client.app = audio_stream_app
+        sent_frames = []
+
+        class FakeWS:
+            async def send(self, data):
+                sent_frames.append(json.loads(data))
+
+        await self.client._handle_asgi_http(FakeWS(), {
+            "stream_id": "s_audio",
+            "method": "GET",
+            "path": "/api/processes/1/icecast-proxy/live.mp3",
+            "headers": {},
+            "supports_stream": True,
+        }, "secret", False)
+
+        types = [f["type"] for f in sent_frames]
+        self.assertEqual(types, ["http_resp_start", "http_resp_chunk", "http_resp_chunk", "http_resp_end"])
+        self.assertEqual(sent_frames[0]["status_code"], 200)
+        assembled = decode_body(sent_frames[1]["data_b64"]) + decode_body(sent_frames[2]["data_b64"])
+        self.assertEqual(assembled, b"part1-part2")
+
+    async def test_http_req_cancel_aborts_active_stream(self):
+        """Verify http_req_cancel triggers ASGI http.disconnect and terminates stream cleanly."""
+        disconnected = asyncio.Event()
+
+        async def infinite_stream_app(scope, receive, send):
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"audio/mpeg"]],
+            })
+            await send({"type": "http.response.body", "body": b"frame0", "more_body": True})
+            msg = await receive()  # initial http.request
+            self.assertEqual(msg["type"], "http.request")
+            disc = await receive()  # waits for http.disconnect
+            if disc["type"] == "http.disconnect":
+                disconnected.set()
+
+        self.client.app = infinite_stream_app
+        sent_frames = []
+
+        class FakeWS:
+            async def send(self, data):
+                sent_frames.append(json.loads(data))
+
+        task = asyncio.create_task(self.client._handle_asgi_http(FakeWS(), {
+            "stream_id": "s_cancel",
+            "method": "GET",
+            "path": "/api/processes/1/icecast-proxy/live.mp3",
+            "headers": {},
+            "supports_stream": True,
+        }, "secret", False))
+
+        await asyncio.sleep(0.05)
+        await self.client._dispatch_tunnel_frame(
+            FakeWS(),
+            json.dumps({"type": "http_req_cancel", "stream_id": "s_cancel"}),
+            "secret",
+            False,
+        )
+        await asyncio.wait_for(task, timeout=2.0)
+
+        self.assertTrue(disconnected.is_set())
+        self.assertEqual(sent_frames[0]["type"], "http_resp_start")
+        self.assertEqual(sent_frames[-1]["type"], "http_resp_end")
 
 
 if __name__ == "__main__":
