@@ -6553,8 +6553,8 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
 
 def _rewrite_icecast_paths(text: str, proxy_base: str) -> str:
     """Rewrite root-relative Icecast HTML/XSL/CSS links so they stay under the internal proxy prefix."""
-    text = re.sub(r'(href|src|action)=["\']/(?!/|api/processes/)', rf'\1="{proxy_base}/', text, flags=re.IGNORECASE)
-    text = re.sub(r"url\((['\"]?)/(?!/|api/processes/)", rf"url(\1{proxy_base}/", text, flags=re.IGNORECASE)
+    text = re.sub(r'(href|src|action)=(["\'])/(?!/|api/processes/)', rf'\1=\2{proxy_base}/', text, flags=re.IGNORECASE)
+    text = re.sub(r"url\(\s*(['\"]?)/(?!/|api/processes/)", rf"url(\1{proxy_base}/", text, flags=re.IGNORECASE)
     return text
 
 

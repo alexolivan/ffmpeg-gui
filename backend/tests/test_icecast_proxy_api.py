@@ -73,6 +73,7 @@ class TestIcecastProxyAPI(unittest.TestCase):
                 return (
                     b'<html><head><link rel="stylesheet" href="/style.css"></head>'
                     b'<body><a href="/admin/listclients.xsl">Clients</a>'
+                    b"<img src='/icecast.png'>"
                     b'<audio src="/live.mp3"></audio></body></html>'
                 )
 
@@ -106,6 +107,7 @@ class TestIcecastProxyAPI(unittest.TestCase):
         prefix = f"/api/processes/{self.icecast_proc.id}/icecast-proxy"
         self.assertIn(f'href="{prefix}/style.css"', res.text)
         self.assertIn(f'href="{prefix}/admin/listclients.xsl"', res.text)
+        self.assertIn(f"src='{prefix}/icecast.png'", res.text)
         self.assertIn(f'src="{prefix}/live.mp3"', res.text)
 
     def test_icecast_proxy_streams_audio_mountpoint(self):
