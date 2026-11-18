@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
+import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 export interface ServiceRestartTaskFormProps {
   API: string;
   initialConfig?: any | null;
+  permissions?: EdgePermissionsSummary | null;
   onCancel: () => void;
   onSubmit: (taskPayload: any) => Promise<void>;
 }
@@ -19,6 +21,7 @@ interface ServiceOption {
 export const ServiceRestartTaskForm: React.FC<ServiceRestartTaskFormProps> = ({
   API,
   initialConfig,
+  permissions,
   onCancel,
   onSubmit,
 }) => {
@@ -69,9 +72,10 @@ export const ServiceRestartTaskForm: React.FC<ServiceRestartTaskFormProps> = ({
         if (res.ok) {
           const data = await res.json();
           if (isMounted && Array.isArray(data)) {
-            setAvailableServices(data);
-            if (data.length > 0 && !selectedServiceToAdd) {
-              setSelectedServiceToAdd(String(data[0].id));
+            const operable = data.filter((s: any) => hasMinLevel(getServiceLevel(permissions, s), 'operate'));
+            setAvailableServices(operable);
+            if (operable.length > 0 && !selectedServiceToAdd) {
+              setSelectedServiceToAdd(String(operable[0].id));
             }
           }
         }
@@ -83,7 +87,7 @@ export const ServiceRestartTaskForm: React.FC<ServiceRestartTaskFormProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [API]);
+  }, [API, permissions]);
 
   const handleAddService = () => {
     if (!selectedServiceToAdd) return;

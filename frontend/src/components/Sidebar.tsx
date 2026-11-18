@@ -1,14 +1,21 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { 
-  DashboardIcon, 
-  LightningIcon, 
-  CalendarIcon, 
-  GearIcon, 
+import {
+  DashboardIcon,
+  LightningIcon,
+  CalendarIcon,
+  GearIcon,
   ForgeIcon,
   LogoutIcon,
   SlidersIcon,
 } from './Icons';
+import {
+  canAccessDomain,
+  hasAnyProcessAccess,
+  hasAnyServiceAccess,
+  hasAnyTaskAccess,
+  type EdgePermissionsSummary,
+} from '../utils/permissions';
 
 interface SidebarProps {
   activeView: string;
@@ -18,6 +25,7 @@ interface SidebarProps {
   accentColor?: string;
   onLogout?: () => void;
   isCloudHubSession?: boolean;
+  permissions?: EdgePermissionsSummary | null;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -28,24 +36,56 @@ const Sidebar: React.FC<SidebarProps> = ({
   accentColor = '#FF6B00',
   onLogout,
   isCloudHubSession = false,
+  permissions,
 }) => {
   const { t } = useTranslation();
 
-  const items = [
-    { id: 'dashboard', icon: <DashboardIcon size={20} />, label: t('nav.dashboard') },
-    { id: 'services', icon: <LightningIcon size={20} />, label: t('nav.services') },
-    { id: 'batch', icon: <CalendarIcon size={20} />, label: t('nav.tasks') },
-    { id: 'hardware', icon: <SlidersIcon size={20} />, label: t('nav.hardware', 'Hardware / I/O') },
-    { id: 'settings', icon: <GearIcon size={20} />, label: t('nav.settings') },
-    { id: 'tools', icon: <ForgeIcon size={20} />, label: t('nav.forge', 'Forge') },
+  const allItems = [
+    {
+      id: 'dashboard',
+      icon: <DashboardIcon size={20} />,
+      label: t('nav.dashboard'),
+      allowed: canAccessDomain(permissions, 'dashboard', 'monitor') || hasAnyProcessAccess(permissions, 'monitor'),
+    },
+    {
+      id: 'services',
+      icon: <LightningIcon size={20} />,
+      label: t('nav.services'),
+      allowed: hasAnyServiceAccess(permissions, 'monitor'),
+    },
+    {
+      id: 'batch',
+      icon: <CalendarIcon size={20} />,
+      label: t('nav.tasks'),
+      allowed: hasAnyTaskAccess(permissions, 'monitor'),
+    },
+    {
+      id: 'hardware',
+      icon: <SlidersIcon size={20} />,
+      label: t('nav.hardware', 'Hardware / I/O'),
+      allowed: canAccessDomain(permissions, 'hardware', 'monitor'),
+    },
+    {
+      id: 'settings',
+      icon: <GearIcon size={20} />,
+      label: t('nav.settings'),
+      allowed: canAccessDomain(permissions, 'settings', 'monitor'),
+    },
+    {
+      id: 'tools',
+      icon: <ForgeIcon size={20} />,
+      label: t('nav.forge', 'Forge'),
+      allowed: canAccessDomain(permissions, 'forge', 'monitor'),
+    },
   ];
+  const items = allItems.filter((item) => item.allowed);
 
   return (
     <div className="w-20 lg:w-64 h-screen bg-card-bg border-r border-[var(--glass-border)] flex flex-col items-center py-8 transition-colors duration-300">
       <div 
         className="w-12 h-12 rounded-2xl flex items-center justify-center mb-6 shadow-lg cursor-pointer transition-all hover:scale-110 overflow-hidden" 
         style={!logoPath ? { backgroundColor: accentColor, boxShadow: `0 10px 20px ${accentColor}33` } : undefined}
-        onClick={() => onViewChange('dashboard')}
+        onClick={() => onViewChange(items.some((i) => i.id === 'dashboard') ? 'dashboard' : (items[0]?.id || 'dashboard'))}
       >
         {logoPath ? (
           <img src={logoPath} alt="Logo" className="w-full h-full object-contain" />

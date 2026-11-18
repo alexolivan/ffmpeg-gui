@@ -14,6 +14,8 @@ import { AuditLogCard } from './settings/AuditLogCard';
 
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 import { AliasField } from '../common/AliasField';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { canAccessDomain, getDomainLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
 
@@ -94,6 +96,7 @@ interface SettingsViewProps {
   setPasswordSuccess: (val: string) => void;
   capabilities?: any;
   systemTelemetry?: any;
+  permissions?: EdgePermissionsSummary | null;
   API: string;
 }
 
@@ -111,10 +114,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setPasswordSuccess,
   capabilities,
   systemTelemetry,
+  permissions,
   API,
 }) => {
   const { t } = useTranslation();
+  const settingsLevel = getDomainLevel(permissions, 'settings');
+  const canManageSettings = canAccessDomain(permissions, 'settings', 'manage');
+  const isAdminSettings = canAccessDomain(permissions, 'settings', 'admin');
   const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'backup' | 'audit'>('general');
+
+  useEffect(() => {
+    if (!isAdminSettings && (activeTab === 'security' || activeTab === 'backup')) {
+      setActiveTab('general');
+    }
+  }, [isAdminSettings, activeTab]);
 
 
   const [softwareEngines, setSoftwareEngines] = useState<Record<string, SoftwareEngineData>>({});
@@ -976,40 +989,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Header */}
       <header className="flex justify-between items-center mb-6 shrink-0">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5 uppercase">{t('settings.title', 'Settings')}</h1>
+          <div className="flex items-center gap-2.5 mb-0.5">
+            <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] uppercase">{t('settings.title', 'Settings')}</h1>
+            <PermissionLevelBadge level={settingsLevel} />
+          </div>
           <p className="text-xs text-text-secondary">{t('settings.subtitle', 'Node identity, security, storage and language configuration')}</p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Status Indicator */}
-          <div className="text-[10px] text-text-secondary font-medium">
-            {saveSuccess ? (
-              <span className="text-brand-lime font-bold animate-pulse">✓ {t('settings.settingsSaved', 'Settings saved.')}</span>
-            ) : passwordError ? (
-              <span className="text-red-500 font-bold">⚠️ {t('settings.securityErrors', 'Check Security errors.')}</span>
-            ) : hasChanges ? (
-              <span className="text-brand-orange font-bold">● {t('settings.unsavedChanges', 'Unsaved changes.')}</span>
-            ) : (
-              <span className="opacity-40">{t('settings.upToDate', 'Up to date.')}</span>
-            )}
+        {isAdminSettings && (
+          <div className="flex items-center gap-3">
+            {/* Status Indicator */}
+            <div className="text-[10px] text-text-secondary font-medium">
+              {saveSuccess ? (
+                <span className="text-brand-lime font-bold animate-pulse">✓ {t('settings.settingsSaved', 'Settings saved.')}</span>
+              ) : passwordError ? (
+                <span className="text-red-500 font-bold">⚠️ {t('settings.securityErrors', 'Check Security errors.')}</span>
+              ) : hasChanges ? (
+                <span className="text-brand-orange font-bold">● {t('settings.unsavedChanges', 'Unsaved changes.')}</span>
+              ) : (
+                <span className="opacity-40">{t('settings.upToDate', 'Up to date.')}</span>
+              )}
+            </div>
+            <button
+              onClick={() => setShowRestartConfirm(true)}
+              className="border border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20 active:scale-95 pill-button font-black text-xs py-2 px-4 transition-all uppercase tracking-widest cursor-pointer"
+            >
+              {t('settings.restartPanel', 'Restart Panel')}
+            </button>
+            <button
+              onClick={handleSaveAll}
+              disabled={isSaving || !hasChanges}
+              className={`pill-button font-black text-xs py-2.5 px-6 transition-all uppercase tracking-widest ${
+                hasChanges && !isSaving
+                  ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-brand-lime/20'
+                  : 'bg-[var(--input-bg)] text-text-secondary opacity-40 cursor-not-allowed border border-[var(--glass-border)]'
+              }`}
+            >
+              {isSaving ? t('common.saving', 'Saving...') : t('common.save', 'Save Settings')}
+            </button>
           </div>
-          <button
-            onClick={() => setShowRestartConfirm(true)}
-            className="border border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20 active:scale-95 pill-button font-black text-xs py-2 px-4 transition-all uppercase tracking-widest cursor-pointer"
-          >
-            {t('settings.restartPanel', 'Restart Panel')}
-          </button>
-          <button
-            onClick={handleSaveAll}
-            disabled={isSaving || !hasChanges}
-            className={`pill-button font-black text-xs py-2.5 px-6 transition-all uppercase tracking-widest ${
-              hasChanges && !isSaving
-                ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-brand-lime/20'
-                : 'bg-[var(--input-bg)] text-text-secondary opacity-40 cursor-not-allowed border border-[var(--glass-border)]'
-            }`}
-          >
-            {isSaving ? t('common.saving', 'Saving...') : t('common.save', 'Save Settings')}
-          </button>
-        </div>
+        )}
       </header>
 
       {/* Tabs selector */}
@@ -1076,30 +1094,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span className="text-sm">🌐</span>
           {t('settings.tabs.network', 'Network')}
         </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('security')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-            activeTab === 'security'
-              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-          }`}
-        >
-          <span className="text-sm">🔒</span>
-          {t('settings.tabs.security', 'Security')}
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('backup')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-            activeTab === 'backup'
-              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-          }`}
-        >
-          <ExportIcon size={14} />
-          {t('settings.tabs.backup', 'BACKUP & RESTORE')}
-        </button>
+        {isAdminSettings && (
+          <>
+            <button
+              type="button"
+              onClick={() => setActiveTab('security')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'security'
+                  ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                  : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+              }`}
+            >
+              <span className="text-sm">🔒</span>
+              {t('settings.tabs.security', 'Security')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('backup')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'backup'
+                  ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                  : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+              }`}
+            >
+              <ExportIcon size={14} />
+              {t('settings.tabs.backup', 'BACKUP & RESTORE')}
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={() => setActiveTab('audit')}
@@ -1961,6 +1983,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           return (
             <div className="space-y-4 animate-in fade-in duration-300">
               {/* Add Storage Form */}
+              {canManageSettings && (
               <div className="glass-card p-4 !rounded-2xl space-y-4">
                 <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
@@ -2054,6 +2077,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </button>
                 </div>
               </div>
+              )}
 
               {/* List of Configured Storages */}
               <div className="space-y-4">
@@ -2200,37 +2224,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           </div>
                                         </div>
 
-                                        <div className="flex gap-2 shrink-0">
-                                          <button
-                                            type="button"
-                                            disabled={s.is_default}
-                                            onClick={() => {
-                                              setEditingId(s.id);
-                                              setEditName(s.name);
-                                              setEditPath(s.path);
-                                              setEditRoutePath(s.route_path || '');
-                                              setEditValidationError('');
-                                              setEditValidationSuccess('');
-                                            }}
-                                            className={`p-1.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-brand-lime/40 transition-all text-[var(--text-primary)] cursor-pointer ${
-                                              s.is_default ? 'opacity-30 cursor-not-allowed' : ''
-                                            }`}
-                                            title={s.is_default ? t('settings.storage.cannotEditDefault', 'Cannot edit default storage') : t('settings.storage.editStorage', 'Edit Storage')}
-                                          >
-                                            <PencilIcon size={12} />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            disabled={s.is_default}
-                                            onClick={() => handleDeleteStorage(s.id)}
-                                            className={`p-1.5 rounded bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all text-red-400 cursor-pointer ${
-                                              s.is_default ? 'opacity-30 cursor-not-allowed' : ''
-                                            }`}
-                                            title={s.is_default ? t('settings.storage.cannotDeleteDefault', 'Cannot delete default storage') : t('settings.storage.deleteStorage', 'Delete Storage')}
-                                          >
-                                            <TrashIcon size={12} />
-                                          </button>
-                                        </div>
+                                        {canManageSettings && (
+                                          <div className="flex gap-2 shrink-0">
+                                            <button
+                                              type="button"
+                                              disabled={s.is_default}
+                                              onClick={() => {
+                                                setEditingId(s.id);
+                                                setEditName(s.name);
+                                                setEditPath(s.path);
+                                                setEditRoutePath(s.route_path || '');
+                                                setEditValidationError('');
+                                                setEditValidationSuccess('');
+                                              }}
+                                              className={`p-1.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-brand-lime/40 transition-all text-[var(--text-primary)] cursor-pointer ${
+                                                s.is_default ? 'opacity-30 cursor-not-allowed' : ''
+                                              }`}
+                                              title={s.is_default ? t('settings.storage.cannotEditDefault', 'Cannot edit default storage') : t('settings.storage.editStorage', 'Edit Storage')}
+                                            >
+                                              <PencilIcon size={12} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={s.is_default}
+                                              onClick={() => handleDeleteStorage(s.id)}
+                                              className={`p-1.5 rounded bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all text-red-400 cursor-pointer ${
+                                                s.is_default ? 'opacity-30 cursor-not-allowed' : ''
+                                              }`}
+                                              title={s.is_default ? t('settings.storage.cannotDeleteDefault', 'Cannot delete default storage') : t('settings.storage.deleteStorage', 'Delete Storage')}
+                                            >
+                                              <TrashIcon size={12} />
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
 
                                       {/* Space Utilization Details */}
@@ -2700,7 +2726,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
 
         {/* TAB: Security */}
-        {activeTab === 'security' && (
+        {isAdminSettings && activeTab === 'security' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* CARD 1: ACCESS PASSWORD */}
             <div className="glass-card p-5 !rounded-2xl space-y-4">
@@ -2969,7 +2995,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
 
         {/* TAB 5: Backup & Restore */}
-        {activeTab === 'backup' && <BackupRestoreCard API={API} />}
+        {isAdminSettings && activeTab === 'backup' && <BackupRestoreCard API={API} />}
 
         {/* TAB 9: Operational Audit Log */}
         {activeTab === 'audit' && <AuditLogCard API={API} />}

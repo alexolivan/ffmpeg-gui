@@ -16,6 +16,8 @@ import {
 import { EngineLogo } from '../common/EngineLogo';
 import { BuildSdksModal } from '../modals/BuildSdksModal';
 import { copyToClipboard } from '../../utils/clipboard';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { canAccessDomain, getDomainLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 const packageMapping: Record<'debian' | 'fedora' | 'arch', Record<string, string>> = {
   debian: {
@@ -185,6 +187,7 @@ interface ForgeViewProps {
   refreshDiskInfo: () => Promise<void>;
   refreshDeps: (softwareType?: string) => Promise<void>;
   storages?: any[];
+  permissions?: EdgePermissionsSummary | null;
   API?: string;
   initialSoftwareType?: 'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog' | 'pipewire';
 }
@@ -222,10 +225,14 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   refreshDiskInfo,
   refreshDeps,
   storages: initialStorages = [],
+  permissions,
   API = '',
   initialSoftwareType = 'ffmpeg',
 }) => {
   const { t } = useTranslation();
+  const forgeLevel = getDomainLevel(permissions, 'forge');
+  const canManageForge = hasMinLevel(forgeLevel, 'manage');
+  const canReadSettings = canAccessDomain(permissions, 'settings', 'monitor');
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
   const [installedSdks, setInstalledSdks] = React.useState<any[]>([]);
@@ -233,13 +240,14 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   const [softwareEngines, setSoftwareEngines] = React.useState<Record<string, any>>({});
 
   useEffect(() => {
+    if (!canReadSettings) return;
     fetch(`${API}/api/settings/software`)
       .then(res => res.ok ? res.json() : {})
       .then(data => {
         if (data && typeof data === 'object') setSoftwareEngines(data);
       })
       .catch(err => console.error("Failed to fetch software engines in ForgeView:", err));
-  }, [API]);
+  }, [API, canReadSettings]);
 
   const fetchSdks = React.useCallback(() => {
     fetch(`${API}/sdks`)
@@ -261,15 +269,16 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   }, [initialStorages]);
 
   useEffect(() => {
+    if (!canReadSettings) return;
     if ((showSdksModal || storages.length === 0) && API !== undefined) {
       fetch(`${API}/settings/storages`)
-        .then(res => res.json())
+        .then(res => res.ok ? res.json() : [])
         .then(data => {
           if (Array.isArray(data)) setStorages(data);
         })
         .catch(err => console.error("Failed to fetch storages in ForgeView:", err));
     }
-  }, [showSdksModal, API, storages.length]);
+  }, [showSdksModal, API, storages.length, canReadSettings]);
 
   useEffect(() => {
     refreshDeps(activeEngineTab);
@@ -293,9 +302,12 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
       <header className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5">
-            {t('forge.mainTitle', 'FORGE')}
-          </h1>
+          <div className="flex items-center gap-2.5 mb-0.5">
+            <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">
+              {t('forge.mainTitle', 'FORGE')}
+            </h1>
+            <PermissionLevelBadge level={forgeLevel} />
+          </div>
           <p className="text-xs text-text-secondary">{t('forge.subtitle', 'Build and manage custom compilation profiles')}</p>
         </div>
         <div className="flex items-center gap-4">
@@ -365,23 +377,25 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
           {t('forge.activeProfilesFor', 'PROFILES')} — <span className="text-[var(--text-primary)]">{activeEngineTab.replace('_', ' ').toUpperCase()}</span>
         </h3>
-        <div className="flex items-center gap-3">
-          <button onClick={() => importRecipeRef.current?.click()}
-            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
-            <ImportIcon size={14} /> {t('forge.importRecipe', 'IMPORT RECIPE')}
-          </button>
-          <input 
-            type="file" 
-            ref={importRecipeRef} 
-            className="hidden" 
-            accept=".json" 
-            onChange={handleImportRecipeChange} 
-            />
-          <button onClick={() => { setEditingBuild(null); setShowBuildForm(true) }}
-            className="pill-button bg-brand-orange text-black font-black hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
-            <PlusIcon size={14} /> {t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
-          </button>
-        </div>
+        {canManageForge && (
+          <div className="flex items-center gap-3">
+            <button onClick={() => importRecipeRef.current?.click()}
+              className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
+              <ImportIcon size={14} /> {t('forge.importRecipe', 'IMPORT RECIPE')}
+            </button>
+            <input 
+              type="file" 
+              ref={importRecipeRef} 
+              className="hidden" 
+              accept=".json" 
+              onChange={handleImportRecipeChange} 
+              />
+            <button onClick={() => { setEditingBuild(null); setShowBuildForm(true) }}
+              className="pill-button bg-brand-orange text-black font-black hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
+              <PlusIcon size={14} /> {t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
+            </button>
+          </div>
+        )}
       </div>
 
       {(() => {
@@ -418,24 +432,26 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {engineSupportsSdks && (
-                <button
-                  onClick={() => setShowSdksModal(true)}
-                  className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
-                >
-                  <PackageIcon size={14} /> {t('sdks.manageSdks', 'MANAGE SDKs')}
-                </button>
-              )}
-              {engineRequiresCompilation && (
-                <button
-                  onClick={() => setShowEnvModal(true)}
-                  className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
-                >
-                  <GearIcon size={14} /> {t('forge.manageDeps', 'MANAGE DEPS')}
-                </button>
-              )}
-            </div>
+            {canManageForge && (
+              <div className="flex items-center gap-2">
+                {engineSupportsSdks && (
+                  <button
+                    onClick={() => setShowSdksModal(true)}
+                    className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
+                  >
+                    <PackageIcon size={14} /> {t('sdks.manageSdks', 'MANAGE SDKs')}
+                  </button>
+                )}
+                {engineRequiresCompilation && (
+                  <button
+                    onClick={() => setShowEnvModal(true)}
+                    className="px-5 py-2.5 bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl text-xs font-bold transition-all hover:border-brand-lime/40 flex items-center gap-2 text-[var(--text-primary)]"
+                  >
+                    <GearIcon size={14} /> {t('forge.manageDeps', 'MANAGE DEPS')}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         );
       })()}
@@ -471,6 +487,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                   if (b) setTerminalBuild({ id, name: b.name })
                 }}
                 onExport={handleExportRecipe}
+                forgeLevel={forgeLevel}
                 API={API}
               />
             ));

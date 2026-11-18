@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
+import { canCreateService, type EdgePermissionsSummary } from '../../utils/permissions';
 
 export interface ServiceTypeOption {
   key: string;
@@ -14,6 +15,7 @@ export interface ServiceTypeOption {
 
 interface ServiceTypePickerModalProps {
   API?: string;
+  permissions?: EdgePermissionsSummary | null;
   onClose: () => void;
   onSelectServiceType: (serviceType: string) => void;
 }
@@ -53,6 +55,7 @@ const SERVICE_TYPE_DEFINITIONS: Record<string, { service_type: string; category:
 
 export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
   API = '',
+  permissions,
   onClose,
   onSelectServiceType,
 }) => {
@@ -127,8 +130,10 @@ export const ServiceTypePickerModal: React.FC<ServiceTypePickerModalProps> = ({
           });
         }
 
-        setEngines(available);
-        setSelectedType(available[0]?.service_type || 'ffmpeg_stream');
+        const permitted = available.filter((opt) => canCreateService(permissions, opt.service_type));
+        const finalList = permitted.length > 0 ? permitted : (permissions && permissions.is_owner === false ? [] : available);
+        setEngines(finalList);
+        setSelectedType(finalList[0]?.service_type || 'ffmpeg_stream');
       })
       .catch(() => {
         setEngines([

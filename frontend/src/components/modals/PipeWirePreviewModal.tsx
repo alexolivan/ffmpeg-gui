@@ -4,6 +4,8 @@ import { EngineLogo } from '../common/EngineLogo';
 import { RefreshIcon, ClipboardIcon, CheckIcon } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 import { useTelemetry } from '../../context/TelemetryContext';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 interface PipeWirePreviewModalProps {
   selectedProcess: any;
@@ -16,6 +18,7 @@ interface PipeWirePreviewModalProps {
   onStartService: (id: number) => void;
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
+  permissions?: EdgePermissionsSummary | null;
   API: string;
 }
 
@@ -159,12 +162,16 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   onStartService,
   onStopService,
   onRestartService,
+  permissions,
   API,
 }) => {
   const { t } = useTranslation();
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isRunning = currentProcess.status === 'running';
   const isPending = !!actionPending[currentProcess.id];
+  const svcLevel = getServiceLevel(permissions, currentProcess);
+  const canOperate = hasMinLevel(svcLevel, 'operate');
+  const canManage = hasMinLevel(svcLevel, 'manage');
 
   const [graphData, setGraphData] = useState<GraphTelemetryData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -465,6 +472,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
                   {t('services.pipewire.service_name', 'PipeWire Audio Hub')}
                 </span>
+                <PermissionLevelBadge level={svcLevel} />
                 {isRunning ? (
                   <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -483,7 +491,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {isRunning && (
+            {canOperate && isRunning && (
               <button
                 onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
                 disabled={isPending}
@@ -494,7 +502,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 <span className="hidden sm:inline">{t('common.restart', 'Restart')}</span>
               </button>
             )}
-            {isRunning ? (
+            {canOperate && (isRunning ? (
               <button
                 onClick={() => onStopService(currentProcess.id, currentProcess.name)}
                 disabled={isPending}
@@ -510,16 +518,18 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
               >
                 {t('common.start', 'Start')}
               </button>
+            ))}
+            {canManage && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditProcess(currentProcess);
+                }}
+                className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1.5 px-3 border border-white/10 text-[var(--text-primary)]"
+              >
+                {t('common.edit', 'Edit')}
+              </button>
             )}
-            <button
-              onClick={() => {
-                onClose();
-                onEditProcess(currentProcess);
-              }}
-              className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1.5 px-3 border border-white/10 text-[var(--text-primary)]"
-            >
-              {t('common.edit', 'Edit')}
-            </button>
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-sm border border-white/10 transition-colors ml-1"
@@ -568,12 +578,14 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   'Start this PipeWire service to inspect live audio graph nodes, streams, and virtual sinks.'
                 )}
               </span>
-              <button
-                onClick={() => onStartService(currentProcess.id)}
-                className="px-3 py-1 rounded-lg bg-brand-lime text-black font-bold text-xs"
-              >
-                {t('common.start', 'Start')}
-              </button>
+              {canOperate && (
+                <button
+                  onClick={() => onStartService(currentProcess.id)}
+                  className="px-3 py-1 rounded-lg bg-brand-lime text-black font-bold text-xs"
+                >
+                  {t('common.start', 'Start')}
+                </button>
+              )}
             </div>
           )}
 
@@ -765,15 +777,17 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                         {t('services.pipewire.matrixRoutesHelp', 'Real-time audio routes maintained by PipeWireMatrixSupervisor companion')}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleReconcileMatrix}
-                      disabled={isReconciling || !isRunning}
-                      className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1 px-2.5 border border-white/10 text-brand-lime font-bold flex items-center gap-1 disabled:opacity-40"
-                    >
-                      <RefreshIcon size={12} className={isReconciling ? 'animate-spin' : ''} />
-                      <span>{isReconciling ? t('services.pipewire.reconciling', 'Reconciling...') : t('services.pipewire.reconcileMatrix', 'Reconcile Now')}</span>
-                    </button>
+                    {canOperate && (
+                      <button
+                        type="button"
+                        onClick={handleReconcileMatrix}
+                        disabled={isReconciling || !isRunning}
+                        className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1 px-2.5 border border-white/10 text-brand-lime font-bold flex items-center gap-1 disabled:opacity-40"
+                      >
+                        <RefreshIcon size={12} className={isReconciling ? 'animate-spin' : ''} />
+                        <span>{isReconciling ? t('services.pipewire.reconciling', 'Reconciling...') : t('services.pipewire.reconcileMatrix', 'Reconcile Now')}</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="overflow-x-auto rounded-xl border border-[var(--glass-border)] bg-black/10">
@@ -1448,7 +1462,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap">
                                     ✓ {t('services.pipewire.alreadyConfigured', 'Persisted')}
                                   </span>
-                                ) : (
+                                ) : canManage ? (
                                   <button
                                     onClick={() => handleConfigureStreamInHub(stream)}
                                     className="px-2.5 py-1 rounded-lg bg-brand-lime hover:bg-brand-lime/90 text-black text-[11px] font-bold transition-all shadow-sm inline-flex items-center gap-1 whitespace-nowrap"
@@ -1456,6 +1470,10 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                                   >
                                     ⚙️ {t('services.pipewire.configureInHub', 'Configure in Hub')}
                                   </button>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--input-bg)] text-[var(--text-secondary)] border border-[var(--glass-border)] inline-flex items-center whitespace-nowrap">
+                                    {t('auth.permissionMonitor', 'MONITOR')}
+                                  </span>
                                 )}
                               </td>
                             </tr>

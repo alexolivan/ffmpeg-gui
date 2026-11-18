@@ -16,14 +16,23 @@ import {
   ServerIcon
 } from './Icons';
 import { EngineLogo } from './common/EngineLogo';
+import { PermissionLevelBadge } from './common/PermissionLevelBadge';
 import { useTelemetry } from '../context/TelemetryContext';
+import {
+  canCreateService,
+  canCreateTask,
+  getTaskLevel,
+  hasMinLevel,
+  type EdgePermissionsSummary,
+} from '../utils/permissions';
 
 interface ScheduledTasksProps {
   API: string;
   taskExecutions: any[]; // Active executions from websocket telemetry
+  permissions?: EdgePermissionsSummary | null;
 }
 
-export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecutions }) => {
+export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecutions, permissions }) => {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState<any[]>([]);
   const [allServices, setAllServices] = useState<any[]>([]);
@@ -332,10 +341,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     }
   };
 
+  const canCreateAnyTask = canCreateTask(permissions);
+  const canConvertService = canCreateService(permissions, 'ffmpeg_stream');
+  const visibleTasks = tasks.filter(task => hasMinLevel(getTaskLevel(permissions, task), 'monitor'));
+
   // Metrics
-  const totalTasks = tasks.length;
-  const activeTasks = tasks.filter(t => t.schedule_type === 'manual' || t.is_active).length;
-  const recurringTasks = tasks.filter(t => t.schedule_type === 'recurring').length;
+  const totalTasks = visibleTasks.length;
+  const activeTasks = visibleTasks.filter(t => t.schedule_type === 'manual' || t.is_active).length;
+  const recurringTasks = visibleTasks.filter(t => t.schedule_type === 'recurring').length;
   const runningExecutions = taskExecutions.length;
 
   return (
@@ -349,31 +362,33 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           </h1>
           <p className="text-xs text-text-secondary">{t('tasks.subtitle', 'Automate batch jobs, recurring feeds and cron conversions.')}</p>
         </div>
-        <div className="flex gap-4">
-          <button 
-            onClick={() => importFileRef.current?.click()} 
-            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 text-sm py-2.5 px-6 flex items-center gap-1.5"
-          >
-            <ImportIcon size={14} /> {t('tasks.importTask', 'IMPORT TASK')}
-          </button>
-          <input 
-            type="file" 
-            ref={importFileRef} 
-            className="hidden" 
-            accept=".json" 
-            onChange={handleImportFileChange} 
-          />
-          <button 
-            onClick={() => {
-              setEditingTask(null);
-              setNewTaskCategory('ffmpeg');
-              setShowAddModal(true);
-            }}
-            className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20 flex items-center gap-1.5"
-          >
-            <PlusIcon size={14} /> {t('tasks.newTask', 'CREATE TASK')}
-          </button>
-        </div>
+        {canCreateAnyTask && (
+          <div className="flex gap-4">
+            <button 
+              onClick={() => importFileRef.current?.click()} 
+              className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 text-sm py-2.5 px-6 flex items-center gap-1.5"
+            >
+              <ImportIcon size={14} /> {t('tasks.importTask', 'IMPORT TASK')}
+            </button>
+            <input 
+              type="file" 
+              ref={importFileRef} 
+              className="hidden" 
+              accept=".json" 
+              onChange={handleImportFileChange} 
+            />
+            <button 
+              onClick={() => {
+                setEditingTask(null);
+                setNewTaskCategory('ffmpeg');
+                setShowAddModal(true);
+              }}
+              className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20 flex items-center gap-1.5"
+            >
+              <PlusIcon size={14} /> {t('tasks.newTask', 'CREATE TASK')}
+            </button>
+          </div>
+        )}
       </header>
 
       {/* METRIC CARDS */}
@@ -409,17 +424,20 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
             <div className="py-12 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
           ) : error ? (
             <div className="py-8 text-center text-red-400 font-bold border border-red-500/20 rounded-2xl bg-red-500/5">{error}</div>
-          ) : tasks.filter(t => t.schedule_type === 'manual' || t.is_active).length === 0 ? (
+          ) : visibleTasks.filter(t => t.schedule_type === 'manual' || t.is_active).length === 0 ? (
             <div className="py-12 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
               {t('tasks.noActiveTasks', 'No active or on-demand tasks.')}
             </div>
           ) : (
             <div className="divide-y divide-white/5">
-              {tasks.filter(t => t.schedule_type === 'manual' || t.is_active).map(task => {
+              {visibleTasks.filter(t => t.schedule_type === 'manual' || t.is_active).map(task => {
                 const liveExec = taskExecutions.find((e: any) => e.task_id === task.id && (e.status === 'running' || e.status === 'retrying'));
                 const exec = liveExec || task.last_execution;
                 const isRunning = exec && (exec.status === 'running' || exec.status === 'retrying');
                 const isServiceRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
+                const taskLvl = getTaskLevel(permissions, task);
+                const canOperateTask = hasMinLevel(taskLvl, 'operate');
+                const canManageTask = hasMinLevel(taskLvl, 'manage');
                 return (
                   <div 
                     key={task.id} 
@@ -478,6 +496,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                            task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
                            task.schedule_type}
                         </span>
+                        <PermissionLevelBadge level={taskLvl} />
                         {exec?.retry_count > 0 && (
                           isRunning || exec?.status === 'retrying' ? (
                             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
@@ -521,10 +540,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                             {t('tasks.onDemand', 'On-Demand')}
                           </span>
-                        ) : task.is_system ? (
+                        ) : task.is_system || !canManageTask ? (
                           <span 
-                            title="Managed via Settings > General > Logging"
-                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20 select-none"
+                            title={task.is_system ? "Managed via Settings > General > Logging" : t('tasks.pauseSchedule', 'Automated schedule')}
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 bg-green-500/10 text-green-400 border-green-500/20 select-none"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
                             {t('common.enabled', 'Active')}
@@ -645,7 +664,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         📜
                       </button>
                       
-                      {isRunning ? (
+                      {canOperateTask && (isRunning ? (
                         <button 
                           disabled={execStopPending[exec.id]}
                           onClick={() => handleStopExecution(exec.id)}
@@ -671,9 +690,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <PlayIcon size={16} />
                           )}
                         </button>
-                      )}
+                      ))}
 
-                      {!task.is_system && (
+                      {!task.is_system && canManageTask && (
                         <>
                           <button 
                             disabled={taskTriggerPending[task.id]}
@@ -684,7 +703,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <ClipboardIcon size={16} />
                           </button>
 
-                          {!isServiceRestart && (
+                          {!isServiceRestart && canConvertService && (
                             <button 
                               disabled={taskTriggerPending[task.id]}
                               onClick={async () => {
@@ -746,16 +765,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           
           {loading ? (
             <div className="py-12 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
-          ) : tasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).length === 0 ? (
+          ) : visibleTasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).length === 0 ? (
             <div className="py-12 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
               {t('tasks.noDisabledTasks', 'No paused scheduled tasks.')}
             </div>
           ) : (
             <div className="divide-y divide-white/5">
-              {tasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).map(task => {
+              {visibleTasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).map(task => {
                 const isRunning = task.last_execution && (task.last_execution.status === 'running' || task.last_execution.status === 'retrying');
                 const exec = task.last_execution;
                 const isServiceRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
+                const taskLvl = getTaskLevel(permissions, task);
+                const canOperateTask = hasMinLevel(taskLvl, 'operate');
+                const canManageTask = hasMinLevel(taskLvl, 'manage');
                 return (
                   <div 
                     key={task.id} 
@@ -807,6 +829,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                            task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
                            task.schedule_type}
                         </span>
+                        <PermissionLevelBadge level={taskLvl} />
                         {exec?.retry_count > 0 && (
                           isRunning || exec?.status === 'retrying' ? (
                             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
@@ -842,10 +865,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             🛡️ WATCHDOG ({task.retry_policy.max_retries})
                           </span>
                         )}
-                        {task.is_system ? (
+                        {task.is_system || !canManageTask ? (
                           <span 
-                            title="Managed via Settings > General > Logging"
-                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
+                            title={task.is_system ? "Managed via Settings > General > Logging" : t('tasks.resumeSchedule', 'Scheduled')}
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
                             {t('common.disabled', 'Disabled')}
@@ -956,7 +979,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         📜
                       </button>
                       
-                      {isRunning ? (
+                      {canOperateTask && (isRunning ? (
                         <button 
                           disabled={execStopPending[exec.id]}
                           onClick={() => handleStopExecution(exec.id)}
@@ -982,9 +1005,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <PlayIcon size={16} />
                           )}
                         </button>
-                      )}
+                      ))}
 
-                      {!task.is_system && (
+                      {!task.is_system && canManageTask && (
                         <>
                           <button 
                             disabled={taskTriggerPending[task.id]}
@@ -995,7 +1018,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <ClipboardIcon size={16} />
                           </button>
 
-                          {!isServiceRestart && (
+                          {!isServiceRestart && canConvertService && (
                             <button 
                               disabled={taskTriggerPending[task.id]}
                               onClick={async () => {
@@ -1075,7 +1098,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 <p className="text-text-secondary text-sm">Execution History & Diagnostics</p>
               </div>
 
-              {selectedTaskDetails.executions.length > 0 && (
+              {hasMinLevel(getTaskLevel(permissions, selectedTaskDetails.task), 'manage') && selectedTaskDetails.executions.length > 0 && (
                 <button
                   onClick={() => handleClearTaskHistory(selectedTaskDetails.task.id)}
                   className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/20 flex items-center gap-2 transition-all self-start sm:self-auto"
@@ -1598,7 +1621,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
                   {/* Footer */}
                   <div className="p-6 border-t border-white/5 flex-shrink-0 bg-white/2 flex justify-end items-center gap-3">
-                    {isRunning && (
+                    {isRunning && hasMinLevel(getTaskLevel(permissions, taskConfig || selectedTaskDetails?.task || { id: exec?.task_id }), 'operate') && (
                       <button 
                         onClick={() => handleStopExecution(viewingLogsExecutionId)}
                         className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-2 px-6 border border-red-500/25"
@@ -1683,6 +1706,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 <ServiceRestartTaskForm
                   API={API}
                   initialConfig={editingTask}
+                  permissions={permissions}
                   onCancel={() => {
                     setShowAddModal(false);
                     setEditingTask(null);

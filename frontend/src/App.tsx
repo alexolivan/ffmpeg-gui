@@ -199,6 +199,7 @@ function App() {
         handleLogoUpload={handleLogoUpload}
         onLogout={handleLogout}
         isCloudHubSession={isCloudHubSession}
+        permissions={authStatus?.permissions}
         newPassword={newPassword}
         setNewPassword={setNewPassword}
         confirmPassword={confirmPassword}

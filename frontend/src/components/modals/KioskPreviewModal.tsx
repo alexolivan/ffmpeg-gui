@@ -12,6 +12,8 @@ import {
 } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 import { useTelemetry } from '../../context/TelemetryContext';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 interface KioskPreviewModalProps {
   selectedProcess: any;
@@ -24,6 +26,7 @@ interface KioskPreviewModalProps {
   onStartService: (id: number) => void;
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
+  permissions?: EdgePermissionsSummary | null;
   API: string;
 }
 
@@ -54,6 +57,7 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
   onStartService,
   onStopService,
   onRestartService,
+  permissions,
   API,
 }) => {
   const { t } = useTranslation();
@@ -61,6 +65,9 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
 
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isRunning = currentProcess.status === 'running';
+  const svcLevel = getServiceLevel(permissions, currentProcess);
+  const canOperate = hasMinLevel(svcLevel, 'operate');
+  const canManage = hasMinLevel(svcLevel, 'manage');
 
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copiedLogs, setCopiedLogs] = useState(false);
@@ -171,6 +178,7 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border bg-cyan-500/10 text-cyan-400 border-cyan-500/30">
                   Desktop #{desktopId}
                 </span>
+                <PermissionLevelBadge level={svcLevel} />
               </div>
 
               <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] font-mono mt-0.5 truncate">
@@ -181,7 +189,7 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
 
           {/* Action Button Controls */}
           <div className="flex items-center gap-2 shrink-0">
-            {isRunning ? (
+            {canOperate && (isRunning ? (
               <>
                 <button
                   onClick={() => onRestartService(selectedProcess.id, selectedProcess.name)}
@@ -212,20 +220,22 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
                 <PlayIcon size={12} />
                 {t('common.start', 'Start')}
               </button>
+            ))}
+
+            {canManage && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditProcess(selectedProcess);
+                }}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer"
+                title={t('common.edit', 'Edit Service')}
+              >
+                <PencilIcon size={14} />
+              </button>
             )}
 
-            <button
-              onClick={() => {
-                onClose();
-                onEditProcess(selectedProcess);
-              }}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer"
-              title={t('common.edit', 'Edit Service')}
-            >
-              <PencilIcon size={14} />
-            </button>
-
-            {onCloneProcess && (
+            {canManage && onCloneProcess && (
               <button
                 onClick={() => {
                   onClose();
@@ -314,15 +324,17 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
               </span>
             )}
 
-            <button
-              onClick={handleClearCache}
-              disabled={isRunning || clearingCache}
-              title={isRunning ? t('kiosk.clear_cache_tooltip_running', 'Stop the kiosk service to safely clear browser cache') : t('kiosk.clear_cache_tooltip_ready', 'Purge all cached web data and release memory/disk space')}
-              className="text-xs bg-white/5 hover:bg-red-500/20 text-[var(--text-secondary)] hover:text-red-300 border border-[var(--glass-border)] hover:border-red-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <TrashIcon size={12} className={clearingCache ? 'animate-spin' : ''} />
-              {clearingCache ? t('common.clearing', 'Clearing...') : t('kiosk.clear_cache_button', 'Clear Cache')}
-            </button>
+            {canOperate && (
+              <button
+                onClick={handleClearCache}
+                disabled={isRunning || clearingCache}
+                title={isRunning ? t('kiosk.clear_cache_tooltip_running', 'Stop the kiosk service to safely clear browser cache') : t('kiosk.clear_cache_tooltip_ready', 'Purge all cached web data and release memory/disk space')}
+                className="text-xs bg-white/5 hover:bg-red-500/20 text-[var(--text-secondary)] hover:text-red-300 border border-[var(--glass-border)] hover:border-red-500/30 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <TrashIcon size={12} className={clearingCache ? 'animate-spin' : ''} />
+                {clearingCache ? t('common.clearing', 'Clearing...') : t('kiosk.clear_cache_button', 'Clear Cache')}
+              </button>
+            )}
 
             <button
               onClick={handleCopyLogs}

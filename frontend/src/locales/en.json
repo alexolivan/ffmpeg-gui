@@ -90,7 +90,13 @@
     "closeTab": "Close Tab",
     "checkingAuth": "Verifying security credentials...",
     "permissionsRestored": "Permissions Restored",
-    "storageWarning": "Storage Permission Warning"
+    "storageWarning": "Storage Permission Warning",
+    "noPermittedViews": "Your account currently has no permitted modules assigned on this node.",
+    "permissionOperate": "OPERATE",
+    "permissionMonitor": "MONITOR",
+    "permissionNone": "NONE",
+    "permissionBadgeTitle": "Effective permission level: {{level}}",
+    "viewOnly": "VIEW ONLY"
   },
   "services": {
     "title": "Services",

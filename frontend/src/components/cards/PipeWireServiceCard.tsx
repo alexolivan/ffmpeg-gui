@@ -15,6 +15,8 @@ import { EngineLogo } from '../common/EngineLogo';
 import { MicroSparkline } from '../common/MicroSparkline';
 import { ServiceRRDDrawer } from './ServiceRRDDrawer';
 import type { ServiceItem } from './UnifiedServiceCard';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { hasMinLevel, type CapabilityLevel } from '../../utils/permissions';
 
 interface PipeWireServiceCardProps {
   service: ServiceItem;
@@ -28,6 +30,7 @@ interface PipeWireServiceCardProps {
   onDeleteProcess: (service: ServiceItem) => void;
   onSelectedProcess: (service: ServiceItem) => void;
   onExportProcess?: (service: ServiceItem) => void;
+  serviceLevel?: CapabilityLevel;
   API?: string;
 }
 
@@ -59,10 +62,13 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   onDeleteProcess,
   onSelectedProcess,
   onExportProcess,
+  serviceLevel = 'admin',
   API,
 }) => {
   const { t } = useTranslation();
   const [isRrdExpanded, setIsRrdExpanded] = useState(false);
+  const canOperate = hasMinLevel(serviceLevel, 'operate');
+  const canManage = hasMinLevel(serviceLevel, 'manage');
   const isRunning = service.status === 'running';
   const isPending = !!actionPending;
   const restartCount = service.restart_count || 0;
@@ -135,6 +141,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
             <EngineLogo softwareType="pipewire" size={12} API={API} />
             PipeWire Hub
           </span>
+          <PermissionLevelBadge level={serviceLevel} />
 
           {/* Pending Changes Reboot */}
           {service.pending_changes && (
@@ -308,17 +315,19 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
       {/* Right Iconic Action Button Bar */}
       <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
         {/* Edit Button */}
-        <button
-          disabled={isPending}
-          onClick={() => onEditProcess(service)}
-          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 text-[var(--text-primary)]"
-          title={t('common.edit', 'Edit Service Settings')}
-        >
-          <PencilIcon size={16} />
-        </button>
+        {canManage && (
+          <button
+            disabled={isPending}
+            onClick={() => onEditProcess(service)}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 text-[var(--text-primary)]"
+            title={t('common.edit', 'Edit Service Settings')}
+          >
+            <PencilIcon size={16} />
+          </button>
+        )}
 
         {/* Clone Service Button */}
-        {onCloneProcess && (
+        {canManage && onCloneProcess && (
           <button
             disabled={isPending}
             onClick={() => onCloneProcess(service)}
@@ -330,7 +339,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         )}
 
         {/* Export Button */}
-        {onExportProcess && (
+        {canManage && onExportProcess && (
           <button
             disabled={isPending}
             onClick={() => onExportProcess(service)}
@@ -342,7 +351,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         )}
 
         {/* Restart Button */}
-        {isRunning && (
+        {canOperate && isRunning && (
           <button
             disabled={isPending}
             onClick={() => onRestartService(service.id, service.name)}
@@ -362,7 +371,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         )}
 
         {/* Start / Stop Action Controls */}
-        {isRunning || isRetrying ? (
+        {canOperate && (isRunning || isRetrying ? (
           <button
             disabled={actionPending === 'stopping'}
             onClick={() => onStopService(service.id, service.name)}
@@ -388,21 +397,23 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
               <PlayIcon size={16} />
             )}
           </button>
-        )}
+        ))}
 
         {/* Delete Process Button */}
-        <button
-          disabled={isRunning || isPending}
-          onClick={() => onDeleteProcess(service)}
-          className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/15 text-red-400/70 hover:text-red-400 border border-red-500/10 hover:border-red-500/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-30 disabled:cursor-not-allowed"
-          title={
-            isRunning
-              ? t('services.cannotDeleteRunning', 'Stop service before deleting')
-              : t('common.delete', 'Delete Service')
-          }
-        >
-          <TrashIcon size={16} />
-        </button>
+        {canManage && (
+          <button
+            disabled={isRunning || isPending}
+            onClick={() => onDeleteProcess(service)}
+            className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/15 text-red-400/70 hover:text-red-400 border border-red-500/10 hover:border-red-500/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-30 disabled:cursor-not-allowed"
+            title={
+              isRunning
+                ? t('services.cannotDeleteRunning', 'Stop service before deleting')
+                : t('common.delete', 'Delete Service')
+            }
+          >
+            <TrashIcon size={16} />
+          </button>
+        )}
       </div>
       </div>
 

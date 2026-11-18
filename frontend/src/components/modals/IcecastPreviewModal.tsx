@@ -12,6 +12,8 @@ import {
 } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 import { useTelemetry } from '../../context/TelemetryContext';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 interface IcecastPreviewModalProps {
   selectedProcess: any;
@@ -27,6 +29,7 @@ interface IcecastPreviewModalProps {
   API: string;
   settings?: any;
   isCloudHubSession?: boolean;
+  permissions?: EdgePermissionsSummary | null;
 }
 
 const formatUptime = (lastStartStr: string | null | undefined, isRunning: boolean = true): string => {
@@ -59,6 +62,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   API,
   settings,
   isCloudHubSession = false,
+  permissions,
 }) => {
   const { t } = useTranslation();
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
@@ -66,6 +70,9 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   const [iframeScale, setIframeScale] = useState(0.35);
 
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
+  const svcLevel = getServiceLevel(permissions, currentProcess);
+  const canOperate = hasMinLevel(svcLevel, 'operate');
+  const canManage = hasMinLevel(svcLevel, 'manage');
   const isRunning = currentProcess.status === 'running';
   const isPending = !!actionPending[currentProcess.id];
 
@@ -354,6 +361,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                     🔗 0 LEASES
                   </span>
                 )}
+                <PermissionLevelBadge level={svcLevel} />
               </div>
               <p className="text-[var(--text-secondary)] text-xs flex items-center gap-2 mt-0.5">
                 <span>{t('services.icecast.preview.title', 'Servidor de Audio Icecast2')}</span>
@@ -367,7 +375,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
 
           <div className="flex items-center gap-2">
             {/* Action Buttons in Header */}
-            {isRunning ? (
+            {canOperate && (isRunning ? (
               <>
                 <button
                   disabled={isPending}
@@ -398,48 +406,52 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                 <PlayIcon size={13} />
                 <span className="hidden sm:inline">{t('common.start', 'Iniciar')}</span>
               </button>
+            ))}
+
+            {canManage && (
+              <>
+                <button
+                  onClick={() => {
+                    fetch(`${API}/processes/${currentProcess.id}/export`)
+                      .then((r) => r.json())
+                      .then((data) => {
+                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `${currentProcess.name}_profile.json`;
+                        a.click();
+                      });
+                  }}
+                  className="p-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer"
+                  title={t('services.exportProfile', 'Exportar Perfil')}
+                >
+                  <ExportIcon size={15} />
+                </button>
+
+                <button
+                  disabled={isPending}
+                  onClick={() => {
+                    onCloneProcess(currentProcess);
+                    onClose();
+                  }}
+                  className="p-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer"
+                  title={t('services.cloneService', 'Clonar Servicio')}
+                >
+                  <ClipboardIcon size={15} />
+                </button>
+
+                <button
+                  onClick={() => {
+                    onClose();
+                    onEditProcess(currentProcess);
+                  }}
+                  className="p-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer"
+                  title={t('common.edit', 'Editar Configuración')}
+                >
+                  <PencilIcon size={15} />
+                </button>
+              </>
             )}
-
-            <button
-              onClick={() => {
-                fetch(`${API}/processes/${currentProcess.id}/export`)
-                  .then((r) => r.json())
-                  .then((data) => {
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(blob);
-                    a.download = `${currentProcess.name}_profile.json`;
-                    a.click();
-                  });
-              }}
-              className="p-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer"
-              title={t('services.exportProfile', 'Exportar Perfil')}
-            >
-              <ExportIcon size={15} />
-            </button>
-
-            <button
-              disabled={isPending}
-              onClick={() => {
-                onCloneProcess(currentProcess);
-                onClose();
-              }}
-              className="p-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer"
-              title={t('services.cloneService', 'Clonar Servicio')}
-            >
-              <ClipboardIcon size={15} />
-            </button>
-
-            <button
-              onClick={() => {
-                onClose();
-                onEditProcess(currentProcess);
-              }}
-              className="p-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-[var(--text-secondary)] hover:text-brand-lime transition-all cursor-pointer"
-              title={t('common.edit', 'Editar Configuración')}
-            >
-              <PencilIcon size={15} />
-            </button>
 
             <button
               onClick={onClose}
@@ -524,17 +536,19 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
                     <span className="text-[10px] text-[var(--text-secondary)] opacity-60 group-hover:opacity-100">↗</span>
                   </a>
 
-                  <a
-                    href={webConsoleUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 px-3 py-2 rounded-xl border border-[var(--glass-border)] bg-[var(--input-bg)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] hover:border-brand-lime text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm group cursor-pointer"
-                    title={t('services.icecast.preview.adminPage', 'Consola de Administración')}
-                  >
-                    <span className="text-brand-lime">⚙️</span>
-                    <span>{t('services.icecast.preview.adminPage', 'Consola de Administración')}</span>
-                    <span className="text-[10px] text-[var(--text-secondary)] opacity-60 group-hover:opacity-100">↗</span>
-                  </a>
+                  {canManage && (
+                    <a
+                      href={webConsoleUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 px-3 py-2 rounded-xl border border-[var(--glass-border)] bg-[var(--input-bg)] hover:bg-[var(--bg-card)] text-[var(--text-primary)] hover:border-brand-lime text-xs font-semibold flex items-center justify-center gap-2 transition-all shadow-sm group cursor-pointer"
+                      title={t('services.icecast.preview.adminPage', 'Consola de Administración')}
+                    >
+                      <span className="text-brand-lime">⚙️</span>
+                      <span>{t('services.icecast.preview.adminPage', 'Consola de Administración')}</span>
+                      <span className="text-[10px] text-[var(--text-secondary)] opacity-60 group-hover:opacity-100">↗</span>
+                    </a>
+                  )}
                 </div>
               )}
             </div>

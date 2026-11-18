@@ -90,7 +90,13 @@
     "closeTab": "Tancar pestanya",
     "checkingAuth": "Verificant credencials de seguretat...",
     "permissionsRestored": "Permisos Restaurats",
-    "storageWarning": "Avís de Permisos d'Emmagatzematge"
+    "storageWarning": "Avís de Permisos d'Emmagatzematge",
+    "noPermittedViews": "El teu compte no té mòduls permesos assignats actualment en aquest node.",
+    "permissionOperate": "OPERAR",
+    "permissionMonitor": "MONITOR",
+    "permissionNone": "SENSE ACCÉS",
+    "permissionBadgeTitle": "Nivell de permís efectiu: {{level}}",
+    "viewOnly": "NOMÉS LECTURA"
   },
   "services": {
     "title": "Serveis",

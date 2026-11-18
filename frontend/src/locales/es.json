@@ -90,7 +90,13 @@
     "closeTab": "Cerrar pestaña",
     "checkingAuth": "Verificando credenciales de seguridad...",
     "permissionsRestored": "Permisos Restaurados",
-    "storageWarning": "Aviso de Permisos de Almacenamiento"
+    "storageWarning": "Aviso de Permisos de Almacenamiento",
+    "noPermittedViews": "Tu cuenta no tiene módulos permitidos asignados actualmente en este nodo.",
+    "permissionOperate": "OPERAR",
+    "permissionMonitor": "MONITOR",
+    "permissionNone": "SIN ACCESO",
+    "permissionBadgeTitle": "Nivel de permiso efectivo: {{level}}",
+    "viewOnly": "SOLO LECTURA"
   },
   "services": {
     "title": "Servicios",
