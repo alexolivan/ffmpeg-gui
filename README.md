@@ -91,7 +91,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ![FFmpeg Desktop Ingest & Audio Pairing](docs/assets/screenshot22.png)
 
 ### 🎛️ 7. Professional AV Hardware & Control
-- **Dedicated `Hardware / I/O` View**: Isolated hardware management section keeping Blackmagic DeckLink, Magewell Capture, and ALSA Mixer / Loopback routing controls separate from system-wide Settings and cleanly scoped for delegated operator access.
+- **Dedicated `Hardware & I/O` View**: Isolated hardware management section keeping Blackmagic DeckLink, Magewell Capture, and ALSA Mixer / Loopback routing controls separate from system-wide Settings and cleanly scoped for delegated operator access.
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
 - **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping, crosspoint volume matrix routing, and real-time DSP core load (%) and hardware temperature (°C) telemetry via `hpicontrol.py`.

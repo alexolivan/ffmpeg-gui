@@ -73,7 +73,7 @@
     "forge": "Forge",
     "services": "Services",
     "tasks": "Scheduled Tasks",
-    "hardware": "Hardware / I/O",
+    "hardware": "Hardware & I/O",
     "settings": "Settings",
     "logout": "Logout",
     "exitCloudHub": "Disconnect and return to CloudHub",

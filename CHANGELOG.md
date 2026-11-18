@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Hardware & Signal I/O Extraction (`frontend/src/components/views/HardwareIOView.tsx`, `frontend/src/components/Sidebar.tsx`)**:
-  - Extracted ALSA Mixer & Devices, Blackmagic DeckLink, and Magewell capture/driver controls out of `SettingsView.tsx` into a dedicated `Hardware / I/O` view with level-aware `monitor`/`operate`/`manage` controls.
+  - Extracted ALSA Mixer & Devices, Blackmagic DeckLink, and Magewell capture/driver controls out of `SettingsView.tsx` into a dedicated `Hardware & I/O` view with level-aware `monitor`/`operate`/`manage` controls.
 - **Fine-Grained CloudHub Authorization Enforcement (`backend/core/authz.py`, `backend/core/cloud_tunnel_client.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`)**:
   - Advertised `authz_claims` tunnel capability and verified HMAC-SHA256 `X-CloudHub-Authz-Claims` assertions over the reverse tunnel.
   - Added HTTP, WebSocket, telemetry filtering, configuration redaction, dependency-driven downward `monitor` cascades, and VNC `view_only` input blocking on `/ws/desktop/{service_id}/vnc`.

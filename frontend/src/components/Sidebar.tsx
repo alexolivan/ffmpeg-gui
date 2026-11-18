@@ -62,7 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'hardware',
       icon: <SlidersIcon size={20} />,
-      label: t('nav.hardware', 'Hardware / I/O'),
+      label: t('nav.hardware', 'Hardware & I/O'),
       allowed: canAccessDomain(permissions, 'hardware', 'monitor'),
     },
     {
