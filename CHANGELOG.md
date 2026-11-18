@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Hardware & Signal I/O Extraction (`frontend/src/components/views/HardwareIOView.tsx`, `frontend/src/components/Sidebar.tsx`)**:
+  - Extracted ALSA Mixer & Devices, Blackmagic DeckLink, and Magewell capture/driver controls out of `SettingsView.tsx` into a dedicated `Hardware / I/O` view with level-aware `monitor`/`operate`/`manage` controls.
+- **Fine-Grained CloudHub Authorization Enforcement (`backend/core/authz.py`, `backend/core/cloud_tunnel_client.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`)**:
+  - Advertised `authz_claims` tunnel capability and verified HMAC-SHA256 `X-CloudHub-Authz-Claims` assertions over the reverse tunnel.
+  - Added HTTP, WebSocket, telemetry filtering, configuration redaction, dependency-driven downward `monitor` cascades, and VNC `view_only` input blocking on `/ws/desktop/{service_id}/vnc`.
+- **Authorization-Aware Edge UI (`frontend/src/utils/permissions.ts`, `frontend/src/components/common/PermissionLevelBadge.tsx`, views, service cards & preview modals)**:
+  - Filtered sidebar navigation, dashboard API calls, service/task/forge/settings controls, `noVNC` `viewOnly` mode, Icecast `/admin/` link, MediaMTX publish credentials, Kiosk cache clear, and PipeWire matrix reconciliation based on `/api/auth/status` capability claims.
+
 ## [2.67.3] - 2026-11-16
 
 ### Fixed

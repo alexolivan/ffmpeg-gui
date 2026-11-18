@@ -91,6 +91,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ![FFmpeg Desktop Ingest & Audio Pairing](docs/assets/screenshot22.png)
 
 ### 🎛️ 7. Professional AV Hardware & Control
+- **Dedicated `Hardware / I/O` View**: Isolated hardware management section keeping Blackmagic DeckLink, Magewell Capture, and ALSA Mixer / Loopback routing controls separate from system-wide Settings and cleanly scoped for delegated operator access.
 - **Blackmagic DeckLink Hardware Control**: Headless SDI/HDMI connector mapping (half/full duplex), real-time signal lock and format telemetry, and card firmware verification/flashing (`BlackmagicFirmwareUpdater`).
 - **Magewell Capture Cards**: Hardware telemetry and routing for Pro Capture / Eco Capture / USB Capture devices (`mwcap-info` / `mwcap-control`), live FPGA temperature monitoring, connector switching, and V4L2/ALSA stream integration.
 - **AudioScience Soundcards**: Advanced ALSA hardware support, resolving topology mapping, crosspoint volume matrix routing, and real-time DSP core load (%) and hardware temperature (°C) telemetry via `hpicontrol.py`.
@@ -226,6 +227,7 @@ sudo fail2ban-client reload
 - **Zero-Port-Forwarding Remote Access**: Outbound WebSocket reverse tunnel connecting to a central [ffmpeg-gui-cloudhub](https://github.com/alexolivan/ffmpeg-gui-cloudhub) instance, bypassing firewalls and CGNAT without requiring VPN setups or open inbound router ports.
 - **In-Memory ASGI Bridge**: Proxied HTTP and WebSocket traffic executes directly within the local FastAPI application, eliminating port binding conflicts and SSL redirect loops.
 - **Zero-Knowledge Single Sign-On (SSO)**: Ephemeral HMAC-SHA256 signed assertions grant instant operator access without sharing local passwords.
+- **Fine-Grained RBAC Claims Enforcement**: Signed tunnel capability assertions (`authz_claims`) enforce module, service, and task level permissions (`monitor`, `operate`, `manage`, `admin`) across HTTP, WebSocket streams, VNC view-only mode, and redacted UI controls.
 - **1-Click Token Enrollment**: Simple enrollment flow from the Network settings card with live vitality telemetry streaming.
 
 ### 📊 22. Volatile 24h RRD Metrics & Prometheus / OpenMetrics Exporter
