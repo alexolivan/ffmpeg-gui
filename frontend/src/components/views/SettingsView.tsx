@@ -2,9 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n/i18n';
 import { GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon, ExportIcon } from '../Icons';
-import { AlsaAudioSettingsCard } from './settings/AlsaAudioSettingsCard';
-import { DecklinkSettingsCard } from './settings/DecklinkSettingsCard';
-import { MagewellSettingsCard } from './settings/MagewellSettingsCard';
 import { BackupRestoreCard } from './settings/BackupRestoreCard';
 import { SoftwareEngineCard, type SoftwareEngineData } from './settings/SoftwareEngineCard';
 import { InboundKeysCard } from './settings/InboundKeysCard';
@@ -117,7 +114,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup' | 'audit'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'backup' | 'audit'>('general');
 
 
   const [softwareEngines, setSoftwareEngines] = useState<Record<string, SoftwareEngineData>>({});
@@ -155,9 +152,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     systemTelemetry?.lcd?.connected ||
     settings?.lcd_enabled
   ) : true;
-  const hasAlsaHardware = capabilities ? !!capabilities?.alsa?.available : true;
-  const hasDecklinkHardware = capabilities ? !!capabilities?.decklink?.available : true;
-  const hasMagewellHardware = capabilities ? (!!capabilities?.magewell?.available || capabilities?.magewell?.status === 'SETUP_REQUIRED' || capabilities?.magewell?.status === 'READY') : true;
 
   useEffect(() => {
     if (activeTab === 'lcd' && !hasLcdHardware) {
@@ -1094,48 +1088,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span className="text-sm">🔒</span>
           {t('settings.tabs.security', 'Security')}
         </button>
-        {hasAlsaHardware && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('alsa')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-              activeTab === 'alsa'
-                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-            }`}
-          >
-            <span className="text-sm">🔊</span>
-            {t('settings.tabs.alsa', 'ALSA AUDIO')}
-          </button>
-        )}
-        {hasDecklinkHardware && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('decklink')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-              activeTab === 'decklink'
-                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-            }`}
-          >
-            <span className="text-sm">🎛️</span>
-            {t('settings.tabs.decklink', 'DECKLINK')}
-          </button>
-        )}
-        {hasMagewellHardware && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('magewell')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-              activeTab === 'magewell'
-                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-            }`}
-          >
-            <span className="text-sm">📟</span>
-            {t('settings.tabs.magewell', 'MAGEWELL')}
-          </button>
-        )}
         <button
           type="button"
           onClick={() => setActiveTab('backup')}
@@ -3016,16 +2968,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* TAB 5: ALSA Audio */}
-        {activeTab === 'alsa' && <AlsaAudioSettingsCard />}
-
-        {/* TAB 6: DeckLink Hardware Control */}
-        {activeTab === 'decklink' && <DecklinkSettingsCard API={API} />}
-
-        {/* TAB 7: Magewell Hardware Control */}
-        {activeTab === 'magewell' && <MagewellSettingsCard API={API} />}
-
-        {/* TAB 8: Backup & Restore */}
+        {/* TAB 5: Backup & Restore */}
         {activeTab === 'backup' && <BackupRestoreCard API={API} />}
 
         {/* TAB 9: Operational Audit Log */}

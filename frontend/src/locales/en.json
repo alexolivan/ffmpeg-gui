@@ -73,6 +73,7 @@
     "forge": "Forge",
     "services": "Services",
     "tasks": "Scheduled Tasks",
+    "hardware": "Hardware / I/O",
     "settings": "Settings",
     "logout": "Logout",
     "exitCloudHub": "Disconnect and return to CloudHub",
@@ -2261,5 +2262,18 @@
     "noBackupServices": "No other FFmpeg services available",
     "backupLoopBlocked": "uses this service as backup",
     "signalAlarmBadge": "SIGNAL ALARM"
+  },
+  "hardware": {
+    "title": "Hardware & Signal I/O",
+    "subtitle": "Manage audio interfaces, SDI/HDMI capture cards, and live signal routing.",
+    "noHardwareDetected": "No configurable ALSA, DeckLink, or Magewell I/O hardware detected on this appliance."
+  },
+  "authz": {
+    "levelMonitor": "MONITOR",
+    "levelOperate": "OPERATE",
+    "levelManage": "MANAGE",
+    "readOnlyBadge": "MONITOR ONLY",
+    "viewOnlyVnc": "VIEW ONLY",
+    "restrictedAccess": "Access restricted by CloudHub permission policy"
   }
 }

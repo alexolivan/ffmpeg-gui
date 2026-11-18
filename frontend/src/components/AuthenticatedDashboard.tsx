@@ -8,6 +8,7 @@ import { useProcesses } from '../hooks/useProcesses';
 import { DashboardView } from './views/DashboardView';
 import { ServicesView } from './views/ServicesView';
 import { SettingsView } from './views/SettingsView';
+import { HardwareIOView } from './views/HardwareIOView';
 import { ForgeView } from './views/ForgeView';
 import { FfmpegPreviewModal } from './modals/FfmpegPreviewModal';
 import { MediaMtxPreviewModal } from './modals/MediaMtxPreviewModal';
@@ -167,6 +168,15 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
         {/* ════ SCHEDULED TASKS VIEW ════ */}
         {activeView === 'batch' && (
           <ScheduledTasks API={API} taskExecutions={taskExecutions} />
+        )}
+
+        {/* ════ HARDWARE / I/O VIEW ════ */}
+        {activeView === 'hardware' && (
+          <HardwareIOView
+            capabilities={capabilities}
+            API={API}
+            onNavigateToForge={() => setActiveView('tools')}
+          />
         )}
 
         {/* ════ SETTINGS VIEW ════ */}

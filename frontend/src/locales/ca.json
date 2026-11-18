@@ -73,6 +73,7 @@
     "forge": "Forja",
     "services": "Serveis",
     "tasks": "Tasques Programades",
+    "hardware": "Maquinari / E/S",
     "settings": "Configuració",
     "logout": "Tancar Sessió",
     "exitCloudHub": "Desconnectar i tornar a CloudHub",
@@ -2261,5 +2262,18 @@
     "noBackupServices": "No hi ha altres serveis FFmpeg disponibles",
     "backupLoopBlocked": "usa aquest servei com a backup",
     "signalAlarmBadge": "ALARMA DE SENYAL"
+  },
+  "hardware": {
+    "title": "Maquinari i Senyal E/S",
+    "subtitle": "Gestió d'interfícies d'àudio, capturadores SDI/HDMI i encaminament de senyal en viu.",
+    "noHardwareDetected": "No s'ha detectat maquinari ALSA, DeckLink o Magewell configurable en aquest equip."
+  },
+  "authz": {
+    "levelMonitor": "MONITOR",
+    "levelOperate": "OPERAR",
+    "levelManage": "GESTIÓ",
+    "readOnlyBadge": "NOMÉS LECTURA",
+    "viewOnlyVnc": "NOMÉS VISUALITZACIÓ",
+    "restrictedAccess": "Accés restringit per política de permisos de CloudHub"
   }
 }

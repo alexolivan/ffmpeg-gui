@@ -54,9 +54,14 @@ export interface PhysicalDecklinkCard {
   channels: DecklinkSubDevice[];
 }
 
-export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: () => void }> = ({
+export const DecklinkSettingsCard: React.FC<{
+  API?: string;
+  onNavigateToForge?: () => void;
+  canManage?: boolean;
+}> = ({
   API = '',
   onNavigateToForge,
+  canManage = true,
 }) => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<DecklinkSystemStatus | null>(null);
@@ -371,13 +376,15 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                 {t('settings.decklink.firmwareAlertSubtitle', 'One or more DeckLink cards require a firmware update to maintain compatibility with the host driver.')}
               </p>
             </div>
-            <button
-              onClick={() => handleFirmwareUpdate(activeChannel?.index || 0)}
-              disabled={isUpdatingFirmware}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 shrink-0"
-            >
-              {isUpdatingFirmware ? t('common.processing', 'Updating...') : t('settings.decklink.updateFirmwareBtn', 'Update Firmware Now')}
-            </button>
+            {canManage && (
+              <button
+                onClick={() => handleFirmwareUpdate(activeChannel?.index || 0)}
+                disabled={isUpdatingFirmware}
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                {isUpdatingFirmware ? t('common.processing', 'Updating...') : t('settings.decklink.updateFirmwareBtn', 'Update Firmware Now')}
+              </button>
+            )}
           </div>
         )}
 
@@ -531,14 +538,16 @@ export const DecklinkSettingsCard: React.FC<{ API?: string; onNavigateToForge?: 
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => handleOpenConfig(activeChannel)}
-                      className="px-3.5 py-1.5 rounded-xl bg-brand-lime hover:bg-brand-lime/80 text-black font-black text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-md hover:scale-105 shrink-0"
-                      title={t('settings.decklink.configurePort', 'Configure Port')}
-                    >
-                      <span className="text-sm">⚙️</span>
-                      <span>{t('settings.decklink.configurePort', 'Configure Port')}</span>
-                    </button>
+                    {canManage && (
+                      <button
+                        onClick={() => handleOpenConfig(activeChannel)}
+                        className="px-3.5 py-1.5 rounded-xl bg-brand-lime hover:bg-brand-lime/80 text-black font-black text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-md hover:scale-105 shrink-0"
+                        title={t('settings.decklink.configurePort', 'Configure Port')}
+                      >
+                        <span className="text-sm">⚙️</span>
+                        <span>{t('settings.decklink.configurePort', 'Configure Port')}</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Card Body: 2 Wide Columns */}

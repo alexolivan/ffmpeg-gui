@@ -6,7 +6,8 @@ import {
   CalendarIcon, 
   GearIcon, 
   ForgeIcon,
-  LogoutIcon 
+  LogoutIcon,
+  SlidersIcon,
 } from './Icons';
 
 interface SidebarProps {
@@ -34,6 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', icon: <DashboardIcon size={20} />, label: t('nav.dashboard') },
     { id: 'services', icon: <LightningIcon size={20} />, label: t('nav.services') },
     { id: 'batch', icon: <CalendarIcon size={20} />, label: t('nav.tasks') },
+    { id: 'hardware', icon: <SlidersIcon size={20} />, label: t('nav.hardware', 'Hardware / I/O') },
     { id: 'settings', icon: <GearIcon size={20} />, label: t('nav.settings') },
     { id: 'tools', icon: <ForgeIcon size={20} />, label: t('nav.forge', 'Forge') },
   ];

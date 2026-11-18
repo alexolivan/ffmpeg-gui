@@ -73,6 +73,7 @@
     "forge": "Forja",
     "services": "Servicios",
     "tasks": "Tareas Programadas",
+    "hardware": "Hardware / E/S",
     "settings": "Ajustes",
     "logout": "Cerrar Sesión",
     "exitCloudHub": "Desconectar y volver a CloudHub",
@@ -2261,5 +2262,18 @@
     "noBackupServices": "No hay otros servicios FFmpeg disponibles",
     "backupLoopBlocked": "usa este servicio como backup",
     "signalAlarmBadge": "ALARMA DE SEÑAL"
+  },
+  "hardware": {
+    "title": "Hardware y Señal E/S",
+    "subtitle": "Gestión de interfaces de audio, capturadoras SDI/HDMI y enrutamiento de señal en vivo.",
+    "noHardwareDetected": "No se ha detectado hardware ALSA, DeckLink o Magewell configurable en este equipo."
+  },
+  "authz": {
+    "levelMonitor": "MONITOR",
+    "levelOperate": "OPERAR",
+    "levelManage": "GESTIÓN",
+    "readOnlyBadge": "SOLO LECTURA",
+    "viewOnlyVnc": "SOLO VISUALIZACIÓN",
+    "restrictedAccess": "Acceso restringido por política de permisos de CloudHub"
   }
 }
