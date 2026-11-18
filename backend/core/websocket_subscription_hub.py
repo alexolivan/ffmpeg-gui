@@ -137,6 +137,29 @@ class WebSocketSubscriptionHub:
         db_session_factory: Any,
         options: Optional[Dict[str, Any]] = None,
     ) -> None:
+        try:
+            try:
+                from core.authz import AuthzContext, has_min_level
+            except ImportError:
+                from backend.core.authz import AuthzContext, has_min_level
+            ctx = AuthzContext.from_websocket(ws)
+            if not ctx.is_owner:
+                if topic in ("process_logs", "sidecar_logs", "pipewire_graph", "service_metrics_rrd") and item_id is not None and db_session_factory:
+                    with db_session_factory() as db_authz:
+                        sid = int(item_id) if str(item_id).isdigit() else item_id
+                        if not has_min_level(ctx.service_level(db_authz, sid), "monitor"):
+                            return
+                elif topic == "task_logs" and item_id is not None:
+                    tid = int(item_id) if str(item_id).isdigit() else item_id
+                    if not has_min_level(ctx.task_level(tid), "monitor"):
+                        return
+                elif topic == "resource_locks" and db_session_factory:
+                    with db_session_factory() as db_authz:
+                        if not ctx.has_any_process_level(db_authz, "monitor"):
+                            return
+        except Exception:
+            pass
+
         if topic not in self._topics:
             self._topics[topic] = {}
         if item_id not in self._topics[topic]:

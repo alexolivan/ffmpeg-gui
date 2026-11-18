@@ -277,6 +277,111 @@ class CloudTunnelClient:
             logger.debug("SSO assertion validation error: %s", err)
             return False
 
+    def _verify_authz_assertion(
+        self, assertion: Optional[str], tunnel_secret: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Validate HMAC-SHA256 capability claims assertion and return decoded claims.
+        Format: {node_id}:{username}:{claims_b64}:{timestamp}:{expiry}:{sig}
+        """
+        if not assertion or not tunnel_secret:
+            return None
+
+        try:
+            parts = assertion.split(":")
+            if len(parts) != 6:
+                return None
+
+            node_id, username, claims_b64, ts_str, exp_str, signature = parts
+            now = int(time.time())
+            ts = int(ts_str)
+            exp = int(exp_str)
+
+            if now > exp or abs(now - ts) > 60:
+                return None
+
+            payload = f"{node_id}:{username}:{claims_b64}:{ts_str}:{exp_str}"
+            expected_sig = hmac.new(
+                tunnel_secret.encode("utf-8"),
+                payload.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+
+            if not hmac.compare_digest(expected_sig, signature):
+                return None
+
+            padded = claims_b64 + "=" * (-len(claims_b64) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+            if not isinstance(claims, dict):
+                return None
+            return claims
+        except Exception as err:
+            logger.debug("Authz assertion validation error: %s", err)
+            return None
+
+    def _prepare_asgi_headers_and_state(
+        self,
+        headers_dict: Dict[str, str],
+        frame: Dict[str, Any],
+        tunnel_secret: str,
+        sso_enabled: bool,
+    ) -> Tuple[List[Tuple[bytes, bytes]], Dict[str, Any]]:
+        """Strip untrusted identity/claim headers and populate trusted ASGI state after HMAC check."""
+        untrusted = {
+            "x-authenticated-user",
+            "x-authenticated-channel",
+            "x-cloudhub-claims",
+            "x-cloudhub-stream",
+        }
+        asgi_headers: List[Tuple[bytes, bytes]] = []
+        for k, v in headers_dict.items():
+            if k.lower() in untrusted:
+                continue
+            asgi_headers.append((k.lower().encode("latin1"), v.encode("latin1")))
+
+        scope_state: Dict[str, Any] = {}
+        sso_assertion = frame.get("sso_assertion")
+        authz_assertion = frame.get("authz_assertion")
+
+        if self._verify_sso_assertion(sso_assertion, tunnel_secret, sso_enabled):
+            username = sso_assertion.split(":")[1] if sso_assertion else "cloudhub_operator"
+            with self.db_session_factory() as session:
+                settings = session.query(SystemSettings).first()
+                gui_password = settings.gui_password if settings else None
+
+            current_pw = gui_password or ""
+            ephemeral_token = auth_manager.create_session(
+                current_password=current_pw, expiry_seconds=60
+            )
+
+            cookie_header = f"gui_session={ephemeral_token}"
+            asgi_headers.append((b"cookie", cookie_header.encode("latin1")))
+            asgi_headers.append(
+                (b"authorization", f"Bearer {ephemeral_token}".encode("latin1"))
+            )
+            asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
+            asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
+
+            scope_state["authenticated_channel"] = "cloudhub"
+            scope_state["authenticated_user"] = username
+
+            if authz_assertion is not None:
+                verified_claims = self._verify_authz_assertion(authz_assertion, tunnel_secret)
+                if verified_claims is not None:
+                    scope_state["authz_claims"] = verified_claims
+                else:
+                    # Fail closed on tampered/expired authz assertion
+                    scope_state["authz_claims"] = {
+                        "user": username,
+                        "channel": "cloudhub",
+                        "scopes": {"dashboard": "none", "hardware": "none", "media": "none", "settings": "none", "forge": "none", "processes": {"default": "none"}},
+                    }
+
+        if bool(frame.get("supports_stream", False)):
+            asgi_headers.append((b"x-cloudhub-stream", b"1"))
+
+        return asgi_headers, scope_state
+
     async def _connection_loop(self) -> None:
         """Main outbound connection loop with exponential backoff."""
         backoff = 1.0
@@ -454,6 +559,7 @@ class CloudTunnelClient:
                     "logo_path": logo_path,
                     "capabilities": {
                         "http_stream": True,
+                        "authz_claims": True,
                     },
                     "lcd": {
                         "enabled": lcd_enabled,
@@ -542,38 +648,10 @@ class CloudTunnelClient:
         query = frame.get("query", "")
         headers_dict = frame.get("headers", {})
         body_bytes = decode_body(frame.get("body")) or b""
-        sso_assertion = frame.get("sso_assertion")
 
-        # Prepare ASGI headers (list of [bytes, bytes])
-        asgi_headers = []
-        for k, v in headers_dict.items():
-            asgi_headers.append((k.lower().encode("latin1"), v.encode("latin1")))
-
-        # Check and inject SSO session
-        if self._verify_sso_assertion(sso_assertion, tunnel_secret, sso_enabled):
-            username = sso_assertion.split(":")[1] if sso_assertion else "cloudhub_operator"
-            with self.db_session_factory() as session:
-                settings = session.query(SystemSettings).first()
-                gui_password = settings.gui_password if settings else None
-
-            # Generate local ephemeral session token
-            current_pw = gui_password or ""
-            ephemeral_token = auth_manager.create_session(
-                current_password=current_pw, expiry_seconds=60
-            )
-
-            # Inject into cookies and Authorization header
-            cookie_header = f"gui_session={ephemeral_token}"
-            asgi_headers.append((b"cookie", cookie_header.encode("latin1")))
-            asgi_headers.append(
-                (b"authorization", f"Bearer {ephemeral_token}".encode("latin1"))
-            )
-            asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
-            asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
-
-        if bool(frame.get("supports_stream", False)):
-            asgi_headers.append((b"x-cloudhub-stream", b"1"))
-
+        asgi_headers, scope_state = self._prepare_asgi_headers_and_state(
+            headers_dict, frame, tunnel_secret, sso_enabled
+        )
 
         scope = {
             "type": "http",
@@ -584,6 +662,7 @@ class CloudTunnelClient:
             "raw_path": path.encode("utf-8"),
             "query_string": query.encode("utf-8"),
             "headers": asgi_headers,
+            "state": scope_state,
             "client": ("127.0.0.1", 0),
             "server": ("cloudhub-tunnel", 0),
         }
@@ -757,33 +836,10 @@ class CloudTunnelClient:
         path = frame.get("path", "/")
         query = frame.get("query", "")
         headers_dict = frame.get("headers", {})
-        sso_assertion = frame.get("sso_assertion")
 
-        asgi_headers = []
-        for k, v in headers_dict.items():
-            asgi_headers.append((k.lower().encode("latin1"), v.encode("latin1")))
-
-        if self._verify_sso_assertion(sso_assertion, tunnel_secret, sso_enabled):
-            username = sso_assertion.split(":")[1] if sso_assertion else "cloudhub_operator"
-            with self.db_session_factory() as session:
-                settings = session.query(SystemSettings).first()
-                gui_password = settings.gui_password if settings else None
-
-            current_pw = gui_password or ""
-            ephemeral_token = auth_manager.create_session(
-                current_password=current_pw, expiry_seconds=60
-            )
-            cookie_header = f"gui_session={ephemeral_token}"
-            asgi_headers.append((b"cookie", cookie_header.encode("latin1")))
-            asgi_headers.append(
-                (b"authorization", f"Bearer {ephemeral_token}".encode("latin1"))
-            )
-            asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
-            asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
-
-        if bool(frame.get("supports_stream", False)):
-            asgi_headers.append((b"x-cloudhub-stream", b"1"))
-
+        asgi_headers, scope_state = self._prepare_asgi_headers_and_state(
+            headers_dict, frame, tunnel_secret, sso_enabled
+        )
 
         sec_subprotocols = []
         raw_subprotocols = headers_dict.get("sec-websocket-protocol") or headers_dict.get("Sec-WebSocket-Protocol", "")
@@ -799,6 +855,7 @@ class CloudTunnelClient:
             "raw_path": path.encode("utf-8"),
             "query_string": query.encode("utf-8"),
             "headers": asgi_headers,
+            "state": scope_state,
             "client": ("127.0.0.1", 0),
             "server": ("cloudhub-tunnel", 0),
             "subprotocols": sec_subprotocols,

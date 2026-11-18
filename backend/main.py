@@ -20,7 +20,7 @@ from PIL import Image
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from database.db import init_db, get_db, SessionLocal
 from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage, PeerInboundKey, PeerRemoteNode, SystemSettings, AuditLog
 from core.audit_logger import audit_logger, calculate_dict_delta
@@ -34,6 +34,28 @@ from core.patch_manager import PatchManager
 from core.notification_manager import NotificationManager
 notification_manager = NotificationManager()
 from core.auth_manager import auth_manager
+try:
+    from core.authz import (
+        AuthzContext,
+        authorize_http_request,
+        has_min_level,
+        redact_service_dict,
+        redact_task_dict,
+        redact_settings_dict,
+        _extract_kiosk_desktop_id,
+        _extract_desktop_pipewire_id,
+    )
+except ImportError:
+    from backend.core.authz import (
+        AuthzContext,
+        authorize_http_request,
+        has_min_level,
+        redact_service_dict,
+        redact_task_dict,
+        redact_settings_dict,
+        _extract_kiosk_desktop_id,
+        _extract_desktop_pipewire_id,
+    )
 from core.alsa_manager import alsa_manager
 try:
     from core.decklink_manager import DecklinkManager
@@ -261,23 +283,35 @@ class AuthBarrierMiddleware(BaseHTTPMiddleware):
             
         # 3. Check if GUI password is set (cached with 5s TTL to eliminate DB locking)
         gui_password = get_cached_gui_password()
-            
+
+        authenticated_ok = False
         if not gui_password:
-            return await call_next(request)
-            
-        # 4. Check session cookie or Authorization header or token query param
-        token = request.cookies.get(auth_manager.COOKIE_NAME)
-        if not token:
-            auth_hdr = request.headers.get("Authorization")
-            if auth_hdr:
-                token = auth_hdr.replace("Bearer ", "").strip()
-        if not token:
-            token = request.query_params.get("token")
-            
-        if token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)):
-            return await call_next(request)
-            
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+            authenticated_ok = True
+        else:
+            # 4. Check session cookie or Authorization header or token query param
+            token = request.cookies.get(auth_manager.COOKIE_NAME)
+            if not token:
+                auth_hdr = request.headers.get("Authorization")
+                if auth_hdr:
+                    token = auth_hdr.replace("Bearer ", "").strip()
+            if not token:
+                token = request.query_params.get("token")
+
+            if token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)):
+                authenticated_ok = True
+
+        if not authenticated_ok:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+        # 5. Enforce CloudHub capability claims on restricted tunnel sessions
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner:
+            with SessionLocal() as db_authz:
+                deny_reason = authorize_http_request(request, ctx, db_authz)
+            if deny_reason:
+                return JSONResponse(status_code=403, content={"detail": deny_reason})
+
+        return await call_next(request)
 
 app.add_middleware(AuthBarrierMiddleware)
 
@@ -1139,7 +1173,9 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
         db.refresh(settings)
     
     current_port = request.url.port if request else None
-    return make_settings_response(settings, current_request_port=current_port)
+    payload = make_settings_response(settings, current_request_port=current_port)
+    ctx = AuthzContext.from_request(request) if request else AuthzContext.owner()
+    return redact_settings_dict(payload, ctx.domain_level("settings"))
     
     # Backwards compatibility auto-normalization for pre-existing rows
     dirty = False
@@ -2651,6 +2687,7 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.warning(f"Error checking storage health in get_auth_status: {e}")
 
+    ctx = AuthzContext.from_request(request)
     if not settings:
         return {
             "password_required": False,
@@ -2660,7 +2697,9 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
             "logo_text": "FF",
             "accent_color": "#FF6B00",
             "version": ver,
-            "storage_warnings": storage_warnings
+            "storage_warnings": storage_warnings,
+            "channel": ctx.channel,
+            "permissions": ctx.to_summary_dict(db),
         }
     password_required = bool(settings.gui_password)
     is_authenticated = True
@@ -2682,8 +2721,56 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
         "logo_text": settings.logo_text or "FF",
         "accent_color": settings.accent_color or "#FF6B00",
         "version": ver,
-        "storage_warnings": storage_warnings
+        "storage_warnings": storage_warnings,
+        "channel": ctx.channel,
+        "permissions": ctx.to_summary_dict(db) if is_authenticated else None,
     }
+
+
+@app.get("/api/cloudhub/catalog")
+def get_cloudhub_catalog(request: Request, db: Session = Depends(get_db)):
+    """Lightweight appliance catalog for CloudHub permission assignment UI."""
+    ctx = AuthzContext.from_request(request)
+    if not ctx.is_owner and not ctx.has_domain("settings", "monitor") and not ctx.has_any_process_level(db, "monitor"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to read appliance catalog")
+
+    from database.models import ServiceDependency
+    services = db.query(MediaProcess).order_by(MediaProcess.id.asc()).all()
+    all_deps = db.query(ServiceDependency).filter(ServiceDependency.consumer_type == "service").all()
+    dep_map: Dict[int, List[int]] = {}
+    for d in all_deps:
+        dep_map.setdefault(d.consumer_id, []).append(d.provider_service_id)
+
+    svc_items = []
+    for s in services:
+        deps = list(dep_map.get(s.id, []))
+        desk_id = _extract_kiosk_desktop_id(s)
+        if desk_id is not None and desk_id not in deps:
+            deps.append(desk_id)
+        pw_id = _extract_desktop_pipewire_id(s)
+        if pw_id is not None and pw_id not in deps:
+            deps.append(pw_id)
+        svc_items.append({
+            "id": s.id,
+            "name": s.name,
+            "alias": s.alias,
+            "service_type": getattr(s, "service_type", "ffmpeg_stream") or "ffmpeg_stream",
+            "status": s.status,
+            "dependencies": deps,
+        })
+
+    tasks = db.query(ScheduledTask).order_by(ScheduledTask.id.asc()).all()
+    task_items = [
+        {
+            "id": t.id,
+            "name": t.name,
+            "alias": t.alias,
+            "command": t.command,
+            "schedule_type": t.schedule_type,
+        }
+        for t in tasks
+    ]
+    return {"services": svc_items, "tasks": task_items}
 
 
 @app.post("/login")
@@ -3630,20 +3717,75 @@ async def get_ndi_sources(build_id: Optional[int] = None):
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+        self.connection_contexts: Dict[WebSocket, AuthzContext] = {}
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, ctx: Optional[AuthzContext] = None):
         await websocket.accept()
         self.active_connections.append(websocket)
+        self.connection_contexts[websocket] = ctx or AuthzContext.owner()
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
+        self.connection_contexts.pop(websocket, None)
+
+    @staticmethod
+    def _filter_message_for_context(
+        message: dict,
+        ctx: AuthzContext,
+        svc_levels: Dict[int, str],
+        task_levels: Dict[int, str],
+    ) -> dict:
+        if ctx.is_owner:
+            return message
+        filtered = dict(message)
+        if "data" in filtered and isinstance(filtered["data"], list):
+            allowed_svcs = []
+            for p in filtered["data"]:
+                pid = p.get("id")
+                lvl = svc_levels.get(pid, ctx.explicit_service_level(pid, p.get("service_type"))) if pid is not None else "none"
+                if has_min_level(lvl, "monitor"):
+                    allowed_svcs.append(redact_service_dict(p, lvl))
+            filtered["data"] = allowed_svcs
+        if "task_executions" in filtered and isinstance(filtered["task_executions"], list):
+            filtered["task_executions"] = [
+                ex for ex in filtered["task_executions"]
+                if ex.get("task_id") is not None and has_min_level(task_levels.get(ex.get("task_id"), ctx.task_level(ex.get("task_id"))), "monitor")
+            ]
+        if "upcoming_tasks" in filtered and isinstance(filtered["upcoming_tasks"], list):
+            filtered["upcoming_tasks"] = [
+                ut for ut in filtered["upcoming_tasks"]
+                if ut.get("id") is not None and has_min_level(task_levels.get(ut.get("id"), ctx.task_level(ut.get("id"))), "monitor")
+            ]
+        if "system" in filtered and not ctx.has_domain("dashboard", "monitor"):
+            filtered["system"] = {}
+        return filtered
 
     async def broadcast(self, message: dict):
+        has_restricted = any(
+            not (self.connection_contexts.get(ws) or AuthzContext.owner()).is_owner
+            for ws in self.active_connections
+        )
+        restricted_maps: Dict[WebSocket, Tuple[Dict[int, str], Dict[int, str]]] = {}
+        if has_restricted:
+            with SessionLocal() as db:
+                for ws in list(self.active_connections):
+                    ctx = self.connection_contexts.get(ws)
+                    if ctx and not ctx.is_owner:
+                        restricted_maps[ws] = (
+                            ctx.resolve_all_service_levels(db),
+                            ctx.resolve_all_task_levels(db),
+                        )
+
         dead_connections = []
         for connection in list(self.active_connections):
+            ctx = self.connection_contexts.get(connection) or AuthzContext.owner()
+            payload = message
+            if not ctx.is_owner:
+                svc_levels, task_levels = restricted_maps.get(connection, ({}, {}))
+                payload = self._filter_message_for_context(message, ctx, svc_levels, task_levels)
             try:
-                await connection.send_json(message)
+                await connection.send_json(payload)
             except Exception:
                 dead_connections.append(connection)
 
@@ -3776,7 +3918,8 @@ async def websocket_telemetry(websocket: WebSocket):
             return
 
     from core.websocket_subscription_hub import subscription_hub
-    await manager.connect(websocket)
+    ctx = AuthzContext.from_websocket(websocket)
+    await manager.connect(websocket, ctx=ctx)
     try:
         while True:
             raw_msg = await websocket.receive_text()
@@ -4787,6 +4930,10 @@ def notify_storage_alert(storage_id: int, storage_name: str, storage_path: str, 
 
 @app.websocket("/ws/build/{build_id}")
 async def websocket_build(websocket: WebSocket, build_id: int):
+    ctx = AuthzContext.from_websocket(websocket)
+    if not ctx.has_domain("forge", "operate"):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
     if not token:
         auth_hdr = websocket.headers.get("authorization")
@@ -4968,8 +5115,12 @@ def get_lcd_locator_status():
 # ══════════════════════════════════════════════════════════════════
 
 @app.get("/builds")
-def list_builds(db: Session = Depends(get_db)):
+def list_builds(request: Request = None, db: Session = Depends(get_db)):
     """List all build profiles."""
+    if request is not None:
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner and not (ctx.has_domain("forge", "monitor") or ctx.has_any_process_level(db, "monitor")):
+            return []
     builds = db.query(FfmpegBuild).order_by(FfmpegBuild.created_at.desc()).all()
     return [_serialize_build(b) for b in builds]
 
@@ -5039,8 +5190,12 @@ async def get_software_tags(software_type: str):
     return {"tags": tags}
 
 @app.get("/builds/disk-info")
-def get_disk_info():
+def get_disk_info(request: Request = None, db: Session = Depends(get_db)):
     """Get free space on the partition where builds are stored."""
+    if request is not None:
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner and not (ctx.has_domain("forge", "monitor") or ctx.has_any_process_level(db, "monitor")):
+            return {"free_gb": 0, "free_mb": 0}
     return build_manager.get_partition_free_space()
 
 @app.get("/builds/check")
@@ -5596,8 +5751,10 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════
 
 @app.get("/processes")
-def list_processes(db: Session = Depends(get_db)):
+def list_processes(request: Request = None, db: Session = Depends(get_db)):
     from database.models import ServiceDependency
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
+    svc_levels = ctx.resolve_all_service_levels(db)
     processes = db.query(MediaProcess).all()
     from core.dependency_manager import dependency_manager
 
@@ -5623,6 +5780,9 @@ def list_processes(db: Session = Depends(get_db)):
     tasks_lookup = {t.id: ((getattr(t, 'alias', None) or '').strip() or t.name) for t in db.query(ScheduledTask).all()}
     processes_data = []
     for p in processes:
+        svc_lvl = svc_levels.get(p.id, "monitor" if ctx.is_owner else "none")
+        if not ctx.is_owner and not has_min_level(svc_lvl, "monitor"):
+            continue
         p_deps = list(deps_by_consumer.get(('service', p.id), []))
         fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
         if fed_dep:
@@ -5687,6 +5847,10 @@ def list_processes(db: Session = Depends(get_db)):
             "ptp_role": ptp_role,
             "ptp_time_stamping": ptp_ts,
         })
+        if not ctx.is_owner:
+            processes_data[-1] = redact_service_dict(processes_data[-1], svc_lvl)
+        else:
+            processes_data[-1]["effective_level"] = "admin"
 
     return processes_data
 
@@ -5727,6 +5891,9 @@ def _validate_signal_watchdog_config(db: Session, service_id: Optional[int], sw:
 @app.post("/processes")
 def create_process(proc_in: ProcessCreate, request: Request, db: Session = Depends(get_db)):
     svc_type = proc_in.service_type or "ffmpeg_stream"
+    ctx = AuthzContext.from_request(request)
+    if not ctx.can_create_service(svc_type):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to create '{svc_type}' services")
     
     # If no build specified and ffmpeg_stream, use default ffmpeg build
     build_id = proc_in.ffmpeg_build_id
@@ -7089,11 +7256,16 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
     }
 
 @app.post("/processes/import")
-def import_process(payload: dict, db: Session = Depends(get_db)):
+def import_process(payload: dict, request: Request = None, db: Session = Depends(get_db)):
     try:
         profile = migrate_and_validate_profile(payload, db)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid configuration format: {str(e)}")
+    svc_type = profile.get('service_type', 'ffmpeg_stream') or 'ffmpeg_stream'
+    if request is not None:
+        ctx = AuthzContext.from_request(request)
+        if not ctx.can_create_service(svc_type):
+            raise HTTPException(status_code=403, detail=f"Insufficient permissions to import '{svc_type}' services")
         
     db_proc = MediaProcess(
         name=f"Imported: {profile.get('name', 'Untitled')}",
@@ -7360,11 +7532,17 @@ def get_process_hls(process_id: int, filename: str, db: Session = Depends(get_db
 # ══════════════════════════════════════════════════════════════════
 
 @app.get("/api/services")
-def list_services(db: Session = Depends(get_db)):
+def list_services(request: Request = None, db: Session = Depends(get_db)):
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
+    svc_levels = ctx.resolve_all_service_levels(db)
     services = db.query(MediaProcess).all()
     hls_storages = get_routed_hls_storages(db)
-    return [
-        {
+    items = []
+    for s in services:
+        lvl = svc_levels.get(s.id, "admin" if ctx.is_owner else "none")
+        if not ctx.is_owner and not has_min_level(lvl, "monitor"):
+            continue
+        item = {
             "id": s.id,
             "name": s.name,
             "service_type": s.service_type,
@@ -7385,11 +7563,15 @@ def list_services(db: Session = Depends(get_db)):
             "is_shared_with_peers": bool(s.is_shared_with_peers),
             "allow_peer_lease": bool(s.allow_peer_lease),
             "public_hls_path": resolve_service_public_hls_path(s, hls_storages),
-        } for s in services
-    ]
+        }
+        items.append(redact_service_dict(item, lvl) if not ctx.is_owner else {**item, "effective_level": "admin"})
+    return items
 
 @app.post("/api/services")
 def create_service(svc_in: ServiceCreate, request: Request, db: Session = Depends(get_db)):
+    ctx = AuthzContext.from_request(request)
+    if not ctx.can_create_service(svc_in.service_type):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to create '{svc_in.service_type}' services")
     svc = MediaProcess(
         name=svc_in.name,
         service_type=svc_in.service_type,
@@ -7421,10 +7603,26 @@ def create_service(svc_in: ServiceCreate, request: Request, db: Session = Depend
     return svc
 
 @app.get("/api/services/{service_id}")
-def get_service(service_id: int, db: Session = Depends(get_db)):
+def get_service(service_id: int, request: Request = None, db: Session = Depends(get_db)):
     svc = db.query(MediaProcess).get(service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
+    if not ctx.is_owner:
+        lvl = ctx.service_level(db, svc)
+        if not has_min_level(lvl, "monitor"):
+            raise HTTPException(status_code=403, detail=f"Service #{service_id} requires 'monitor'")
+        if not has_min_level(lvl, "manage"):
+            return redact_service_dict({
+                "id": svc.id,
+                "name": svc.name,
+                "alias": svc.alias,
+                "service_type": svc.service_type,
+                "config": svc.config or {},
+                "is_active": svc.is_active,
+                "status": svc.status,
+                "pid": svc.pid,
+            }, lvl)
     return svc
 
 @app.put("/api/services/{service_id}")
@@ -8087,10 +8285,11 @@ def serialize_task_item(t: ScheduledTask, db: Session, deps_list: Optional[list]
     }
 
 @app.get("/tasks")
-def list_tasks(db: Session = Depends(get_db)):
+def list_tasks(request: Request = None, db: Session = Depends(get_db)):
     from database.models import ServiceDependency
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
     tasks = db.query(ScheduledTask).all()
-    
+
     all_deps = db.query(ServiceDependency).filter(ServiceDependency.consumer_type == 'task').all()
     deps_by_task = {}
     for d in all_deps:
@@ -8102,7 +8301,14 @@ def list_tasks(db: Session = Depends(get_db)):
             "is_auto_managed": d.is_auto_managed
         })
 
-    return [serialize_task_item(t, db, deps_by_task.get(t.id, [])) for t in tasks]
+    items = []
+    for t in tasks:
+        t_lvl = ctx.task_level(t.id)
+        if not ctx.is_owner and not has_min_level(t_lvl, "monitor"):
+            continue
+        item = serialize_task_item(t, db, deps_by_task.get(t.id, []))
+        items.append(redact_task_dict(item, t_lvl) if not ctx.is_owner else {**item, "effective_level": "admin"})
+    return items
 
 @app.post("/tasks")
 def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = Depends(get_db)):
@@ -8130,6 +8336,14 @@ def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = De
         sids = in_cfg.get("service_ids")
         if not sids or not isinstance(sids, list):
             raise HTTPException(status_code=400, detail="service_ids must be a non-empty list of service IDs")
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner:
+            for raw_sid in sids:
+                if not str(raw_sid).isdigit() or not has_min_level(ctx.service_level(db, int(raw_sid)), "operate"):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Insufficient permissions to target service #{raw_sid} in restart task",
+                    )
 
     db_task = ScheduledTask(
         name=payload.name,
@@ -8430,34 +8644,42 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
     return {"status": "success", "count": len(imported)}
 
 @app.get("/tasks/{task_id}")
-def get_task(task_id: int, db: Session = Depends(get_db)):
+def get_task(task_id: int, request: Request = None, db: Session = Depends(get_db)):
     task = db.query(ScheduledTask).get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
+    t_lvl = ctx.task_level(task_id)
+
     executions = db.query(TaskExecution).filter(TaskExecution.task_id == task_id).order_by(TaskExecution.id.desc()).all()
-    
+
+    task_payload = {
+        "id": task.id,
+        "name": task.name,
+        "command": task.command,
+        "is_active": task.is_active,
+        "input_config": task.input_config,
+        "output_config": task.output_config,
+        "codec_config": task.codec_config,
+        "filter_config": task.filter_config,
+        "ffmpeg_build_id": task.ffmpeg_build_id,
+        "schedule_type": task.schedule_type,
+        "schedule_cron": task.schedule_cron,
+        "schedule_datetime": task.schedule_datetime.isoformat() if task.schedule_datetime else None,
+        "next_run": task.next_run.isoformat() if task.next_run else None,
+        "duration_type": task.duration_type,
+        "duration_seconds": task.duration_seconds,
+        "duration_end_time": task.duration_end_time.isoformat() if task.duration_end_time else None,
+        "retry_policy": task.retry_policy,
+        "alias": task.alias,
+    }
+    if not ctx.is_owner:
+        task_payload = redact_task_dict(task_payload, t_lvl)
+    else:
+        task_payload["effective_level"] = "admin"
+
     return {
-        "task": {
-            "id": task.id,
-            "name": task.name,
-            "command": task.command,
-            "is_active": task.is_active,
-            "input_config": task.input_config,
-            "output_config": task.output_config,
-            "codec_config": task.codec_config,
-            "filter_config": task.filter_config,
-            "ffmpeg_build_id": task.ffmpeg_build_id,
-            "schedule_type": task.schedule_type,
-            "schedule_cron": task.schedule_cron,
-            "schedule_datetime": task.schedule_datetime.isoformat() if task.schedule_datetime else None,
-            "next_run": task.next_run.isoformat() if task.next_run else None,
-            "duration_type": task.duration_type,
-            "duration_seconds": task.duration_seconds,
-            "duration_end_time": task.duration_end_time.isoformat() if task.duration_end_time else None,
-            "retry_policy": task.retry_policy,
-            "alias": task.alias,
-        },
+        "task": task_payload,
         "executions": [
             {
                 "id": ex.id,
@@ -8493,10 +8715,18 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db
     effective_cmd = update_data.get('command', task.command)
     in_cfg = update_data.get('input_config', task.input_config or {})
     if effective_cmd == "system://service_restart" or in_cfg.get("type") == "service_restart":
+        sids = in_cfg.get("service_ids")
         if 'input_config' in update_data:
-            sids = in_cfg.get("service_ids")
             if not sids or not isinstance(sids, list):
                 raise HTTPException(status_code=400, detail="service_ids must be a non-empty list of service IDs")
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner and isinstance(sids, list):
+            for raw_sid in sids:
+                if not str(raw_sid).isdigit() or not has_min_level(ctx.service_level(db, int(raw_sid)), "operate"):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Insufficient permissions to target service #{raw_sid} in restart task",
+                    )
         if not task.command:
             task.command = "system://service_restart"
     
@@ -9361,6 +9591,10 @@ def get_alsa_diagnostics():
 
 @app.websocket("/ws/alsa/meters/{card_index}")
 async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
+    ctx = AuthzContext.from_websocket(websocket)
+    if not ctx.has_domain("hardware", "monitor"):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     await websocket.accept()
     alsa_manager.active_mixer_ws_count += 1
     # Check if this card is an AudioScience adapter to throttle interval and protect the DSP mailbox
@@ -9382,6 +9616,7 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
 
 @app.websocket("/ws/desktop/{service_id}/vnc")
 async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
+    ctx = AuthzContext.from_websocket(websocket)
     # 1. Authenticate WebSocket connection
     token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
     if not token:
@@ -9389,6 +9624,7 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
         if auth_hdr:
             token = auth_hdr.replace("Bearer ", "").strip()
 
+    view_only = False
     with SessionLocal() as db:
         from database.models import SystemSettings, Service
         settings = db.query(SystemSettings).first()
@@ -9405,6 +9641,12 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
+        if not ctx.is_owner:
+            requested_lvl = ctx.service_level(db, svc.id)
+            if not has_min_level(requested_lvl, "monitor"):
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+
         # If a kiosk_browser service is referenced, transparently resolve its parent virtual desktop
         if svc.service_type == "kiosk_browser":
             k_cfg = (svc.config or {}).get("kiosk_config", svc.config or {})
@@ -9415,6 +9657,17 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
         if not svc or svc.service_type != "desktop":
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
+
+        if not ctx.is_owner:
+            # Explicit desktop operate permission is required for keyboard/mouse injection;
+            # downward cascade from kiosk_browser grants at most monitor (view-only).
+            desktop_explicit = ctx.explicit_service_level(svc.id, "desktop")
+            desktop_eff = ctx.service_level(db, svc.id)
+            effective_for_input = desktop_explicit if has_min_level(desktop_explicit, "monitor") else desktop_eff
+            if not has_min_level(desktop_eff, "monitor"):
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+            view_only = not has_min_level(effective_for_input, "operate")
 
         cfg = svc.config or {}
         desk_cfg = cfg.get("desktop_config", cfg)
@@ -9432,7 +9685,7 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
     subprotocol = "binary" if "binary" in websocket.headers.get("sec-websocket-protocol", "") else None
     await websocket.accept(subprotocol=subprotocol)
 
-    # 4. Bidirectional bridging
+    # 4. Bidirectional bridging (server-side input drop in view-only mode)
     async def ws_to_tcp():
         try:
             while True:
@@ -9443,6 +9696,8 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
                 if not raw_bytes and msg.get("text"):
                     raw_bytes = msg["text"].encode("utf-8")
                 if raw_bytes:
+                    if view_only and raw_bytes[0] in (4, 5, 6):
+                        continue
                     writer.write(raw_bytes)
                     await writer.drain()
         except Exception:
