@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.68.0] - 2026-11-19
 
 ### Added
 - **Hardware & Signal I/O Extraction (`frontend/src/components/views/HardwareIOView.tsx`, `frontend/src/components/Sidebar.tsx`)**:
@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added HTTP, WebSocket, telemetry filtering, configuration redaction, dependency-driven downward `monitor` cascades, and VNC `view_only` input blocking on `/ws/desktop/{service_id}/vnc`.
 - **Authorization-Aware Edge UI (`frontend/src/utils/permissions.ts`, `frontend/src/components/common/PermissionLevelBadge.tsx`, views, service cards & preview modals)**:
   - Filtered sidebar navigation, dashboard API calls, service/task/forge/settings controls, `noVNC` `viewOnly` mode, Icecast `/admin/` link, MediaMTX publish credentials, Kiosk cache clear, and PipeWire matrix reconciliation based on `/api/auth/status` capability claims.
+- **CloudHub Chunked Streaming & Internal Icecast Reverse Proxy (`backend/core/cloud_tunnel_client.py`, `backend/main.py`, `backend/requirements.txt`, `frontend/src/components/modals/`)**:
+  - Added chunked HTTP streaming and cancellation over the CloudHub reverse tunnel, unlocked live MJPEG previews through tunnels, added async `httpx` internal Icecast reverse proxying for live status iframes and HTML5 audio playback, and resolved real `primary_ip` on copied modal URLs.
+
+### Changed
+- **Public Documentation & Release Screenshots (`README.md`, `INSTALL.md`, `docs/assets/`)**:
+  - Refreshed screenshots (`screenshot1`, `2`, `4`, `6`, `8`, `10`, `24`, `25`), added new screenshots (`screenshot26` Maintenance Restart modal, `screenshot27` Watchdog & In-Band Signal tab, `screenshot28` Prometheus Exporter), fixed README section numbering, and updated feature/installation docs.
 
 ## [2.67.3] - 2026-11-16
 
