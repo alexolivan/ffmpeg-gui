@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import type { EdgePermissionsSummary } from '../utils/permissions';
 
 const API = '';
 
@@ -20,6 +21,7 @@ export interface AuthStatus {
   accent_color: string;
   version: string;
   storage_warnings?: StorageWarning[];
+  permissions?: EdgePermissionsSummary | null;
 }
 
 export function useAuth() {
@@ -168,10 +170,6 @@ export function useAuth() {
 
   useEffect(() => {
     fetchAuthStatus();
-    if (!isAuthenticated) {
-      const interval = setInterval(fetchAuthStatus, 4000);
-      return () => clearInterval(interval);
-    }
   }, [isAuthenticated]);
 
   useEffect(() => {

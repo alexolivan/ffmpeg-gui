@@ -666,3 +666,89 @@ class TestProcessManagerRestarts(unittest.IsolatedAsyncioTestCase):
             self.db.delete(media_proc)
             self.db.commit()
 
+    async def test_watchdog_memory_limit_kill(self):
+        import os
+
+        class StubProcess:
+            def __init__(self):
+                self.pid = 23456
+                self.returncode = None
+                self.stdin = MagicMock()
+                self.stderr = MagicMock()
+                self.kill_called = False
+
+            def terminate(self):
+                self.kill_called = True
+                self.returncode = -15
+
+            def kill(self):
+                self.kill_called = True
+                self.returncode = -9
+
+            async def wait(self):
+                return self.returncode
+
+        stub_proc = StubProcess()
+
+        media_proc = MediaProcess(
+            name="Watchdog RAM Limit Service",
+            type="service",
+            input_config={"type": "lavfi", "path": "testsrc"},
+            output_config={"type": "file", "path": "/tmp/test_watchdog_ram.mp4"},
+            codec_config={"vcodec": "libx264"},
+            status="running",
+            watchdog_enabled=True,
+            watchdog_retries=3,
+            watchdog_max_memory_mb=1024,
+            watchdog_max_memory_duration=10
+        )
+        self.db.add(media_proc)
+        self.db.commit()
+        self.db.refresh(media_proc)
+
+        self.manager.processes[media_proc.id] = stub_proc
+
+        progress_path = f"/dev/shm/ffmpeg_progress_{media_proc.id}s.log"
+        with open(progress_path, "w") as f:
+            f.write("frame=100\nfps=25.0\nbitrate=4500kb/s\nspeed=1.0x\nout_time_us=10000000\nprogress=continue\n")
+
+        try:
+            with patch("core.process_manager.psutil.Process") as mock_psutil_class, \
+                 patch("core.process_manager.psutil.pid_exists", return_value=True):
+                mock_p = MagicMock()
+                mock_p.cpu_percent.return_value = 5.0
+                # 1500 MB (exceeds 1024 MB threshold)
+                mock_p.memory_info.return_value.rss = 1500 * 1024 * 1024
+                mock_psutil_class.return_value = mock_p
+
+                from datetime import timedelta
+                now = datetime.utcnow()
+                time_points = [
+                    now,                         # init
+                    now,                         # loop 1 check running
+                    now,                         # loop 1 check mem (>1024, high_memory_since set)
+                    now + timedelta(seconds=2),  # loop 2 check running
+                    now + timedelta(seconds=15), # loop 2 check mem (>10s duration exceeded)
+                    now + timedelta(seconds=17), # loop 3 check running
+                ]
+                time_iter = iter(time_points)
+                def mock_utcnow():
+                    try:
+                        return next(time_iter)
+                    except StopIteration:
+                        return datetime.utcnow() + timedelta(seconds=500)
+
+                with patch("core.process_manager.datetime") as mock_dt, patch("asyncio.sleep", return_value=None):
+                    mock_dt.utcnow = mock_utcnow
+                    mock_dt.fromisoformat = datetime.fromisoformat
+
+                    await self.manager._watchdog(media_proc.id, stub_proc)
+
+                self.assertTrue(stub_proc.kill_called)
+
+        finally:
+            if os.path.exists(progress_path):
+                os.remove(progress_path)
+            self.db.delete(media_proc)
+            self.db.commit()
+

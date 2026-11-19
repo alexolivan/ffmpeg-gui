@@ -1,13 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Sidebar from './Sidebar';
 import ProcessConfigForm from './ProcessConfigForm';
 import { ScheduledTasks } from './ScheduledTasks';
 import { useBuilds } from '../hooks/useBuilds';
 import { useProcesses } from '../hooks/useProcesses';
+import {
+  canAccessDomain,
+  getDomainLevel,
+  hasAnyProcessAccess,
+  hasAnyServiceAccess,
+  hasAnyTaskAccess,
+  type EdgePermissionsSummary,
+} from '../utils/permissions';
 import { DashboardView } from './views/DashboardView';
 import { ServicesView } from './views/ServicesView';
 import { SettingsView } from './views/SettingsView';
+import { HardwareIOView } from './views/HardwareIOView';
 import { ForgeView } from './views/ForgeView';
 import { FfmpegPreviewModal } from './modals/FfmpegPreviewModal';
 import { MediaMtxPreviewModal } from './modals/MediaMtxPreviewModal';
@@ -30,6 +39,7 @@ interface AuthenticatedDashboardProps {
   handleLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onLogout?: () => void;
   isCloudHubSession?: boolean;
+  permissions?: EdgePermissionsSummary | null;
   newPassword: string;
   setNewPassword: (v: string) => void;
   confirmPassword: string;
@@ -46,6 +56,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
   handleLogoUpload,
   onLogout,
   isCloudHubSession = false,
+  permissions,
   newPassword,
   setNewPassword,
   confirmPassword,
@@ -117,6 +128,26 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
     actionPending,
   } = useProcesses();
 
+  const allowedViews = [
+    {
+      id: 'dashboard',
+      ok: canAccessDomain(permissions, 'dashboard', 'monitor') || hasAnyProcessAccess(permissions, 'monitor'),
+    },
+    { id: 'services', ok: hasAnyServiceAccess(permissions, 'monitor') },
+    { id: 'batch', ok: hasAnyTaskAccess(permissions, 'monitor') },
+    { id: 'hardware', ok: canAccessDomain(permissions, 'hardware', 'monitor') },
+    { id: 'settings', ok: canAccessDomain(permissions, 'settings', 'monitor') },
+    { id: 'tools', ok: canAccessDomain(permissions, 'forge', 'monitor') },
+  ]
+    .filter((v) => v.ok)
+    .map((v) => v.id);
+
+  useEffect(() => {
+    if (allowedViews.length > 0 && !allowedViews.includes(activeView)) {
+      setActiveView(allowedViews[0]);
+    }
+  }, [allowedViews.join(','), activeView]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-dark)] text-[var(--text-primary)] transition-colors duration-300">
       <Sidebar 
@@ -127,11 +158,18 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
         accentColor={settings.accent_color}
         onLogout={(settings.has_gui_password || settings.gui_password || isCloudHubSession) ? onLogout : undefined}
         isCloudHubSession={isCloudHubSession}
+        permissions={permissions}
       />
 
       <main className="flex-1 overflow-y-auto p-8 lg:p-12">
+        {allowedViews.length === 0 && (
+          <div className="glass-card p-8 text-center text-[var(--text-secondary)]">
+            {t('auth.noPermittedViews', 'Your account currently has no permitted modules assigned on this node.')}
+          </div>
+        )}
+
         {/* ════ DASHBOARD VIEW ════ */}
-        {activeView === 'dashboard' && (
+        {activeView === 'dashboard' && allowedViews.includes('dashboard') && (
           <DashboardView
             telemetry={telemetry}
             systemTelemetry={{
@@ -142,11 +180,12 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             upcomingTasks={upcomingTasks}
             builds={builds}
             settings={settings}
+            permissions={permissions}
           />
         )}
 
         {/* ════ SERVICES VIEW ════ */}
-        {activeView === 'services' && (
+        {activeView === 'services' && allowedViews.includes('services') && (
           <ServicesView
             telemetry={telemetry}
             actionPending={actionPending}
@@ -160,17 +199,28 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             importFileRef={importFileRef}
             handleImportFileChange={handleImportFileChange}
             setShowAddModal={setShowAddModal}
+            permissions={permissions}
             API={API}
           />
         )}
 
         {/* ════ SCHEDULED TASKS VIEW ════ */}
-        {activeView === 'batch' && (
-          <ScheduledTasks API={API} taskExecutions={taskExecutions} />
+        {activeView === 'batch' && allowedViews.includes('batch') && (
+          <ScheduledTasks API={API} taskExecutions={taskExecutions} permissions={permissions} />
+        )}
+
+        {/* ════ HARDWARE / I/O VIEW ════ */}
+        {activeView === 'hardware' && allowedViews.includes('hardware') && (
+          <HardwareIOView
+            capabilities={capabilities}
+            API={API}
+            hardwareLevel={getDomainLevel(permissions, 'hardware')}
+            onNavigateToForge={allowedViews.includes('tools') ? () => setActiveView('tools') : undefined}
+          />
         )}
 
         {/* ════ SETTINGS VIEW ════ */}
-        {activeView === 'settings' && (
+        {activeView === 'settings' && allowedViews.includes('settings') && (
           <SettingsView
             settings={settings}
             onUpdateSettings={onUpdateSettings}
@@ -185,12 +235,13 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             setPasswordSuccess={setPasswordSuccess}
             capabilities={capabilities}
             systemTelemetry={systemTelemetry}
+            permissions={permissions}
             API={API}
           />
         )}
 
         {/* ════ FFMPEG FORGE VIEW ════ */}
-        {activeView === 'tools' && (
+        {activeView === 'tools' && allowedViews.includes('tools') && (
           <ForgeView
             builds={builds}
             diskInfo={diskInfo}
@@ -223,6 +274,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             refreshBuilds={refreshBuilds}
             refreshDiskInfo={refreshDiskInfo}
             refreshDeps={fetchDeps}
+            permissions={permissions}
           />
         )}
       </main>
@@ -231,6 +283,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
       {showAddModal && creationStep === 'picker' && (
         <ServiceTypePickerModal
           API={API}
+          permissions={permissions}
           onClose={() => {
             setShowAddModal(false);
           }}
@@ -428,6 +481,9 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
                         watchdog_retries: config.watchdog_retries,
                         watchdog_min_speed: config.watchdog_min_speed,
                         watchdog_min_speed_duration: config.watchdog_min_speed_duration,
+                        watchdog_max_memory_mb: config.watchdog_max_memory_mb,
+                        watchdog_max_memory_duration: config.watchdog_max_memory_duration,
+                        signal_watchdog: config.signal_watchdog,
                         network_timeout: config.network_timeout,
                         debug_mode: config.debug_mode,
                         log_storage_id: config.log_storage_id,
@@ -605,6 +661,9 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
                         watchdog_retries: config.watchdog_retries,
                         watchdog_min_speed: config.watchdog_min_speed,
                         watchdog_min_speed_duration: config.watchdog_min_speed_duration,
+                        watchdog_max_memory_mb: config.watchdog_max_memory_mb,
+                        watchdog_max_memory_duration: config.watchdog_max_memory_duration,
+                        signal_watchdog: config.signal_watchdog,
                         network_timeout: config.network_timeout,
                         debug_mode: config.debug_mode,
                         log_storage_id: config.log_storage_id,
@@ -658,6 +717,9 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            settings={settings}
+            isCloudHubSession={isCloudHubSession}
+            permissions={permissions}
           />
         ) : selectedProcess.service_type === 'icecast_server' ? (
           <IcecastPreviewModal
@@ -672,6 +734,9 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            settings={settings}
+            isCloudHubSession={isCloudHubSession}
+            permissions={permissions}
           />
         ) : selectedProcess.service_type === 'kiosk_browser' ? (
           <KioskPreviewModal
@@ -686,6 +751,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            permissions={permissions}
           />
         ) : selectedProcess.service_type === 'desktop' ? (
           <DesktopPreviewModal
@@ -700,6 +766,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            permissions={permissions}
           />
         ) : selectedProcess.service_type === 'pipewire_hub' ? (
           <PipeWirePreviewModal
@@ -714,6 +781,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            permissions={permissions}
           />
         ) : (
           <FfmpegPreviewModal
@@ -728,6 +796,9 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStopService={handleStopService}
             onRestartService={handleRestartService}
             API={API}
+            settings={settings}
+            isCloudHubSession={isCloudHubSession}
+            permissions={permissions}
           />
         )
       )}

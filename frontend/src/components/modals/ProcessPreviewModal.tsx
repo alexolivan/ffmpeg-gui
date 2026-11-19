@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { hasVideo as hasVideoHelper } from '../cards/UnifiedServiceCard';
 import { EngineLogo } from '../common/EngineLogo';
 import { copyToClipboard } from '../../utils/clipboard';
+import { useTelemetry } from '../../context/TelemetryContext';
 
 interface ProcessPreviewModalProps {
   selectedProcess: any;
@@ -70,52 +71,49 @@ export const ProcessPreviewModal: React.FC<ProcessPreviewModalProps> = ({
   const showDups = progressData?.dup_frames !== undefined && progressData?.dup_frames !== null && progressData?.dup_frames !== '0' && progressData?.dup_frames !== 0;
   const showDrops = progressData?.drop_frames !== undefined && progressData?.drop_frames !== null && progressData?.drop_frames !== '0' && progressData?.drop_frames !== 0;
 
-  // Poll progress data for FFmpeg services
+  const { subscribe } = useTelemetry();
+
+  // Read progress data reactively from currentProcess updated by WebSocket (Zero HTTP polling)
   useEffect(() => {
     if (!isFfmpeg || !isRunning || currentProcess.debug_mode) {
       setProgressData(null);
       return;
     }
+    setProgressData({
+      fps: currentProcess.fps,
+      bitrate: currentProcess.bitrate,
+      speed: currentProcess.speed,
+      cpu: currentProcess.cpu,
+      ram: currentProcess.ram,
+    });
+  }, [
+    isFfmpeg,
+    isRunning,
+    currentProcess.debug_mode,
+    currentProcess.fps,
+    currentProcess.bitrate,
+    currentProcess.speed,
+    currentProcess.cpu,
+    currentProcess.ram
+  ]);
 
-    const fetchProgress = async () => {
-      try {
-        const res = await fetch(`${API}/api/processes/${currentProcess.id}/progress`);
-        if (res.ok) {
-          const data = await res.json();
-          setProgressData(data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch process progress telemetry', err);
-      }
-    };
-
-    fetchProgress();
-    const interval = setInterval(fetchProgress, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, isRunning, currentProcess.debug_mode, isFfmpeg, API]);
-
-  // Poll logs for non-FFmpeg daemon processes (or debug FFmpeg)
+  // Subscribe to logs via WebSocket on-demand (Zero HTTP polling)
   useEffect(() => {
-    if (isFfmpeg && !currentProcess.debug_mode) return;
+    if (isFfmpeg && !currentProcess.debug_mode) {
+      setDaemonLogs([]);
+      return;
+    }
 
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setDaemonLogs(data);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch daemon logs', err);
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
       }
-    };
+    });
 
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, isFfmpeg, currentProcess.debug_mode, API]);
+    return () => unsub();
+  }, [currentProcess.id, isFfmpeg, currentProcess.debug_mode, subscribe]);
 
   const activeLogs = !isFfmpeg
     ? (daemonLogs.length > 0 ? daemonLogs : externalLogs)

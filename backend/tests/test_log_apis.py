@@ -271,3 +271,36 @@ progress=continue
         res_alias = self.client.get(f"/api/processes/{proc_id}/logs")
         self.assertEqual(res_alias.status_code, 200)
         self.assertEqual(len(res_alias.json()), 3)
+
+    def test_get_sidecar_logs_reads_disk_without_datetime_crash(self):
+        from database.models import MediaProcess
+
+        proc = MediaProcess(
+            name="PipeWire Service Stopped",
+            type="service",
+            service_type="pipewire_hub",
+            config={"log_storage_id": None},
+            status="stopped"
+        )
+        self.db.add(proc)
+        self.db.commit()
+        proc_id = proc.id
+
+        from main import process_manager
+        process_manager.sidecar_log_buffers.pop(f"{proc_id}:ptp4l", None)
+
+        log_path = os.path.join(self.temp_dir, f"ptp4l_{proc_id}.log")
+        with open(log_path, "w") as f:
+            f.write("Line 1: ptp4l starting on enp6s0\nLine 2: error failed to bind ptp socket\n")
+
+        res = self.client.get(f"/api/services/{proc_id}/sidecar-logs/ptp4l")
+        self.assertEqual(res.status_code, 200)
+        logs = res.json()
+        self.assertIsInstance(logs, list)
+        self.assertEqual(len(logs), 2)
+        self.assertEqual(logs[0]["message"], "Line 1: ptp4l starting on enp6s0")
+        self.assertEqual(logs[0]["level"], "INFO")
+        self.assertTrue(logs[0]["timestamp"].endswith("Z"))
+        self.assertEqual(logs[1]["message"], "Line 2: error failed to bind ptp socket")
+        self.assertEqual(logs[1]["level"], "ERROR")
+

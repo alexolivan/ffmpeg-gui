@@ -9,7 +9,7 @@ This guide details the installation, dependency setup, and upgrade workflow for 
 - **Operating System**: Linux (Ubuntu 20.04+ or Debian 11+ recommended).
 - **Python**: Version 3.10 or higher (with `venv` support).
 - **Node.js**: Version 18 or higher (with `npm`).
-- **Compiler Tools & Libraries**: `gcc`, `make`, `pkg-config`, `yasm`/`nasm`, and development headers (`libx264-dev`, `libx265-dev`, `libssl-dev`, `libfdk-aac-dev`, `libmp3lame-dev`, `libvorbis-dev`, `libopus-dev`, `libasound2-dev`, `libpulse-dev`, `libxml2-dev`, `libxslt1-dev`) required to compile custom FFmpeg and Icecast2 binaries.
+- **Compiler Tools & Libraries**: `gcc`, `make`, `meson`, `ninja-build`, `pkg-config`, `yasm`/`nasm`, and development headers (`libx264-dev`, `libx265-dev`, `libssl-dev`, `libfdk-aac-dev`, `libmp3lame-dev`, `libvorbis-dev`, `libopus-dev`, `libasound2-dev`, `libpulse-dev`, `libdbus-1-dev`, `libudev-dev`, `libsndfile1-dev`, `libxml2-dev`, `libxslt1-dev`) required to compile custom FFmpeg, PipeWire, and Icecast2 binaries.
 - **Audio & System Utilities**: `alsa-utils` (provides `amixer`, required for soundcard mixer controls and AudioScience matrix routing), `libasound2-plugins` (installed automatically by `install.sh --system`), `apulse` (PulseAudio emulation wrapper for ALSA), `ethtool` (NIC hardware timestamping and link capabilities inspection), and `linuxptp` (provides `ptp4l` for PTPv2 IEEE 1588-2008 / AES67 network synchronization and master clock orchestration).
 - **ALSA Loopback Kernel Driver (`snd-aloop`)**: Required for capturing Virtual Desktop and Web Kiosk audio into FFmpeg pipelines without PulseAudio/PipeWire. Automatically loaded and persisted by `install.sh --system`.
 - **Optional System Packages**: Standard `icecast2` package (`sudo apt install icecast2`) can be installed directly from Debian/Ubuntu repositories if source compilation via Forge is not desired.
@@ -54,12 +54,15 @@ To allow the Python application to bind to port 80/443 and monitor Intel GPU met
    sudo setcap cap_net_bind_service=+ep $(readlink -f venv/bin/python3)
    sudo setcap cap_perfmon,cap_sys_admin=+ep $(which intel_gpu_top)
    ```
-2. The systemd service unit includes:
+2. The systemd service unit includes capabilities and realtime scheduling limits (used by PipeWire AoIP/AES67 hubs and PTP sidecars):
    ```ini
-   CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_PERFMON CAP_SYS_ADMIN
-   AmbientCapabilities=CAP_NET_BIND_SERVICE
+   CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK CAP_PERFMON CAP_SYS_ADMIN
+   AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK
+   LimitRTPRIO=95
+   LimitNICE=-19
+   LimitMEMLOCK=infinity
    ```
-3. If capabilities are modified or python packages are updated, capabilities can be verified and re-applied using:
+3. If capabilities are modified or python packages are updated, capabilities and PTP hardware clock device permissions (`/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules` for `/dev/ptp*`) can be verified and re-applied using:
    ```bash
    sudo bash scripts/setup-system-capabilities.sh
    ```
@@ -107,7 +110,7 @@ If running in user-space or configuring manually:
 ### Sound Card Slot Ordering & Intel VT-d (IOMMU) Advisor
 
 When multiple sound cards are present or when using AudioScience DSP adapters (`snd-asihpi`):
-1. **Sound Card Index Pinning**: ALSA loads sound drivers asynchronously by default, which can cause card numbers (`hw:0`, `hw:1`) to alternate across boots. The panel includes an integrated **ALSA Advisor** in *Settings > ALSA Audio* that automatically generates the recommended `/etc/modprobe.d/alsa-base.conf` configuration snippet specifying `options snd slots=...` to ensure deterministic card ordering.
+1. **Sound Card Index Pinning**: ALSA loads sound drivers asynchronously by default, which can cause card numbers (`hw:0`, `hw:1`) to alternate across boots. The panel includes an integrated **ALSA Advisor** in *Hardware & I/O > ALSA Audio* that automatically generates the recommended `/etc/modprobe.d/alsa-base.conf` configuration snippet specifying `options snd slots=...` to ensure deterministic card ordering.
 2. **Intel VT-d DMA Conflict Hazard**: On systems with Intel VT-d enabled in strict translation mode, the Linux IOMMU may block 32-bit DMA transfers to AudioScience DSP adapters (`DMAR: [DMA Read NO_PASID] ... PTE Read access is not set`), causing HPI timeouts (`HPI error 207 / 105`). If flagged by the panel advisor, add `intel_iommu=pt iommu=pt` to `GRUB_CMDLINE_LINUX_DEFAULT` in `/etc/default/grub` and run `sudo update-grub`.
 
 ---
@@ -145,7 +148,7 @@ To run the update:
 1. Verifies network connectivity with air-gap ping fallbacks to prevent update freezes.
 2. Updates the Python virtual environment (`venv`) and installs requirements.
 3. Checks package-lock hash caches to avoid unnecessary `npm install` runs.
-4. Builds production-grade minified assets using Vite.
+4. Builds minified frontend assets using Vite.
 5. Re-generates systemd configuration capabilities if missing.
 6. Gracefully restarts the `ffmpeg-gui` orchestrator process.
 
@@ -180,3 +183,13 @@ chmod +x uninstall.sh
 ./uninstall.sh
 ```
 *Note: This will stop any active systemd units and remove the local SQLite database. Ensure you have backed up any configurations via the Settings panel before running this.*
+
+---
+
+## 8. Prometheus & OpenMetrics Exporter
+
+`ffmpeg-gui` includes a pass-through OpenMetrics scraper endpoint served on the main application port:
+- **Endpoints**: `/api/metrics` and `/metrics`
+- **Security**: Disabled by default. Can be enabled in Settings (`Network -> Prometheus & OpenMetrics Exporter`) with Bearer token authentication and CIDR IP whitelisting.
+- **Storage Impact**: Zero disk writes. All metrics are collected dynamically from process execution state and volatile in-memory RRD buffers, making it suitable for SATADom or flash-memory installations.
+- **Templates**: Example `prometheus.yml` scrape config and ready-to-import Grafana dashboard JSON are located under [`packaging/prometheus/`](packaging/prometheus/).

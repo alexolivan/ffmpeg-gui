@@ -280,3 +280,25 @@ class TestStartupReattach(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(resolve_lease_display_name("peer:remote-node-1", services_lookup, tasks_lookup), "Peer: remote-node-1")
         self.assertEqual(resolve_lease_display_name("service:999", services_lookup, tasks_lookup), "Service #999")
 
+    @patch("psutil.pid_exists", return_value=True)
+    async def test_reattach_pipewire_hub_starts_aoip_discovery_and_ensures_sidecars(self, mock_pid_exists):
+        pw_proc = MediaProcess(
+            name="PipeWire Running Hub",
+            type="service",
+            service_type="pipewire_hub",
+            config={"pipewire_config": {"aes67_network": {"enabled": True}}},
+            status="running",
+            pid=77777
+        )
+        self.db.add(pw_proc)
+        self.db.commit()
+        pw_id = pw_proc.id
+
+        with patch.object(main.process_manager, "get_or_create_aoip_discovery_supervisor") as mock_aoip:
+            with patch.object(main.process_manager, "_ensure_pipewire_sidecars", new_callable=AsyncMock) as mock_sidecars:
+                main.process_manager.reattach_process(pw_id, 77777)
+                mock_aoip.assert_called_with(pw_id)
+                # Wait briefly for scheduled background task
+                await asyncio.sleep(0.05)
+                mock_sidecars.assert_called_with(pw_id)
+

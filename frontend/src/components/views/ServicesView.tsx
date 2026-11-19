@@ -11,6 +11,13 @@ import { DesktopServiceCard } from '../cards/DesktopServiceCard';
 import { KioskServiceCard } from '../cards/KioskServiceCard';
 import { PipeWireServiceCard } from '../cards/PipeWireServiceCard';
 import { hasVideo, type ServiceItem } from '../cards/UnifiedServiceCard';
+import {
+  canCreateService,
+  canCreateTask,
+  getServiceLevel,
+  hasMinLevel,
+  type EdgePermissionsSummary,
+} from '../../utils/permissions';
 
 export { hasVideo };
 
@@ -27,6 +34,7 @@ interface ServicesViewProps {
   importFileRef: React.RefObject<HTMLInputElement | null>;
   handleImportFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   setShowAddModal: (show: boolean) => void;
+  permissions?: EdgePermissionsSummary | null;
   API: string;
 }
 
@@ -51,13 +59,18 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   importFileRef,
   handleImportFileChange,
   setShowAddModal,
+  permissions,
   API
 }) => {
   const { t } = useTranslation();
 
-  const services = telemetry.filter(p => !p.type || p.type === 'service');
-  const activeServices = services.filter(p => isActiveService(p, actionPending));
-  const inactiveServices = services.filter(p => !isActiveService(p, actionPending));
+  const canCreateAnyService = canCreateService(permissions);
+  const canConvertTask = canCreateTask(permissions);
+  const visibleServices = telemetry.filter(
+    (p) => (!p.type || p.type === 'service') && hasMinLevel(getServiceLevel(permissions, p), 'monitor')
+  );
+  const activeServices = visibleServices.filter(p => isActiveService(p, actionPending));
+  const inactiveServices = visibleServices.filter(p => !isActiveService(p, actionPending));
 
   const handleExport = (proc: any) => {
     fetch(`${API}/processes/${proc.id}/export`)
@@ -82,6 +95,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   };
 
   const renderCard = (proc: any) => {
+    const svcLevel = getServiceLevel(permissions, proc);
     if (proc.service_type === 'mediamtx_hub') {
       return (
         <MediaMtxServiceCard
@@ -97,6 +111,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           onDeleteProcess={onDeleteProcess}
           onSelectedProcess={onSelectedProcess}
           onExportProcess={handleExport}
+          serviceLevel={svcLevel}
           API={API}
         />
       );
@@ -116,6 +131,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           onDeleteProcess={onDeleteProcess}
           onSelectedProcess={onSelectedProcess}
           onExportProcess={handleExport}
+          serviceLevel={svcLevel}
           API={API}
         />
       );
@@ -135,6 +151,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           onDeleteProcess={onDeleteProcess}
           onSelectedProcess={onSelectedProcess}
           onExportProcess={handleExport}
+          serviceLevel={svcLevel}
           API={API}
         />
       );
@@ -154,6 +171,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           onDeleteProcess={onDeleteProcess}
           onSelectedProcess={onSelectedProcess}
           onExportProcess={handleExport}
+          serviceLevel={svcLevel}
           API={API}
         />
       );
@@ -173,16 +191,23 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           onDeleteProcess={onDeleteProcess}
           onSelectedProcess={onSelectedProcess}
           onExportProcess={handleExport}
+          serviceLevel={svcLevel}
           API={API}
         />
       );
     }
     // Standard FFmpeg stream services render with FfmpegServiceCard / UnifiedServiceCard
+    const swCfg = proc.signal_watchdog || proc.config?.signal_watchdog;
+    const backupTarget =
+      swCfg?.reaction_mode === 'activate_backup' && swCfg?.backup_service_id
+        ? telemetry.find((p: any) => p.id === swCfg.backup_service_id)
+        : undefined;
     return (
       <FfmpegServiceCard
         key={proc.id}
         service={proc as ServiceItem}
         telemetryItem={proc}
+        backupServiceName={backupTarget?.name || swCfg?.backup_service_name}
         actionPending={actionPending[proc.id]}
         onStartService={onStartService}
         onStopService={onStopService}
@@ -192,7 +217,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
         onDeleteProcess={onDeleteProcess}
         onSelectedProcess={onSelectedProcess}
         onExportProcess={handleExport}
-        onCloneAsTask={handleCloneAsTask}
+        onCloneAsTask={canConvertTask ? handleCloneAsTask : undefined}
+        serviceLevel={svcLevel}
         API={API}
       />
     );
@@ -211,29 +237,31 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5 w-full sm:w-auto">
-          <input
-            type="file"
-            ref={importFileRef}
-            onChange={handleImportFileChange}
-            accept=".json"
-            className="hidden"
-          />
-          <button
-            onClick={() => importFileRef.current?.click()}
-            className="pill-button bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 text-xs py-2 px-3.5 flex items-center gap-1.5 flex-1 sm:flex-initial justify-center"
-          >
-            <ImportIcon size={14} />
-            {t('common.import', 'Import')}
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="pill-button bg-brand-lime hover:bg-brand-lime/90 text-black font-bold text-xs py-2 px-4 flex items-center gap-1.5 flex-1 sm:flex-initial justify-center shadow-lg shadow-brand-lime/10"
-          >
-            <PlusIcon size={14} />
-            {t('services.createService', 'Create Service')}
-          </button>
-        </div>
+        {canCreateAnyService && (
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <input
+              type="file"
+              ref={importFileRef}
+              onChange={handleImportFileChange}
+              accept=".json"
+              className="hidden"
+            />
+            <button
+              onClick={() => importFileRef.current?.click()}
+              className="pill-button bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 text-xs py-2 px-3.5 flex items-center gap-1.5 flex-1 sm:flex-initial justify-center"
+            >
+              <ImportIcon size={14} />
+              {t('common.import', 'Import')}
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="pill-button bg-brand-lime hover:bg-brand-lime/90 text-black font-bold text-xs py-2 px-4 flex items-center gap-1.5 flex-1 sm:flex-initial justify-center shadow-lg shadow-brand-lime/10"
+            >
+              <PlusIcon size={14} />
+              {t('services.createService', 'Create Service')}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="space-y-5">

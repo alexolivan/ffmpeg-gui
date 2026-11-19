@@ -19,6 +19,7 @@ class ProcessManager:
     def __init__(self, db_session_factory):
         self.processes: Dict[int, asyncio.subprocess.Process] = {}
         self.log_buffers: Dict[int, collections.deque] = {}
+        self.sidecar_log_buffers: Dict[str, collections.deque] = {}
         self.restart_counts: Dict[int, int] = {}
         self.pending_restarts: Dict[int, asyncio.Task] = {}
         self.watchdog_tasks: Dict[int, asyncio.Task] = {}
@@ -28,6 +29,8 @@ class ProcessManager:
         self.srt_has_had_activity: Dict[int, bool] = {}
         self.watchdog_stalled_since: Dict[int, Optional[datetime]] = {}
         self.watchdog_low_speed_since: Dict[int, Optional[datetime]] = {}
+        self.watchdog_high_memory_since: Dict[int, Optional[datetime]] = {}
+        self.signal_watchdog_states: Dict[int, Dict[str, Any]] = {}
         self.db_session_factory = db_session_factory
         if db_session_factory:
             self.dependency_manager.db_session_factory = db_session_factory
@@ -40,6 +43,11 @@ class ProcessManager:
         self.auxiliary_pids: Dict[int, List[int]] = {}
         self.pipewire_supervisors: Dict[int, Any] = {}
         self.aoip_discovery_supervisors: Dict[int, Any] = {}
+        self.mediamtx_stats_cache: Dict[int, Dict[str, Any]] = {}
+
+    def get_mediamtx_telemetry_cached(self, process_id: int) -> Dict[str, Any]:
+        """Returns the latest volatile MediaMTX path stats cached during monitor loop."""
+        return self.mediamtx_stats_cache.get(process_id, {})
 
     def _get_spawn_lock(self) -> asyncio.Lock:
         if self._spawn_lock is None:
@@ -620,7 +628,23 @@ class ProcessManager:
             spawn_lock = self._get_spawn_lock()
             async with spawn_lock:
                 if svc_type in ("mediamtx_hub", "icecast_server", "pipewire_hub"):
+                    prestarted_ptp_iface: Optional[str] = None
                     if svc_type == "pipewire_hub":
+                        pw_pre_cfg = cfg.get("pipewire_config") or cfg
+                        aes_pre_net = pw_pre_cfg.get("aes67_network", {})
+                        pre_ptp_cfg = aes_pre_net.get("ptp", {})
+                        if aes_pre_net.get("enabled") and aes_pre_net.get("interface") and pre_ptp_cfg.get("enabled"):
+                            prestarted_ptp_iface = aes_pre_net["interface"]
+                            await self._start_ptp4l_sidecar(
+                                process_id, prestarted_ptp_iface, pre_ptp_cfg, logs_dir, is_restart=is_restart
+                            )
+                            from core.pipewire_config import PipeWireConfigGenerator
+                            _, uds_ro_path = PipeWireConfigGenerator.get_ptp_uds_paths(process_id)
+                            for _ in range(10):
+                                if os.path.exists(uds_ro_path):
+                                    break
+                                await asyncio.sleep(0.05)
+
                         if pw_runtime_dir:
                             sub_env["PIPEWIRE_RUNTIME_DIR"] = pw_runtime_dir
                             sub_env["XDG_RUNTIME_DIR"] = pw_runtime_dir
@@ -628,7 +652,10 @@ class ProcessManager:
                         if pw_config_path:
                             sub_env["PIPEWIRE_CONFIG_NAME"] = pw_config_path
                         pw_debug_enabled = bool(debug_mode)
-                        sub_env["PIPEWIRE_DEBUG"] = "2" if pw_debug_enabled else "1"
+                        sub_env["PIPEWIRE_DEBUG"] = "3,mod.rtp-sink:1,mod.rtp-source:1" if pw_debug_enabled else "2,mod.rtp-sink:1,mod.rtp-source:1"
+                        sub_env["PIPEWIRE_LOG_SYSTEMD"] = "false"
+                        sub_env["PIPEWIRE_LOG"] = log_path
+                        sub_env["PIPEWIRE_LOG_LINE"] = "false"
                         if pw_root and os.path.isdir(pw_root):
                             lib_dirs = [
                                 os.path.join(pw_root, "lib"),
@@ -666,6 +693,17 @@ class ProcessManager:
                     self.processes[process_id] = proc
                     asyncio.create_task(self._file_log_tailer(process_id, log_path, proc=proc))
                     if svc_type == "pipewire_hub":
+                        # Fast startup check: verify PipeWire didn't immediately crash due to socket/lock conflict
+                        await asyncio.sleep(0.15)
+                        if proc.returncode is not None:
+                            self.logger.error(
+                                f"[PipeWire Hub #{process_id}] PipeWire process died immediately on startup (code: {proc.returncode}). Aborting companion daemon launch."
+                            )
+                            if prestarted_ptp_iface:
+                                self._reap_orphan_ptp4l_for_service(process_id, prestarted_ptp_iface)
+                                self.auxiliary_pids.pop(process_id, None)
+                            return
+
                         from core.pipewire_matrix_supervisor import PipeWireMatrixSupervisor
                         supervisor = PipeWireMatrixSupervisor(process_id, self)
                         self.pipewire_supervisors[process_id] = supervisor
@@ -681,11 +719,11 @@ class ProcessManager:
                             self.aoip_discovery_supervisors[process_id] = aoip_sup
                             await aoip_sup.start()
 
-                        # Managed PTP Master Clock sidecar (ptp4l)
-                        if aes_net.get("enabled") and aes_net.get("interface"):
+                        # Fallback: launch ptp4l if not already started pre-spawn
+                        if aes_net.get("enabled") and aes_net.get("interface") and not prestarted_ptp_iface:
                             ptp_cfg = aes_net.get("ptp", {})
                             if ptp_cfg.get("enabled"):
-                                await self._start_ptp4l_sidecar(process_id, aes_net["interface"], ptp_cfg, logs_dir)
+                                await self._start_ptp4l_sidecar(process_id, aes_net["interface"], ptp_cfg, logs_dir, is_restart=is_restart)
                 elif svc_type == "desktop":
                     # Clean up stale X11 lock file and socket if previous Xvfb crashed
                     x_lock_path = f"/tmp/.X{display_num}-lock"
@@ -1004,6 +1042,8 @@ class ProcessManager:
     async def stop_process(self, process_id: int, graceful: bool = True, is_restart: bool = False):
         self.stopping_processes.add(process_id)
         try:
+            await self._release_failover_lease_if_active(process_id)
+            self.signal_watchdog_states.pop(process_id, None)
             watchdog_task = self.watchdog_tasks.pop(process_id, None)
             if watchdog_task:
                 try:
@@ -1119,6 +1159,7 @@ class ProcessManager:
                 
                 if process_id in self.processes:
                     del self.processes[process_id]
+                self.mediamtx_stats_cache.pop(process_id, None)
 
             # Terminate any auxiliary child processes (e.g. x11vnc for desktop services)
             aux_procs = self.auxiliary_processes.pop(process_id, [])
@@ -1277,6 +1318,8 @@ class ProcessManager:
                         if nic:
                             from core.resource_lock_manager import resource_manager
                             resource_manager.release_resource("network_interface", nic, owner_type="service", owner_id=process_id)
+                        self._reap_orphan_pipewire_for_service(process_id)
+                        self._reap_orphan_ptp4l_for_service(process_id)
 
                     if getattr(media_proc, "service_type", None) == "desktop":
                         d_cfg = (media_proc.config or {}).get("desktop_config", media_proc.config or {})
@@ -2198,6 +2241,61 @@ class ProcessManager:
 
         return [icecast_bin, "-c", ephem_file], ephem_file
 
+    def _reap_orphan_pipewire_for_service(self, service_id: int):
+        """
+        Scans and terminates any rogue or orphan pipewire process referencing
+        this service's configuration file (/dev/shm/pipewire_{service_id}.conf or runtime dir),
+        and safely cleans up stale communication lockfiles and sockets.
+        """
+        conf_token = f"pipewire_{service_id}.conf"
+        rdir_token = f"pipewire-{service_id}"
+        runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{service_id}"
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    name = (proc.info.get('name') or '').lower()
+                    cmdline = proc.info.get('cmdline') or []
+                    cmd_str = " ".join(cmdline).lower()
+                    if "pipewire" in name or "pipewire" in cmd_str:
+                        matches = (conf_token in cmd_str) or (rdir_token in cmd_str)
+                        if not matches:
+                            try:
+                                env = proc.environ()
+                                if env.get("FFMPEG_GUI_PROCESS_ID") == str(service_id):
+                                    matches = True
+                                elif rdir_token in str(env.get("PIPEWIRE_RUNTIME_DIR", "")):
+                                    matches = True
+                            except Exception:
+                                pass
+                        if matches:
+                            pid = proc.info['pid']
+                            self.logger.warning(
+                                f"[PipeWire Hub #{service_id}] Killing orphan/rogue pipewire process (PID: {pid})"
+                            )
+                            try:
+                                proc.terminate()
+                                try:
+                                    proc.wait(timeout=1.0)
+                                except (psutil.TimeoutExpired, TimeoutError):
+                                    proc.kill()
+                            except (psutil.NoSuchProcess, ProcessLookupError):
+                                pass
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except Exception as e:
+            self.logger.debug(f"[PipeWire Hub #{service_id}] Error scanning orphan pipewire: {e}")
+
+        # Stale lockfile & socket cleanup:
+        # Remove stale pipewire-0.lock and socket files so the new daemon can bind cleanly without EAGAIN
+        if os.path.exists(runtime_dir):
+            for stale_file in ["pipewire-0.lock", "pipewire-0", "pipewire-0-manager", "pulse.sock"]:
+                sf_path = os.path.join(runtime_dir, stale_file)
+                if os.path.exists(sf_path):
+                    try:
+                        os.remove(sf_path)
+                    except Exception:
+                        pass
+
     def _build_pipewire_config_and_cmd(self, media_proc, pipewire_bin: str, session) -> Tuple[List[str], str, str]:
         """
         Builds PipeWire isolated runtime environment, generates config in ephemeral RAM (/dev/shm),
@@ -2207,6 +2305,10 @@ class ProcessManager:
         from core.resource_lock_manager import resource_manager
 
         process_id = media_proc.id
+        # Pre-flight cleanup: terminate any lingering orphan pipewire and ptp4l processes for this service
+        self._reap_orphan_pipewire_for_service(process_id)
+        self._reap_orphan_ptp4l_for_service(process_id)
+
         runtime_dir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
         os.makedirs(runtime_dir, mode=0o700, exist_ok=True)
         try:
@@ -2221,9 +2323,8 @@ class ProcessManager:
             config_path = os.path.join(runtime_dir, "pipewire.conf")
 
         pw_cfg = (media_proc.config or {}).get("pipewire_config") or media_proc.config or {}
-        PipeWireConfigGenerator.write_config_file(process_id, pw_cfg, config_path, runtime_dir)
-
         aes67_net = pw_cfg.get("aes67_network", {})
+        ptp_support = "software"
         if aes67_net.get("enabled") and aes67_net.get("interface"):
             iface = aes67_net["interface"]
             ok_nic, err_nic, _ = resource_manager.claim_resource(
@@ -2235,17 +2336,67 @@ class ProcessManager:
             )
             if not ok_nic:
                 raise RuntimeError(err_nic or f"Network interface '{iface}' is already in use.")
+            ptp_support = self._resolve_pipewire_nic_ptp_support(process_id, iface)
+            if ptp_support == "none":
+                ptp_support = "software"
+
+        PipeWireConfigGenerator.write_config_file(
+            process_id, pw_cfg, config_path, runtime_dir, ptp_support=ptp_support
+        )
 
         cmd = [pipewire_bin, "-c", config_path]
         return cmd, config_path, runtime_dir
 
-    async def _start_ptp4l_sidecar(self, process_id: int, iface: str, ptp_cfg: Dict[str, Any], logs_dir: str):
+    def _resolve_pipewire_nic_ptp_support(self, process_id: int, iface: str) -> str:
+        """Audit NIC timestamping capability ('hardware', 'software', or 'none')."""
+        from core.network_inspector import audit_pipewire_network_capabilities
+        try:
+            audit_info = audit_pipewire_network_capabilities(probe_network_ptp=False)
+            matched = next((i for i in audit_info.get("interfaces", []) if i.get("name") == iface), None)
+            return matched.get("ptp_support", "software") if matched else "software"
+        except Exception as e:
+            self.logger.warning(f"[PipeWire Hub #{process_id}] Failed to audit NIC for PTP: {e}. Defaulting to software.")
+            return "software"
+
+    def _reap_orphan_ptp4l_for_service(self, service_id: int, iface: Optional[str] = None):
+        """
+        Scans and terminates any rogue or orphan ptp4l or phc2sys processes referencing
+        this service's ephemeral configuration file (/dev/shm/ptp4l_{service_id}.conf or /tmp/ptp4l_{service_id}.conf)
+        or network interface.
+        """
+        conf_token = f"ptp4l_{service_id}.conf"
+        try:
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    cmdline = proc.info.get('cmdline') or []
+                    cmd_str = " ".join(cmdline)
+                    if "ptp4l" in cmd_str and conf_token in cmd_str:
+                        self.logger.warning(
+                            f"[PipeWire Hub #{service_id}] Killing orphan/rogue ptp4l process (PID: {proc.info['pid']})"
+                        )
+                        proc.kill()
+                    elif iface and "phc2sys" in cmd_str and f"-s {iface}" in cmd_str:
+                        self.logger.warning(
+                            f"[PipeWire Hub #{service_id}] Killing orphan/rogue phc2sys process for {iface} (PID: {proc.info['pid']})"
+                        )
+                        proc.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except Exception as e:
+            self.logger.debug(f"[PipeWire Hub #{service_id}] Error scanning orphan ptp4l/phc2sys: {e}")
+
+    async def _start_ptp4l_sidecar(self, process_id: int, iface: str, ptp_cfg: Dict[str, Any], logs_dir: str, is_restart: bool = False):
         """
         Launches managed ptp4l master clock daemon as an auxiliary process tied to PipeWire Hub service.
         Generates /dev/shm/ptp4l_{process_id}.conf in ephemeral RAM and applies proper timestamping flags.
+        In Dante profile with hardware PTP timestamping (and not forcing local master), also launches
+        phc2sys to synchronize CLOCK_REALTIME from the hardware PTP interface (PHC).
         """
-        from core.network_inspector import find_system_binary, audit_pipewire_network_capabilities
+        from core.network_inspector import find_system_binary
         from core.pipewire_config import PipeWireConfigGenerator
+
+        # Pre-flight cleanup: terminate any lingering orphan ptp4l or phc2sys process for this service
+        self._reap_orphan_ptp4l_for_service(process_id, iface)
 
         ptp4l_bin = find_system_binary("ptp4l")
         if not ptp4l_bin:
@@ -2255,14 +2406,7 @@ class ProcessManager:
             )
             return
 
-        # Audit NIC capability for this specific interface
-        try:
-            audit_info = audit_pipewire_network_capabilities(probe_network_ptp=False)
-            matched = next((i for i in audit_info.get("interfaces", []) if i.get("name") == iface), None)
-            ptp_support = matched.get("ptp_support", "software") if matched else "software"
-        except Exception as e:
-            self.logger.warning(f"[PipeWire Hub #{process_id}] Failed to audit NIC for PTP: {e}. Defaulting to software.")
-            ptp_support = "software"
+        ptp_support = self._resolve_pipewire_nic_ptp_support(process_id, iface)
 
         if ptp_support == "none":
             self.logger.warning(
@@ -2292,6 +2436,20 @@ class ProcessManager:
         )
         try:
             ptp_log_path = os.path.join(logs_dir, f"ptp4l_{process_id}.log")
+            from datetime import timezone
+            now_iso = datetime.now(timezone.utc).isoformat()
+            if not now_iso.endswith("Z") and "+" not in now_iso:
+                now_iso += "Z"
+
+            if not is_restart:
+                ptp_header = f"--- PTP4L LAUNCH AT {now_iso} ---\nCOMMAND: {' '.join(ptp_cmd)}\n"
+                with open(ptp_log_path, "wb") as f:
+                    f.write(ptp_header.encode("utf-8"))
+            else:
+                ptp_header = f"\n--- PTP4L RESTART AT {now_iso} ---\nCOMMAND: {' '.join(ptp_cmd)}\n"
+                with open(ptp_log_path, "ab") as f:
+                    f.write(ptp_header.encode("utf-8"))
+
             ptp_log_file = open(ptp_log_path, "ab", buffering=0)
             ptp_proc = await asyncio.create_subprocess_exec(
                 *ptp_cmd,
@@ -2305,8 +2463,110 @@ class ProcessManager:
                 pass
 
             self.auxiliary_processes.setdefault(process_id, []).append(ptp_proc)
+            if process_id not in self.auxiliary_pids:
+                self.auxiliary_pids[process_id] = []
+            if ptp_proc.pid and ptp_proc.pid not in self.auxiliary_pids[process_id]:
+                self.auxiliary_pids[process_id].append(ptp_proc.pid)
+
+            ptp_key = f"{process_id}:ptp4l"
+            self.sidecar_log_buffers[ptp_key] = collections.deque(maxlen=100)
+            asyncio.create_task(
+                self._file_log_tailer(process_id, ptp_log_path, proc=ptp_proc, sidecar_name="ptp4l")
+            )
         except Exception as e:
             self.logger.error(f"[PipeWire Hub #{process_id}] Failed to launch ptp4l sidecar: {e}")
+
+        # Note: CLOCK_REALTIME protection
+        # We deliberately do NOT spawn phc2sys to synchronize CLOCK_REALTIME from NIC PHC or Dante PTP,
+        # preserving the Linux host system clock (NTP / systemd-timesyncd) and preventing timescale
+        # collisions with arbitrary hardware PTP epochs (e.g. 1970 ARB). When hardware timestamping
+        # is available, ptp4l directly disciplines the NIC PHC (/dev/ptpX).
+
+    def _get_pipewire_sidecar_status(self, process_id: int) -> Dict[str, bool]:
+        """Returns live status of auxiliary ptp4l and phc2sys sidecars for a PipeWire Hub."""
+        ptp4l_active = False
+        phc2sys_active = False
+        pids = list(self.auxiliary_pids.get(process_id, []))
+        for aux in self.auxiliary_processes.get(process_id, []):
+            if aux and aux.pid and aux.pid not in pids:
+                pids.append(aux.pid)
+
+        ptp_token = f"ptp4l_{process_id}.conf"
+        for pid in pids:
+            try:
+                if psutil.pid_exists(pid):
+                    p = psutil.Process(pid)
+                    cmdline = " ".join(p.cmdline() or [])
+                    if "ptp4l" in cmdline and ptp_token in cmdline:
+                        ptp4l_active = True
+                    elif "phc2sys" in cmdline:
+                        phc2sys_active = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return {"ptp4l_active": ptp4l_active, "phc2sys_active": phc2sys_active}
+
+    async def _ensure_pipewire_sidecars(self, process_id: int):
+        """
+        Ensures that ptp4l (and phc2sys if configured) sidecars are active and attached for
+        a running PipeWire Hub service without killing healthy running processes.
+        """
+        if not self.db_session_factory:
+            return
+
+        with self.db_session_factory() as session:
+            from database.models import Service
+            media_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+            if not media_proc or getattr(media_proc, "service_type", None) != "pipewire_hub":
+                return
+            cfg = media_proc.config or {}
+            pw_cfg = cfg.get("pipewire_config", cfg)
+            aes_net = pw_cfg.get("aes67_network", {})
+            if not aes_net.get("enabled"):
+                return
+
+            iface = aes_net.get("interface")
+            ptp_cfg = aes_net.get("ptp", {})
+            if not ptp_cfg.get("enabled"):
+                return
+            log_storage_id = cfg.get("log_storage_id")
+            logs_dir = self.get_process_log_storage_path(process_id=process_id, log_storage_id=log_storage_id, session=session)
+
+        # Look for running auxiliary PIDs in OS
+        found_pids = self.find_auxiliary_pids(process_id, svc_type="pipewire_hub")
+        existing_pids = self.auxiliary_pids.setdefault(process_id, [])
+
+        ptp_alive = False
+        phc_alive = False
+        ptp_token = f"ptp4l_{process_id}.conf"
+
+        for apid in found_pids:
+            if apid not in existing_pids:
+                existing_pids.append(apid)
+            try:
+                if psutil.pid_exists(apid):
+                    p = psutil.Process(apid)
+                    cmdline = " ".join(p.cmdline() or [])
+                    if "ptp4l" in cmdline and ptp_token in cmdline:
+                        ptp_alive = True
+                        ptp_key = f"{process_id}:ptp4l"
+                        if ptp_key not in self.sidecar_log_buffers:
+                            self.sidecar_log_buffers[ptp_key] = collections.deque(maxlen=100)
+                            ptp_log = os.path.join(logs_dir, f"ptp4l_{process_id}.log")
+                            asyncio.create_task(self._file_log_tailer(process_id, ptp_log, pid=apid, sidecar_name="ptp4l"))
+                    elif "phc2sys" in cmdline and (not iface or f"-s {iface}" in cmdline):
+                        phc_alive = True
+                        phc_key = f"{process_id}:phc2sys"
+                        if phc_key not in self.sidecar_log_buffers:
+                            self.sidecar_log_buffers[phc_key] = collections.deque(maxlen=100)
+                            phc_log = os.path.join(logs_dir, f"phc2sys_{process_id}.log")
+                            asyncio.create_task(self._file_log_tailer(process_id, phc_log, pid=apid, sidecar_name="phc2sys"))
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+
+        # If ptp4l is not alive but enabled in configuration, launch it
+        if not ptp_alive and iface:
+            self.logger.info(f"[PipeWire Hub #{process_id}] ptp4l sidecar not running. Spawning managed sidecar...")
+            await self._start_ptp4l_sidecar(process_id, iface, ptp_cfg, logs_dir, is_restart=True)
 
     def _get_pipewire_tool_binary(self, hub_service_id: int, tool_name: str = "pw-link") -> Tuple[Optional[str], Optional[str]]:
         """Resolves binary path and install_dir for PipeWire CLI tools (pw-link, pw-dump, pw-cli)."""
@@ -2350,6 +2610,7 @@ class ProcessManager:
                 "ports": [],
                 "links": [],
                 "streams": [],
+                "sidecars": self._get_pipewire_sidecar_status(process_id),
                 "raw_summary": empty_summary,
                 "error": "Service is not running"
             }
@@ -2362,6 +2623,7 @@ class ProcessManager:
                 "ports": [],
                 "links": [],
                 "streams": [],
+                "sidecars": self._get_pipewire_sidecar_status(process_id),
                 "raw_summary": empty_summary,
                 "error": "pw-dump binary not found"
             }
@@ -2551,6 +2813,8 @@ class ProcessManager:
             aoip_sup = self.get_or_create_aoip_discovery_supervisor(process_id)
             aoip_data = aoip_sup.get_discovery_status() if aoip_sup else None
 
+            sidecar_status = self._get_pipewire_sidecar_status(process_id)
+
             return {
                 "active": True,
                 "nodes": nodes,
@@ -2559,6 +2823,7 @@ class ProcessManager:
                 "streams": nodes,
                 "matrix": matrix_data,
                 "aoip_discovery": aoip_data,
+                "sidecars": sidecar_status,
                 "raw_summary": {
                     "nodes_count": len(nodes),
                     "ports_count": len(ports),
@@ -3273,11 +3538,45 @@ class ProcessManager:
 
     def find_auxiliary_pids(self, process_id: int, svc_type: str = "desktop") -> List[int]:
         """
-        Discovers active auxiliary OS processes associated with this service ID (e.g. x11vnc, browser).
-        Only applicable to multi-process services (e.g. desktop).
+        Discovers active auxiliary OS processes associated with this service ID (e.g. x11vnc, browser for desktop,
+        or ptp4l, phc2sys for pipewire_hub).
         """
-        if svc_type != "desktop":
+        if svc_type not in ("desktop", "pipewire_hub"):
             return []
+
+        if svc_type == "pipewire_hub":
+            aux_pids = []
+            ptp_token = f"ptp4l_{process_id}.conf"
+            # Look up interface for phc2sys matching if applicable
+            target_iface = None
+            if self.db_session_factory:
+                try:
+                    with self.db_session_factory() as session:
+                        from database.models import Service
+                        s_proc = session.get(Service, process_id) if hasattr(session, "get") else session.query(Service).get(process_id)
+                        if s_proc:
+                            cfg = s_proc.config or {}
+                            pw_cfg = cfg.get("pipewire_config", cfg)
+                            aes_net = pw_cfg.get("aes67_network", {})
+                            if aes_net.get("enabled"):
+                                target_iface = aes_net.get("interface")
+                except Exception:
+                    pass
+
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    pid = proc.info['pid']
+                    cmdline = proc.info.get('cmdline') or []
+                    cmd_str = " ".join(cmdline)
+                    if "ptp4l" in cmd_str and ptp_token in cmd_str:
+                        if pid not in aux_pids:
+                            aux_pids.append(pid)
+                    elif target_iface and "phc2sys" in cmd_str and f"-s {target_iface}" in cmd_str:
+                        if pid not in aux_pids:
+                            aux_pids.append(pid)
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    continue
+            return aux_pids
 
         with self.db_session_factory() as session:
             from database.models import Service
@@ -3422,6 +3721,188 @@ class ProcessManager:
                 except Exception:
                     pass
 
+    def _get_or_init_signal_state(self, process_id: int) -> Dict[str, Any]:
+        if process_id not in self.signal_watchdog_states:
+            self.signal_watchdog_states[process_id] = {
+                "state": "normal",
+                "silence": False,
+                "black": False,
+                "freeze": False,
+                "black_since": None,
+                "recovering_since": None,
+                "alarm_since": None,
+                "tripped_sensors": [],
+                "active_backup_id": None,
+            }
+        return self.signal_watchdog_states[process_id]
+
+    def get_signal_watchdog_state(self, process_id: int) -> Dict[str, Any]:
+        st = self.signal_watchdog_states.get(process_id)
+        if not st:
+            return {
+                "state": "normal",
+                "silence": False,
+                "black": False,
+                "freeze": False,
+                "black_since": None,
+                "recovering_since": None,
+                "alarm_since": None,
+                "tripped_sensors": [],
+                "active_backup_id": None,
+            }
+        return dict(st)
+
+    async def _release_failover_lease_if_active(self, process_id: int):
+        st = self.signal_watchdog_states.get(process_id)
+        if not st:
+            return
+        active_backup_id = st.get("active_backup_id")
+        if active_backup_id is not None:
+            st["active_backup_id"] = None
+            try:
+                await self.release_lease(
+                    int(active_backup_id),
+                    consumer_type="failover",
+                    consumer_id=process_id,
+                    allow_auto_stop=True,
+                    lease_holder=f"failover:{process_id}",
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to release failover lease for {process_id} -> {active_backup_id}: {e}")
+
+    async def _evaluate_signal_watchdog(
+        self, process_id: int, media_proc, proc, pid, start_time: datetime, session
+    ):
+        cfg = getattr(media_proc, "config", None) or {}
+        sw = cfg.get("signal_watchdog") or {}
+        if not isinstance(sw, dict):
+            return
+
+        input_cfg = getattr(media_proc, "input_config", None) or {}
+        codec_cfg = getattr(media_proc, "codec_config", None) or {}
+        has_video = input_cfg.get("has_video", True) and codec_cfg.get("vcodec") != "copy"
+        has_audio = input_cfg.get("has_audio", True) and codec_cfg.get("acodec") != "copy"
+
+        silence_active = bool(sw.get("silence_enabled")) and has_audio
+        black_active = bool(sw.get("black_enabled")) and has_video
+        freeze_active = bool(sw.get("freeze_enabled")) and has_video
+
+        if not (silence_active or black_active or freeze_active):
+            return
+
+        now = datetime.utcnow()
+        if start_time and (now - start_time).total_seconds() < 15:
+            return
+
+        st = self._get_or_init_signal_state(process_id)
+        if st.get("black_since") is not None:
+            black_dur = float(sw.get("black_duration", 5) or 5)
+            st["black"] = (now - st["black_since"]).total_seconds() >= black_dur
+        else:
+            st["black"] = False
+
+        tripped = []
+        if silence_active and st.get("silence"):
+            tripped.append("silence")
+        if black_active and st.get("black"):
+            tripped.append("black")
+        if freeze_active and st.get("freeze"):
+            tripped.append("freeze")
+        st["tripped_sensors"] = tripped
+
+        enabled_count = int(silence_active) + int(black_active) + int(freeze_active)
+        logic = (sw.get("condition_logic") or "or").lower()
+        is_anomaly = (len(tripped) == enabled_count) if logic == "and" else (len(tripped) > 0)
+
+        prev_state = st["state"]
+        reaction_mode = sw.get("reaction_mode") or "alert_only"
+        backup_id = sw.get("backup_service_id")
+        backup_name = None
+        if backup_id:
+            try:
+                from database.models import Service
+                b_svc = session.query(Service).get(int(backup_id))
+                if b_svc:
+                    backup_name = b_svc.name
+            except Exception:
+                pass
+
+        from core.notification_manager import NotificationManager
+        from database.models import ServiceLog
+
+        if is_anomaly:
+            st["recovering_since"] = None
+            if prev_state != "alarm":
+                st["state"] = "alarm"
+                st["alarm_since"] = now
+                try:
+                    session.add(ServiceLog(
+                        service_id=process_id,
+                        level="ERROR",
+                        message=f"Signal Watchdog ALARM ({', '.join(tripped)}). Reaction: {reaction_mode}",
+                    ))
+                    session.commit()
+                except Exception:
+                    pass
+
+                NotificationManager().notify_signal_alarm(
+                    process_id, media_proc.name, tripped, reaction_mode, backup_name
+                )
+
+                if reaction_mode == "restart_self":
+                    self.logger.warning(f"Signal Watchdog triggering self-restart for service {process_id}")
+                    if hasattr(self, "restart_process"):
+                        asyncio.create_task(self.restart_process(process_id))
+                    elif proc is not None:
+                        try:
+                            proc.terminate()
+                        except Exception:
+                            pass
+                elif reaction_mode == "activate_backup" and backup_id and int(backup_id) != int(process_id):
+                    is_on_failover_lease = False
+                    with self.dependency_manager.state_lock:
+                        leases = self.dependency_manager.active_leases.get(process_id, set())
+                        is_pinned = process_id in self.dependency_manager.pinned_services
+                        if any(str(l).startswith("failover:") for l in leases) and not is_pinned:
+                            is_on_failover_lease = True
+                    if is_on_failover_lease:
+                        self.logger.warning(
+                            f"Signal Watchdog 1-hop anti-cascade: suppressing backup {backup_id} for {process_id}"
+                        )
+                    else:
+                        await self.acquire_lease(
+                            int(backup_id),
+                            consumer_type="failover",
+                            consumer_id=process_id,
+                            allow_auto_start=True,
+                            lease_holder=f"failover:{process_id}",
+                        )
+                        st["active_backup_id"] = int(backup_id)
+        else:
+            if prev_state == "alarm":
+                st["state"] = "recovering"
+                st["recovering_since"] = now
+            elif prev_state == "recovering":
+                rec_delay = float(sw.get("recovery_delay", 15) or 0)
+                rec_since = st.get("recovering_since") or now
+                if (now - rec_since).total_seconds() >= rec_delay:
+                    st["state"] = "normal"
+                    st["recovering_since"] = None
+                    st["alarm_since"] = None
+                    await self._release_failover_lease_if_active(process_id)
+                    try:
+                        session.add(ServiceLog(
+                            service_id=process_id,
+                            level="INFO",
+                            message=f"Signal Watchdog RECOVERED for service {media_proc.name}",
+                        ))
+                        session.commit()
+                    except Exception:
+                        pass
+                    NotificationManager().notify_signal_recovery(
+                        process_id, media_proc.name, reaction_mode, backup_name
+                    )
+
     def _handle_log_msg(self, process_id: int, msg: str, status_re):
         lower_msg = msg.lower()
         if any(kw in lower_msg for kw in ["error", "failed", "invalid", "could not", "cannot"]):
@@ -3450,8 +3931,46 @@ class ProcessManager:
                         media_proc.bitrate = bitrate
                         media_proc.speed = speed
                         session.commit()
-        
+
+        # In-band signal watchdog stderr parsing
+        if "silence_start:" in msg:
+            self._get_or_init_signal_state(process_id)["silence"] = True
+        elif "silence_end:" in msg:
+            self._get_or_init_signal_state(process_id)["silence"] = False
+        elif "lavfi.freezedetect.freeze_start:" in msg:
+            self._get_or_init_signal_state(process_id)["freeze"] = True
+        elif "lavfi.freezedetect.freeze_end:" in msg:
+            self._get_or_init_signal_state(process_id)["freeze"] = False
+        elif "lavfi.black_start=" in msg:
+            st = self._get_or_init_signal_state(process_id)
+            if st["black_since"] is None:
+                st["black_since"] = datetime.utcnow()
+        elif "lavfi.black_end=" in msg:
+            st = self._get_or_init_signal_state(process_id)
+            st["black_since"] = None
+            st["black"] = False
+
         self.logger.debug(f"[{process_id}] {msg}")
+
+    def _handle_sidecar_log_msg(self, process_id: int, sidecar_name: str, msg: str):
+        key = f"{process_id}:{sidecar_name}"
+        lower_msg = msg.lower()
+        if any(kw in lower_msg for kw in ["error", "failed", "invalid", "could not", "cannot"]):
+            level = "ERROR"
+        elif any(kw in lower_msg for kw in ["warn", "warning"]):
+            level = "WARN"
+        else:
+            level = "INFO"
+
+        if key not in self.sidecar_log_buffers:
+            self.sidecar_log_buffers[key] = collections.deque(maxlen=100)
+
+        self.sidecar_log_buffers[key].append({
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "level": level,
+            "message": msg
+        })
+        self.logger.debug(f"[{process_id}:{sidecar_name}] {msg}")
 
     def _get_max_log_file_bytes(self) -> int:
         """Read max log file size in bytes from ffmpeg-gui.conf (default 10 MB = 10485760)."""
@@ -3475,29 +3994,62 @@ class ProcessManager:
         log_path: str,
         proc: Optional[asyncio.subprocess.Process] = None,
         pid: Optional[int] = None,
-        max_log_bytes: Optional[int] = None
+        max_log_bytes: Optional[int] = None,
+        sidecar_name: Optional[str] = None
     ):
         """Tails the physical log file on disk for daemon services and enforces a real-time size circuit breaker."""
         effective_pid = pid or (proc.pid if proc else None)
         limit_bytes = max_log_bytes if (max_log_bytes and max_log_bytes > 0) else self._get_max_log_file_bytes()
         check_counter = 0
         try:
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.1)
             if not os.path.exists(log_path):
                 return
             with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                f.seek(0, os.SEEK_END)
+                # Read from start of file so early startup logs and initial error messages are always captured
                 while True:
+                    line = f.readline()
+                    if line:
+                        msg = line.strip()
+                        if msg:
+                            if "missing timeout" in msg.lower():
+                                continue
+                            if sidecar_name:
+                                self._handle_sidecar_log_msg(process_id, sidecar_name, msg)
+                            else:
+                                self._handle_log_msg(process_id, msg, status_re=None)
+                        continue
+
+                    # Only check if process has exited once EOF on the current log stream is reached
+                    is_done = False
                     if proc is not None:
                         if proc.returncode is not None:
-                            break
+                            is_done = True
                     elif effective_pid is not None:
                         if not psutil.pid_exists(effective_pid):
-                            break
+                            is_done = True
                     else:
-                        break
+                        is_done = True
 
-                    if process_id not in self.processes and process_id not in self.reattached_pids:
+                    if not sidecar_name and (process_id not in self.processes and process_id not in self.reattached_pids):
+                        is_done = True
+                    elif sidecar_name and (process_id not in self.processes and process_id not in self.reattached_pids):
+                        is_done = True
+
+                    if is_done:
+                        # Drain any trailing lines written right before exit
+                        while True:
+                            trailing = f.readline()
+                            if not trailing:
+                                break
+                            t_msg = trailing.strip()
+                            if t_msg:
+                                if "missing timeout" in t_msg.lower():
+                                    continue
+                                if sidecar_name:
+                                    self._handle_sidecar_log_msg(process_id, sidecar_name, t_msg)
+                                else:
+                                    self._handle_log_msg(process_id, t_msg, status_re=None)
                         break
 
                     check_counter += 1
@@ -3516,13 +4068,7 @@ class ProcessManager:
                         except Exception as trunc_err:
                             self.logger.debug(f"Could not truncate flooded log {log_path}: {trunc_err}")
 
-                    line = f.readline()
-                    if line:
-                        msg = line.strip()
-                        if msg:
-                            self._handle_log_msg(process_id, msg, status_re=None)
-                    else:
-                        await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.5)
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -3566,6 +4112,21 @@ class ProcessManager:
             except Exception:
                 pass
         return 60
+
+    def get_watchdog_hard_memory_limit(self) -> int:
+        config_path = os.environ.get("CONFIG_FILE_PATH", "ffmpeg-gui.conf")
+        if os.path.exists(config_path):
+            try:
+                import configparser
+                cfg = configparser.ConfigParser()
+                cfg.read(config_path)
+                if "watchdog" in cfg:
+                    return cfg.getint("watchdog", "watchdog_hard_memory_limit_mb", fallback=4096)
+                if "software_engines" in cfg:
+                    return cfg.getint("software_engines", "ffmpeg_hard_memory_limit_mb", fallback=4096)
+            except Exception:
+                pass
+        return 4096
 
     async def _async_check_network_readiness(self, input_config: dict, timeout: float = 60.0) -> bool:
         """
@@ -3707,6 +4268,7 @@ class ProcessManager:
         is_cancelled = False
         self.watchdog_stalled_since[process_id] = None
         self.watchdog_low_speed_since[process_id] = None
+        self.watchdog_high_memory_since[process_id] = None
 
         try:
             p = psutil.Process(pid)
@@ -3755,6 +4317,12 @@ class ProcessManager:
                         self.auxiliary_pids[process_id] = [ap for ap in self.auxiliary_pids.get(process_id, []) if psutil.pid_exists(ap)]
                         self.auxiliary_processes[process_id] = [ap for ap in self.auxiliary_processes.get(process_id, []) if ap.returncode is None and psutil.pid_exists(ap.pid)]
                         await self._ensure_desktop_vnc(process_id)
+                    elif _svc_type == "pipewire_hub":
+                        self.logger.warning(f"[PipeWire Hub #{process_id}] Auxiliary sidecar process terminated unexpectedly. Attempting self-healing respawn...")
+                        # Prune dead auxiliary references so watchdog continues monitoring the healthy main PipeWire process
+                        self.auxiliary_pids[process_id] = [ap for ap in self.auxiliary_pids.get(process_id, []) if psutil.pid_exists(ap)]
+                        self.auxiliary_processes[process_id] = [ap for ap in self.auxiliary_processes.get(process_id, []) if ap.returncode is None and psutil.pid_exists(ap.pid)]
+                        await self._ensure_pipewire_sidecars(process_id)
                     else:
                         self.logger.warning(f"Auxiliary process for service {process_id} terminated unexpectedly.")
                         break
@@ -3875,7 +4443,23 @@ class ProcessManager:
                                 except Exception:
                                     pass
 
-                            if is_icecast:
+                            is_mediamtx = (getattr(media_proc, 'service_type', '') == 'mediamtx_hub')
+                            if is_mediamtx:
+                                try:
+                                    cfg = media_proc.config or {}
+                                    mtx_cfg = cfg.get("mediamtx_config") or {}
+                                    api_port = mtx_cfg.get("api_port", 9997)
+                                    api_enabled = mtx_cfg.get("api_enabled", True)
+                                    if api_enabled:
+                                        import requests
+                                        resp = requests.get(f"http://127.0.0.1:{api_port}/v3/paths/list", timeout=1.5)
+                                        if resp.status_code == 200:
+                                            self.mediamtx_stats_cache[process_id] = resp.json()
+                                except Exception:
+                                    pass
+
+                            svc_type = getattr(media_proc, 'service_type', 'ffmpeg_stream')
+                            if svc_type != 'ffmpeg_stream':
                                 media_proc.fps = None
                                 media_proc.bitrate = None
                                 media_proc.speed = None
@@ -3883,7 +4467,7 @@ class ProcessManager:
                                 media_proc.fps = fps if fps is not None else "0"
                                 media_proc.bitrate = bitrate if bitrate is not None else "0 kb/s"
                                 media_proc.speed = speed if speed is not None else "0x"
-                            media_proc.cpu_usage = int(cpu)
+                            media_proc.cpu_usage = round(cpu, 1) if cpu < 10 else int(cpu)
                             media_proc.ram_usage = int(mem)
                             session.commit()
 
@@ -3938,6 +4522,51 @@ class ProcessManager:
                                                     await self._safe_terminate_process(proc=proc, pid=pid)
                                         else:
                                             self.watchdog_low_speed_since[process_id] = None
+
+                                # Check memory threshold (Soft limit per service + Global hard cap)
+                                hard_cap = self.get_watchdog_hard_memory_limit()
+                                soft_limit = cfg.get('watchdog_max_memory_mb')
+                                if soft_limit is not None:
+                                    try:
+                                        soft_limit = int(soft_limit)
+                                    except (ValueError, TypeError):
+                                        soft_limit = None
+
+                                if soft_limit is not None and soft_limit > 0:
+                                    effective_mem_limit = min(soft_limit, hard_cap)
+                                    limit_desc = f"soft threshold ({effective_mem_limit} MB)"
+                                else:
+                                    effective_mem_limit = hard_cap
+                                    limit_desc = f"global hard ceiling ({effective_mem_limit} MB)"
+
+                                mem_duration = cfg.get('watchdog_max_memory_duration', 30)
+                                try:
+                                    mem_duration = int(mem_duration)
+                                except (ValueError, TypeError):
+                                    mem_duration = 30
+
+                                if watchdog_enabled and effective_mem_limit and mem > effective_mem_limit:
+                                    if self.watchdog_high_memory_since.get(process_id) is None:
+                                        self.watchdog_high_memory_since[process_id] = datetime.utcnow()
+                                    else:
+                                        high_mem_duration = (datetime.utcnow() - self.watchdog_high_memory_since[process_id]).total_seconds()
+                                        if high_mem_duration > mem_duration:
+                                            log_msg = f"Watchdog: Process RAM ({int(mem)} MB) exceeded {limit_desc} for more than {mem_duration}s. Force killing to protect host..."
+                                            self.logger.error(log_msg)
+
+                                            from database.models import ProcessLog
+                                            log = ProcessLog(
+                                                process_id=process_id,
+                                                level='ERROR',
+                                                message=log_msg
+                                            )
+                                            session.add(log)
+                                            session.commit()
+
+                                            await self._safe_terminate_process(proc=proc, pid=pid)
+                                            self.watchdog_high_memory_since[process_id] = None
+                                else:
+                                    self.watchdog_high_memory_since[process_id] = None
 
                                 # Check startup stall (process running for > network_wait_timeout with zero activity/frames)
                                 elapsed_since_start = (datetime.utcnow() - start_time).total_seconds()
@@ -3997,6 +4626,10 @@ class ProcessManager:
                                             self.watchdog_stalled_since[process_id] = None
                                             prev_frame = frame
                                             prev_out_time_us = out_time_us
+
+                                await self._evaluate_signal_watchdog(
+                                    process_id, media_proc, proc, pid, start_time, session
+                                )
                 except Exception as db_err:
                     self.logger.error(f"Watchdog database error for process {process_id}: {db_err}")
 
@@ -4011,6 +4644,9 @@ class ProcessManager:
         finally:
             if self.watchdog_tasks.get(process_id) == asyncio.current_task():
                 self.watchdog_tasks.pop(process_id, None)
+
+            await self._release_failover_lease_if_active(process_id)
+            self.signal_watchdog_states.pop(process_id, None)
 
             if is_cancelled:
                 return
@@ -4223,11 +4859,13 @@ class ProcessManager:
             self.srt_has_had_activity.pop(process_id, None)
             self.watchdog_stalled_since.pop(process_id, None)
             self.watchdog_low_speed_since.pop(process_id, None)
+            self.watchdog_high_memory_since.pop(process_id, None)
             if process_id in self.log_buffers:
                 del self.log_buffers[process_id]
 
             if process_id in self.processes:
                 del self.processes[process_id]
+            self.mediamtx_stats_cache.pop(process_id, None)
 
     def reattach_process(self, process_id: int, pid: int) -> List[int]:
         with self.db_session_factory() as session:
@@ -4245,7 +4883,7 @@ class ProcessManager:
         self.reattached_pids[process_id] = pid
         self.watchdog_tasks[process_id] = asyncio.create_task(self._watchdog(process_id, pid=pid))
 
-        # Discover and register auxiliary processes (e.g. x11vnc, browser)
+        # Discover and register auxiliary processes (e.g. x11vnc, browser for desktop, or ptp4l/phc2sys for pipewire)
         if svc_type == "desktop":
             found_aux = self.find_auxiliary_pids(process_id, svc_type=svc_type)
             self.auxiliary_pids[process_id] = list(found_aux)
@@ -4261,6 +4899,10 @@ class ProcessManager:
             if not has_x11vnc:
                 self.logger.warning(f"Reattached desktop service {process_id} is missing x11vnc. Scheduling auto-spawn.")
                 asyncio.create_task(self._ensure_desktop_vnc(process_id, log_path))
+        elif svc_type == "pipewire_hub":
+            found_aux = self.find_auxiliary_pids(process_id, svc_type=svc_type)
+            self.auxiliary_pids[process_id] = list(found_aux)
+            asyncio.create_task(self._ensure_pipewire_sidecars(process_id))
         else:
             self.auxiliary_pids[process_id] = []
 
@@ -4270,6 +4912,7 @@ class ProcessManager:
 
         if svc_type == "pipewire_hub":
             self.get_or_create_pipewire_supervisor(process_id)
+            self.get_or_create_aoip_discovery_supervisor(process_id)
 
         # Re-register with dependency manager as pinned and restore active leases
         try:

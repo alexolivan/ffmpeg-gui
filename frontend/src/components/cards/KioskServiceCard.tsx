@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   PlayIcon,
@@ -12,7 +12,11 @@ import {
   LightningIcon,
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
+import { MicroSparkline } from '../common/MicroSparkline';
+import { ServiceRRDDrawer } from './ServiceRRDDrawer';
 import type { ServiceItem } from './UnifiedServiceCard';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { hasMinLevel, type CapabilityLevel } from '../../utils/permissions';
 
 interface KioskServiceCardProps {
   service: ServiceItem;
@@ -26,6 +30,7 @@ interface KioskServiceCardProps {
   onDeleteProcess: (service: ServiceItem) => void;
   onSelectedProcess: (service: ServiceItem) => void;
   onExportProcess?: (service: ServiceItem) => void;
+  serviceLevel?: CapabilityLevel;
   API?: string;
 }
 
@@ -57,9 +62,13 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
   onDeleteProcess,
   onSelectedProcess,
   onExportProcess,
+  serviceLevel = 'admin',
   API = '',
 }) => {
   const { t } = useTranslation();
+  const [isRrdExpanded, setIsRrdExpanded] = useState(false);
+  const canOperate = hasMinLevel(serviceLevel, 'operate');
+  const canManage = hasMinLevel(serviceLevel, 'manage');
 
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
@@ -73,6 +82,8 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
   const cpu = telemetryItem?.cpu_usage ?? telemetryItem?.cpu ?? service.cpu ?? 0;
   const ram = telemetryItem?.ram_usage ?? telemetryItem?.ram ?? service.ram ?? 0;
   const pid = telemetryItem?.pid || service.pid;
+  const sparkline = telemetryItem?.sparkline || service.sparkline || [];
+  const hasRrdOutlier = telemetryItem?.has_rrd_outlier ?? service.has_rrd_outlier ?? false;
 
   const kCfg = service.config?.kiosk_config || (service as any).kiosk_config || {};
   const engineId = (kCfg.engine_id || 'chromium').toLowerCase();
@@ -84,7 +95,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
   return (
     <div
       onClick={() => onSelectedProcess(service)}
-      className={`group relative flex flex-col lg:flex-row lg:items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+      className={`group relative flex flex-col p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
         isRunning
           ? 'bg-amber-500/5 border-amber-500/20 hover:bg-amber-500/10 hover:border-amber-500/40'
           : isError
@@ -92,6 +103,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
           : 'bg-white/2 hover:bg-white/5 border-[var(--glass-border)] opacity-85 hover:opacity-100'
       }`}
     >
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
       {/* Left Info Column */}
       <div className="flex flex-col gap-1.5 min-w-0 flex-1 pr-4">
         {/* Title & Badges Row */}
@@ -121,6 +133,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
             <EngineLogo softwareType={engineId} size={12} API={API} />
             {engineId === 'firefox' ? 'Firefox Kiosk' : 'Chrome Kiosk'}
           </span>
+          <PermissionLevelBadge level={serviceLevel} />
 
           {/* Linked Virtual Desktop Badge */}
           <span
@@ -203,6 +216,18 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
 
         {/* Compact Telemetry Strip */}
         <div className="flex gap-x-3 gap-y-1 mt-0.5 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
+          {isRunning && (
+            <>
+              <MicroSparkline
+                data={sparkline}
+                label="CPU"
+                hasOutlier={hasRrdOutlier}
+                isExpanded={isRrdExpanded}
+                onToggle={() => setIsRrdExpanded((prev) => !prev)}
+              />
+              <span className="opacity-20">|</span>
+            </>
+          )}
           <span>
             PID:{' '}
             <strong className={isRunning && pid ? 'text-[var(--text-primary)] font-bold' : 'text-zinc-500 font-normal'}>
@@ -230,17 +255,19 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
       {/* Right Iconic Action Button Bar */}
       <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
         {/* Edit Button */}
-        <button
-          disabled={isPending}
-          onClick={() => onEditProcess(service)}
-          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50"
-          title={t('common.edit', 'Edit Service Settings')}
-        >
-          <PencilIcon size={16} />
-        </button>
+        {canManage && (
+          <button
+            disabled={isPending}
+            onClick={() => onEditProcess(service)}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50"
+            title={t('common.edit', 'Edit Service Settings')}
+          >
+            <PencilIcon size={16} />
+          </button>
+        )}
 
         {/* Clone Service Button */}
-        {onCloneProcess && (
+        {canManage && onCloneProcess && (
           <button
             disabled={isPending}
             onClick={() => onCloneProcess(service)}
@@ -252,7 +279,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
         )}
 
         {/* Export Button */}
-        {onExportProcess && (
+        {canManage && onExportProcess && (
           <button
             disabled={isPending}
             onClick={() => onExportProcess(service)}
@@ -264,7 +291,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
         )}
 
         {/* Restart Button */}
-        {isRunning && (
+        {canOperate && isRunning && (
           <button
             disabled={isPending}
             onClick={() => onRestartService(service.id, service.name)}
@@ -280,7 +307,7 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
         )}
 
         {/* Start / Stop Button */}
-        {isRunning || isRetrying ? (
+        {canOperate && (isRunning || isRetrying ? (
           <button
             disabled={actionPending === 'stopping'}
             onClick={() => onStopService(service.id, service.name)}
@@ -306,17 +333,32 @@ export const KioskServiceCard: React.FC<KioskServiceCardProps> = ({
               <PlayIcon size={16} />
             )}
           </button>
-        )}
+        ))}
 
         {/* Delete Button */}
-        <button
-          disabled={isRunning || isRetrying || isPending}
-          onClick={() => onDeleteProcess(service)}
-          className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-30 disabled:pointer-events-none"
-          title={t('common.delete', 'Delete Service')}
-        >
-          <TrashIcon size={16} />
-        </button>
+        {canManage && (
+          <button
+            disabled={isRunning || isRetrying || isPending}
+            onClick={() => onDeleteProcess(service)}
+            className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-30 disabled:pointer-events-none"
+            title={t('common.delete', 'Delete Service')}
+          >
+            <TrashIcon size={16} />
+          </button>
+        )}
+      </div>
+      </div>
+
+      {/* Expandable Volatile RRD Metrics Drawer */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <ServiceRRDDrawer
+          serviceId={service.id}
+          isOpen={isRrdExpanded}
+          hasVideo={false}
+          serviceType="kiosk_browser"
+          initialMetric="cpu"
+          onClose={() => setIsRrdExpanded(false)}
+        />
       </div>
     </div>
   );

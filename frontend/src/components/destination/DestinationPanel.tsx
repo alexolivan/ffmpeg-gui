@@ -3,6 +3,15 @@ import { useTranslation } from 'react-i18next';
 import type { SystemCapabilities } from '../codec/codecRegistry';
 import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
 import { ShieldIcon } from '../Icons';
+import { useTelemetry } from '../../context/TelemetryContext';
+
+const getHubVirtualSinks = (hub: any): any[] => {
+  const nested = hub?.config?.pipewire_config?.virtual_sinks;
+  const root = hub?.config?.virtual_sinks;
+  if (Array.isArray(nested) && nested.length > 0) return nested;
+  if (Array.isArray(root) && root.length > 0) return root;
+  return Array.isArray(nested) ? nested : (Array.isArray(root) ? root : []);
+};
 
 export interface OutputConfig {
   type: string;
@@ -390,35 +399,36 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
   }, []);
 
   // Resource collision locks tracking
-  const [resourceLocks, setResourceLocks] = React.useState<any[]>([]);
+  const { resourceLocks: localResourceLocks } = useTelemetry();
+  const [remoteResourceLocks, setRemoteResourceLocks] = React.useState<any[]>([]);
 
   React.useEffect(() => {
+    if (!config.peer_node_id) {
+      setRemoteResourceLocks([]);
+      return;
+    }
     let active = true;
-    const fetchLocks = () => {
-      const params = new URLSearchParams();
-      if (config.peer_node_id) {
-        params.set('peer_node_id', String(config.peer_node_id));
-        if (config.peer_service_id) {
-          params.set('service_id', String(config.peer_service_id));
-        }
-      }
-      const qs = params.toString() ? `?${params.toString()}` : '';
-      fetch(`/api/resources/locks${qs}`)
-        .then(res => res.ok ? res.json() : { locks: [] })
-        .then(data => {
-          if (active) setResourceLocks(data.locks || []);
-        })
-        .catch(() => {
-          if (active) setResourceLocks([]);
-        });
-    };
-    fetchLocks();
-    const timer = setInterval(fetchLocks, 5000);
+    const params = new URLSearchParams();
+    params.set('peer_node_id', String(config.peer_node_id));
+    if (config.peer_service_id) {
+      params.set('service_id', String(config.peer_service_id));
+    }
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    fetch(`/api/resources/locks${qs}`)
+      .then(res => (res.ok ? res.json() : { locks: [] }))
+      .then(data => {
+        if (active) setRemoteResourceLocks(data.locks || []);
+      })
+      .catch(() => {
+        if (active) setRemoteResourceLocks([]);
+      });
+
     return () => {
       active = false;
-      clearInterval(timer);
     };
   }, [config.peer_node_id, config.peer_service_id]);
+
+  const resourceLocks = config.peer_node_id ? remoteResourceLocks : localResourceLocks;
 
   const getResourceLock = (serviceType: 'icecast' | 'mediamtx', pathOrMount: string) => {
     if (!pathOrMount) return null;
@@ -583,9 +593,10 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
     } else if (config.type === 'pipewire') {
       const pipewireProviders = providers.filter(p => p.service_type === 'pipewire_hub');
       if (pipewireProviders.length > 0) {
-        const prov = pipewireProviders.find(p => p.id === config.provider_service_id) || pipewireProviders[0];
+        const targetId = Number(config.provider_service_id || config.pipewire_service_id);
+        const prov = pipewireProviders.find(p => Number(p.id) === targetId) || pipewireProviders[0];
         if (prov) {
-          const sinks = prov.config?.virtual_sinks || prov.config?.pipewire_config?.virtual_sinks || [];
+          const sinks = getHubVirtualSinks(prov);
           const defaultSink = sinks[0]?.id || 'mix_bus';
           const currentSink = config.sink_id || (config.device || '');
           const validSink = sinks.some((s: any) => s.id === currentSink) ? currentSink : defaultSink;
@@ -672,7 +683,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             ...(newType === 'pipewire' ? (() => {
               const pwProviders = providers.filter(p => p.service_type === 'pipewire_hub');
               const firstHub = pwProviders[0];
-              const sinks = firstHub?.config?.virtual_sinks || firstHub?.config?.pipewire_config?.virtual_sinks || [];
+              const sinks = getHubVirtualSinks(firstHub);
               const firstSink = sinks[0]?.id || 'mix_bus';
               return {
                 provider_service_id: firstHub?.id || null,
@@ -4486,8 +4497,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
 
       {config.type === 'pipewire' && (() => {
         const pipewireProviders = providers.filter(p => p.service_type === 'pipewire_hub');
-        const selectedHub = pipewireProviders.find(p => p.id === config.provider_service_id) || pipewireProviders[0];
-        const virtualSinks: any[] = selectedHub?.config?.virtual_sinks || selectedHub?.config?.pipewire_config?.virtual_sinks || [];
+        const targetId = Number(config.provider_service_id || config.pipewire_service_id);
+        const selectedHub = pipewireProviders.find(p => Number(p.id) === targetId) || pipewireProviders[0];
+        const virtualSinks: any[] = getHubVirtualSinks(selectedHub);
         const currentSinkId = config.sink_id || config.device || (virtualSinks[0]?.id || 'mix_bus');
 
         return (
@@ -4531,11 +4543,11 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   <select
                     id="dest-pw-provider"
                     className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
-                    value={config.provider_service_id || ''}
+                    value={selectedHub?.id || config.provider_service_id || ''}
                     onChange={e => {
                       const nextHubId = Number(e.target.value);
-                      const nextHub = pipewireProviders.find(h => h.id === nextHubId);
-                      const nextSinks = nextHub?.config?.virtual_sinks || nextHub?.config?.pipewire_config?.virtual_sinks || [];
+                      const nextHub = pipewireProviders.find(h => Number(h.id) === nextHubId);
+                      const nextSinks = getHubVirtualSinks(nextHub);
                       const defaultSink = nextSinks[0]?.id || 'mix_bus';
                       update({
                         provider_service_id: nextHubId,

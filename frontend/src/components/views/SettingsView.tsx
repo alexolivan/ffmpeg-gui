@@ -2,9 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n/i18n';
 import { GearIcon, SlidersIcon, ServerIcon, PencilIcon, TrashIcon, ExportIcon } from '../Icons';
-import { AlsaAudioSettingsCard } from './settings/AlsaAudioSettingsCard';
-import { DecklinkSettingsCard } from './settings/DecklinkSettingsCard';
-import { MagewellSettingsCard } from './settings/MagewellSettingsCard';
 import { BackupRestoreCard } from './settings/BackupRestoreCard';
 import { SoftwareEngineCard, type SoftwareEngineData } from './settings/SoftwareEngineCard';
 import { InboundKeysCard } from './settings/InboundKeysCard';
@@ -12,10 +9,13 @@ import { RemotePeersCard } from './settings/RemotePeersCard';
 import { BruteForceProtectionCard } from './settings/BruteForceProtectionCard';
 import { FirewallPortMatrixCard } from './settings/FirewallPortMatrixCard';
 import { CloudHubSettingsCard } from './settings/CloudHubSettingsCard';
+import { MetricsExporterSettingsCard } from './settings/MetricsExporterSettingsCard';
 import { AuditLogCard } from './settings/AuditLogCard';
 
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 import { AliasField } from '../common/AliasField';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { canAccessDomain, getDomainLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 const STORAGE_TYPES = ['build', 'media', 'hls', 'logs', 'sdk', 'preview', 'cache'] as const;
 
@@ -96,6 +96,7 @@ interface SettingsViewProps {
   setPasswordSuccess: (val: string) => void;
   capabilities?: any;
   systemTelemetry?: any;
+  permissions?: EdgePermissionsSummary | null;
   API: string;
 }
 
@@ -113,10 +114,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setPasswordSuccess,
   capabilities,
   systemTelemetry,
+  permissions,
   API,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'alsa' | 'decklink' | 'magewell' | 'backup' | 'audit'>('general');
+  const settingsLevel = getDomainLevel(permissions, 'settings');
+  const canManageSettings = canAccessDomain(permissions, 'settings', 'manage');
+  const isAdminSettings = canAccessDomain(permissions, 'settings', 'admin');
+  const [activeTab, setActiveTab] = useState<'general' | 'software' | 'lcd' | 'storage' | 'network' | 'security' | 'backup' | 'audit'>('general');
+
+  useEffect(() => {
+    if (!isAdminSettings && (activeTab === 'security' || activeTab === 'backup')) {
+      setActiveTab('general');
+    }
+  }, [isAdminSettings, activeTab]);
 
 
   const [softwareEngines, setSoftwareEngines] = useState<Record<string, SoftwareEngineData>>({});
@@ -154,9 +165,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     systemTelemetry?.lcd?.connected ||
     settings?.lcd_enabled
   ) : true;
-  const hasAlsaHardware = capabilities ? !!capabilities?.alsa?.available : true;
-  const hasDecklinkHardware = capabilities ? !!capabilities?.decklink?.available : true;
-  const hasMagewellHardware = capabilities ? (!!capabilities?.magewell?.available || capabilities?.magewell?.status === 'SETUP_REQUIRED' || capabilities?.magewell?.status === 'READY') : true;
 
   useEffect(() => {
     if (activeTab === 'lcd' && !hasLcdHardware) {
@@ -231,6 +239,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [startupGraceDelay, setStartupGraceDelay] = useState(settings?.watchdog?.startup_grace_delay ?? 10);
   const [networkWaitTimeout, setNetworkWaitTimeout] = useState(settings?.watchdog?.network_wait_timeout ?? 60);
   const [watchdogMaxBackoff, setWatchdogMaxBackoff] = useState(settings?.watchdog?.watchdog_max_backoff ?? 30);
+  const [watchdogHardMemoryLimitMb, setWatchdogHardMemoryLimitMb] = useState(settings?.watchdog?.watchdog_hard_memory_limit_mb ?? 4096);
 
   // Hardware Health & Thermal Protection States
   const [thermalWarningThreshold, setThermalWarningThreshold] = useState(settings?.thermal_warning_threshold ?? 75);
@@ -281,6 +290,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setStartupGraceDelay(wd?.startup_grace_delay ?? 10);
     setNetworkWaitTimeout(wd?.network_wait_timeout ?? 60);
     setWatchdogMaxBackoff(wd?.watchdog_max_backoff ?? 30);
+    setWatchdogHardMemoryLimitMb(wd?.watchdog_hard_memory_limit_mb ?? 4096);
     setThermalWarningThreshold(settings?.thermal_warning_threshold ?? 75);
     setThermalCriticalThreshold(settings?.thermal_critical_threshold ?? 85);
     setThermalActiveProtection(!!settings?.thermal_active_protection);
@@ -312,6 +322,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     settings?.watchdog?.startup_grace_delay,
     settings?.watchdog?.network_wait_timeout,
     settings?.watchdog?.watchdog_max_backoff,
+    settings?.watchdog?.watchdog_hard_memory_limit_mb,
     settings?.thermal_warning_threshold,
     settings?.thermal_critical_threshold,
     settings?.thermal_active_protection,
@@ -773,6 +784,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     Number(startupGraceDelay) !== Number(settings?.watchdog?.startup_grace_delay ?? 10) ||
     Number(networkWaitTimeout) !== Number(settings?.watchdog?.network_wait_timeout ?? 60) ||
     Number(watchdogMaxBackoff) !== Number(settings?.watchdog?.watchdog_max_backoff ?? 30) ||
+    Number(watchdogHardMemoryLimitMb) !== Number(settings?.watchdog?.watchdog_hard_memory_limit_mb ?? 4096) ||
     bruteForceEnabled !== (settings?.brute_force_enabled !== undefined ? !!settings?.brute_force_enabled : true) ||
     Number(bruteForceMaxAttempts) !== Number(settings?.brute_force_max_attempts ?? 5) ||
     Number(bruteForceWindowSeconds) !== Number(settings?.brute_force_window_seconds ?? 300) ||
@@ -858,6 +870,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           startup_grace_delay: Number(startupGraceDelay),
           network_wait_timeout: Number(networkWaitTimeout),
           watchdog_max_backoff: Number(watchdogMaxBackoff),
+          watchdog_hard_memory_limit_mb: Number(watchdogHardMemoryLimitMb),
         },
         brute_force_enabled: bruteForceEnabled,
         brute_force_max_attempts: Number(bruteForceMaxAttempts),
@@ -976,40 +989,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Header */}
       <header className="flex justify-between items-center mb-6 shrink-0">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] mb-0.5 uppercase">{t('settings.title', 'Settings')}</h1>
+          <div className="flex items-center gap-2.5 mb-0.5">
+            <h1 className="text-2xl font-black tracking-tight text-[var(--text-primary)] uppercase">{t('settings.title', 'Settings')}</h1>
+            <PermissionLevelBadge level={settingsLevel} />
+          </div>
           <p className="text-xs text-text-secondary">{t('settings.subtitle', 'Node identity, security, storage and language configuration')}</p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Status Indicator */}
-          <div className="text-[10px] text-text-secondary font-medium">
-            {saveSuccess ? (
-              <span className="text-brand-lime font-bold animate-pulse">✓ {t('settings.settingsSaved', 'Settings saved.')}</span>
-            ) : passwordError ? (
-              <span className="text-red-500 font-bold">⚠️ {t('settings.securityErrors', 'Check Security errors.')}</span>
-            ) : hasChanges ? (
-              <span className="text-brand-orange font-bold">● {t('settings.unsavedChanges', 'Unsaved changes.')}</span>
-            ) : (
-              <span className="opacity-40">{t('settings.upToDate', 'Up to date.')}</span>
-            )}
+        {isAdminSettings && (
+          <div className="flex items-center gap-3">
+            {/* Status Indicator */}
+            <div className="text-[10px] text-text-secondary font-medium">
+              {saveSuccess ? (
+                <span className="text-brand-lime font-bold animate-pulse">✓ {t('settings.settingsSaved', 'Settings saved.')}</span>
+              ) : passwordError ? (
+                <span className="text-red-500 font-bold">⚠️ {t('settings.securityErrors', 'Check Security errors.')}</span>
+              ) : hasChanges ? (
+                <span className="text-brand-orange font-bold">● {t('settings.unsavedChanges', 'Unsaved changes.')}</span>
+              ) : (
+                <span className="opacity-40">{t('settings.upToDate', 'Up to date.')}</span>
+              )}
+            </div>
+            <button
+              onClick={() => setShowRestartConfirm(true)}
+              className="border border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20 active:scale-95 pill-button font-black text-xs py-2 px-4 transition-all uppercase tracking-widest cursor-pointer"
+            >
+              {t('settings.restartPanel', 'Restart Panel')}
+            </button>
+            <button
+              onClick={handleSaveAll}
+              disabled={isSaving || !hasChanges}
+              className={`pill-button font-black text-xs py-2.5 px-6 transition-all uppercase tracking-widest ${
+                hasChanges && !isSaving
+                  ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-brand-lime/20'
+                  : 'bg-[var(--input-bg)] text-text-secondary opacity-40 cursor-not-allowed border border-[var(--glass-border)]'
+              }`}
+            >
+              {isSaving ? t('common.saving', 'Saving...') : t('common.save', 'Save Settings')}
+            </button>
           </div>
-          <button
-            onClick={() => setShowRestartConfirm(true)}
-            className="border border-red-500/30 text-red-400 bg-red-500/10 hover:bg-red-500/20 active:scale-95 pill-button font-black text-xs py-2 px-4 transition-all uppercase tracking-widest cursor-pointer"
-          >
-            {t('settings.restartPanel', 'Restart Panel')}
-          </button>
-          <button
-            onClick={handleSaveAll}
-            disabled={isSaving || !hasChanges}
-            className={`pill-button font-black text-xs py-2.5 px-6 transition-all uppercase tracking-widest ${
-              hasChanges && !isSaving
-                ? 'bg-brand-lime text-black hover:scale-[1.02] active:scale-[0.98] cursor-pointer shadow-lg shadow-brand-lime/20'
-                : 'bg-[var(--input-bg)] text-text-secondary opacity-40 cursor-not-allowed border border-[var(--glass-border)]'
-            }`}
-          >
-            {isSaving ? t('common.saving', 'Saving...') : t('common.save', 'Save Settings')}
-          </button>
-        </div>
+        )}
       </header>
 
       {/* Tabs selector */}
@@ -1076,72 +1094,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <span className="text-sm">🌐</span>
           {t('settings.tabs.network', 'Network')}
         </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('security')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-            activeTab === 'security'
-              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-          }`}
-        >
-          <span className="text-sm">🔒</span>
-          {t('settings.tabs.security', 'Security')}
-        </button>
-        {hasAlsaHardware && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('alsa')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-              activeTab === 'alsa'
-                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-            }`}
-          >
-            <span className="text-sm">🔊</span>
-            {t('settings.tabs.alsa', 'ALSA AUDIO')}
-          </button>
+        {isAdminSettings && (
+          <>
+            <button
+              type="button"
+              onClick={() => setActiveTab('security')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'security'
+                  ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                  : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+              }`}
+            >
+              <span className="text-sm">🔒</span>
+              {t('settings.tabs.security', 'Security')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('backup')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
+                activeTab === 'backup'
+                  ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
+                  : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
+              }`}
+            >
+              <ExportIcon size={14} />
+              {t('settings.tabs.backup', 'BACKUP & RESTORE')}
+            </button>
+          </>
         )}
-        {hasDecklinkHardware && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('decklink')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-              activeTab === 'decklink'
-                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-            }`}
-          >
-            <span className="text-sm">🎛️</span>
-            {t('settings.tabs.decklink', 'DECKLINK')}
-          </button>
-        )}
-        {hasMagewellHardware && (
-          <button
-            type="button"
-            onClick={() => setActiveTab('magewell')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-              activeTab === 'magewell'
-                ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-                : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-            }`}
-          >
-            <span className="text-sm">📟</span>
-            {t('settings.tabs.magewell', 'MAGEWELL')}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setActiveTab('backup')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap shrink-0 ${
-            activeTab === 'backup'
-              ? 'bg-brand-lime/15 text-brand-lime border border-brand-lime/30 shadow-sm'
-              : 'text-text-secondary hover:bg-[var(--input-bg)] hover:text-[var(--text-primary)] border border-transparent'
-          }`}
-        >
-          <ExportIcon size={14} />
-          {t('settings.tabs.backup', 'BACKUP & RESTORE')}
-        </button>
         <button
           type="button"
           onClick={() => setActiveTab('audit')}
@@ -1298,7 +1278,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {t('settings.watchdog.description', 'Configure system boot grace delays, network pre-flight timeout checks, and watchdog exponential backoff limits.')}
               </p>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
                     {t('settings.watchdog.startupGraceDelay', 'Startup Grace Delay (sec)')}
@@ -1347,6 +1327,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   />
                   <span className="text-[9px] text-text-secondary/70 block">
                     {t('settings.watchdog.watchdogMaxBackoffHelp', 'Upper cap for exponential backoff retry interval')}
+                  </span>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">
+                    {t('settings.watchdog.hardMemoryLimit', 'Hard RAM Limit (MB)')}
+                  </label>
+                  <input
+                    type="number"
+                    step={128}
+                    min={256}
+                    max={65536}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime font-mono"
+                    value={watchdogHardMemoryLimitMb}
+                    onChange={(e) => setWatchdogHardMemoryLimitMb(parseInt(e.target.value, 10) || 512)}
+                  />
+                  <span className="text-[9px] text-text-secondary/70 block">
+                    {t('settings.watchdog.hardMemoryLimitHelp', 'Host safety ceiling. Process is killed if RAM exceeds this limit')}
                   </span>
                 </div>
               </div>
@@ -1985,6 +1983,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           return (
             <div className="space-y-4 animate-in fade-in duration-300">
               {/* Add Storage Form */}
+              {canManageSettings && (
               <div className="glass-card p-4 !rounded-2xl space-y-4">
                 <div className="flex items-center gap-1.5 border-b border-[var(--glass-border)] pb-2 mb-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
@@ -2078,6 +2077,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </button>
                 </div>
               </div>
+              )}
 
               {/* List of Configured Storages */}
               <div className="space-y-4">
@@ -2224,37 +2224,39 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                                           </div>
                                         </div>
 
-                                        <div className="flex gap-2 shrink-0">
-                                          <button
-                                            type="button"
-                                            disabled={s.is_default}
-                                            onClick={() => {
-                                              setEditingId(s.id);
-                                              setEditName(s.name);
-                                              setEditPath(s.path);
-                                              setEditRoutePath(s.route_path || '');
-                                              setEditValidationError('');
-                                              setEditValidationSuccess('');
-                                            }}
-                                            className={`p-1.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-brand-lime/40 transition-all text-[var(--text-primary)] cursor-pointer ${
-                                              s.is_default ? 'opacity-30 cursor-not-allowed' : ''
-                                            }`}
-                                            title={s.is_default ? t('settings.storage.cannotEditDefault', 'Cannot edit default storage') : t('settings.storage.editStorage', 'Edit Storage')}
-                                          >
-                                            <PencilIcon size={12} />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            disabled={s.is_default}
-                                            onClick={() => handleDeleteStorage(s.id)}
-                                            className={`p-1.5 rounded bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all text-red-400 cursor-pointer ${
-                                              s.is_default ? 'opacity-30 cursor-not-allowed' : ''
-                                            }`}
-                                            title={s.is_default ? t('settings.storage.cannotDeleteDefault', 'Cannot delete default storage') : t('settings.storage.deleteStorage', 'Delete Storage')}
-                                          >
-                                            <TrashIcon size={12} />
-                                          </button>
-                                        </div>
+                                        {canManageSettings && (
+                                          <div className="flex gap-2 shrink-0">
+                                            <button
+                                              type="button"
+                                              disabled={s.is_default}
+                                              onClick={() => {
+                                                setEditingId(s.id);
+                                                setEditName(s.name);
+                                                setEditPath(s.path);
+                                                setEditRoutePath(s.route_path || '');
+                                                setEditValidationError('');
+                                                setEditValidationSuccess('');
+                                              }}
+                                              className={`p-1.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)] hover:border-brand-lime/40 transition-all text-[var(--text-primary)] cursor-pointer ${
+                                                s.is_default ? 'opacity-30 cursor-not-allowed' : ''
+                                              }`}
+                                              title={s.is_default ? t('settings.storage.cannotEditDefault', 'Cannot edit default storage') : t('settings.storage.editStorage', 'Edit Storage')}
+                                            >
+                                              <PencilIcon size={12} />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={s.is_default}
+                                              onClick={() => handleDeleteStorage(s.id)}
+                                              className={`p-1.5 rounded bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all text-red-400 cursor-pointer ${
+                                                s.is_default ? 'opacity-30 cursor-not-allowed' : ''
+                                              }`}
+                                              title={s.is_default ? t('settings.storage.cannotDeleteDefault', 'Cannot delete default storage') : t('settings.storage.deleteStorage', 'Delete Storage')}
+                                            >
+                                              <TrashIcon size={12} />
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
 
                                       {/* Space Utilization Details */}
@@ -2392,6 +2394,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
             {/* CARD: CLOUDHUB REVERSE TUNNEL CONNECTOR */}
             <CloudHubSettingsCard API={API} />
+
+            {/* CARD: PROMETHEUS & OPENMETRICS EXPORTER */}
+            <MetricsExporterSettingsCard
+              settings={settings}
+              onUpdateSettings={onUpdateSettings}
+              API={API}
+            />
 
             {/* CARD 5: EMAIL NOTIFICATIONS & ALERTING */}
             <div className="glass-card p-5 !rounded-2xl space-y-5">
@@ -2717,7 +2726,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         )}
 
         {/* TAB: Security */}
-        {activeTab === 'security' && (
+        {isAdminSettings && activeTab === 'security' && (
           <div className="space-y-6 animate-in fade-in duration-300">
             {/* CARD 1: ACCESS PASSWORD */}
             <div className="glass-card p-5 !rounded-2xl space-y-4">
@@ -2985,17 +2994,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         )}
 
-        {/* TAB 5: ALSA Audio */}
-        {activeTab === 'alsa' && <AlsaAudioSettingsCard />}
-
-        {/* TAB 6: DeckLink Hardware Control */}
-        {activeTab === 'decklink' && <DecklinkSettingsCard API={API} />}
-
-        {/* TAB 7: Magewell Hardware Control */}
-        {activeTab === 'magewell' && <MagewellSettingsCard API={API} />}
-
-        {/* TAB 8: Backup & Restore */}
-        {activeTab === 'backup' && <BackupRestoreCard API={API} />}
+        {/* TAB 5: Backup & Restore */}
+        {isAdminSettings && activeTab === 'backup' && <BackupRestoreCard API={API} />}
 
         {/* TAB 9: Operational Audit Log */}
         {activeTab === 'audit' && <AuditLogCard API={API} />}

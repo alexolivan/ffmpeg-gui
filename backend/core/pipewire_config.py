@@ -6,12 +6,15 @@ Generates isolated, secure, and daemonized PipeWire configuration files
 and AES67 RTP/SAP streams without probing physical ALSA devices.
 """
 
+import hashlib
 import json
 import math
 import os
 import re
 import socket
-from typing import Any, Dict, List, Optional, Tuple
+import time
+import uuid
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 class PipeWireConfigGenerator:
@@ -81,6 +84,64 @@ class PipeWireConfigGenerator:
         return f"{clean_prefix}.{idx}"
 
     @classmethod
+    def get_ptp_uds_paths(cls, service_id: int) -> Tuple[str, str]:
+        """Return (rw_uds_path, ro_uds_path) under /dev/shm when writable, else /tmp."""
+        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
+        return (
+            os.path.join(shm_dir, f"ptp4l_{service_id}.uds"),
+            os.path.join(shm_dir, f"ptp4lro_{service_id}.uds"),
+        )
+
+    @classmethod
+    def get_interface_mac(cls, iface: Optional[str]) -> Optional[str]:
+        """Read hardware MAC address for a Linux network interface from sysfs."""
+        if not iface:
+            return None
+        clean_iface = re.sub(r'[^a-zA-Z0-9_.:-]', '', str(iface).strip())
+        if not clean_iface:
+            return None
+        sysfs_path = f"/sys/class/net/{clean_iface}/address"
+        try:
+            if os.path.isfile(sysfs_path):
+                with open(sysfs_path, "r", encoding="utf-8") as f:
+                    mac = f.read().strip()
+                if mac and mac != "00:00:00:00:00:00":
+                    return mac
+        except Exception:
+            pass
+        return None
+
+    @classmethod
+    def get_canonical_eui64(cls, mac_or_ip: Optional[str] = None, nic_name: Optional[str] = None) -> str:
+        """
+        Derive canonical EUI-64 clock identifier (IEEE 1588-2008 / RFC 7273).
+        Rejects IPv4/IPv6 strings so decimal octets are never mangled into fake MACs.
+        Example: '00:15:5d:11:22:33' -> '00-15-5D-FF-FE-11-22-33'
+        """
+        candidates = [mac_or_ip, cls.get_interface_mac(nic_name)]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            raw = str(candidate).strip()
+            # Reject IPv4/IPv6 literals or hostnames; only accept hex MAC/EUI-64 separated by : or -
+            if "." in raw or re.match(r'^\d{1,3}(?:\.\d{1,3}){3}$', raw):
+                continue
+            clean = re.sub(r'[:\-\s]', '', raw)
+            if not re.fullmatch(r'[0-9a-fA-F]+', clean):
+                continue
+            if len(clean) == 12:
+                eui = f"{clean[:6]}fffe{clean[6:]}".upper()
+                return "-".join(eui[i:i+2] for i in range(0, 16, 2))
+            if len(clean) == 16:
+                return "-".join(clean[i:i+2].upper() for i in range(0, 16, 2))
+
+        # Fallback to system node MAC address
+        node = uuid.getnode()
+        mac_hex = f"{node:012x}"
+        eui = f"{mac_hex[:6]}fffe{mac_hex[6:]}".upper()
+        return "-".join(eui[i:i+2] for i in range(0, 16, 2))
+
+    @classmethod
     def format_sap_name(cls, raw_name: str, hostname: Optional[str] = None) -> str:
         """
         Format SAP session name with host prefix to guarantee uniqueness across nodes.
@@ -119,11 +180,14 @@ class PipeWireConfigGenerator:
         cls,
         requested_latency_ms: Any,
         quantum: int,
-        sample_rate: int
+        sample_rate: int,
+        ptime_mode: Optional[str] = None
     ) -> int:
         """
-        Compute safe sess.latency.msec enforcing the mathematical guardrail:
-        effective_latency_ms >= ceil(3.0 * (quantum / sample_rate) * 1000.0).
+        Compute safe sess.latency.msec enforcing:
+        1. Mathematical quantum guardrail: effective_latency_ms >= ceil(3.0 * (quantum / sample_rate) * 1000.0).
+        2. PipeWire RTP frame quantization: when a fixed ptime mode is specified (e.g. 1ms or 4ms),
+           the latency is rounded up to an exact integer multiple of that packet time.
         If requested_latency_ms is 0, None, or 'auto', defaults to max(60, ceil(4.0 * quantum_ms)).
         """
         safe_rate = max(8000, int(sample_rate or 48000))
@@ -138,18 +202,52 @@ class PipeWireConfigGenerator:
             except (ValueError, TypeError):
                 req_val = 0
 
-        if req_val <= 0:
-            auto_ms = max(60, int(math.ceil(quantum_ms * 4.0)))
-            return max(auto_ms, min_safe_ms)
+        base_ms = max(req_val if req_val > 0 else max(60, int(math.ceil(quantum_ms * 4.0))), min_safe_ms)
 
-        return max(req_val, min_safe_ms)
+        if ptime_mode:
+            mode = str(ptime_mode).strip().lower()
+            if mode == "1ms":
+                # Integer milliseconds are exact multiples of 1ms
+                return int(base_ms)
+            if mode == "4ms":
+                # Round up to multiple of 4ms
+                return int(math.ceil(base_ms / 4.0) * 4)
+
+        return int(base_ms)
+
+    @staticmethod
+    def get_rtp_session_id(
+        eui64: str,
+        nic_ip: str,
+        service_id: int,
+        sink_id: str,
+        sink_index: int,
+        dest_ip: str,
+        dest_port: int,
+        used_ids: Optional[Set[int]] = None,
+    ) -> int:
+        """
+        Compute a deterministic, collision-free positive 31-bit SDP session ID
+        (1..2147483647 for PipeWire pw_properties_fetch_int32 compatibility).
+        Scopes identity by host (EUI-64, source IP) and stream tuple so multiple
+        streams on one host and multiple hosts on a shared AoIP LAN never collide.
+        """
+        seed = f"{eui64}|{nic_ip}|{service_id}|{sink_id}|{sink_index}|{dest_ip}|{dest_port}".encode("utf-8")
+        digest = hashlib.sha256(seed).digest()
+        sess_id = (int.from_bytes(digest[:4], "big") & 0x7FFFFFFF) or 1
+        if used_ids is not None:
+            while sess_id in used_ids:
+                sess_id = (sess_id % 0x7FFFFFFF) + 1
+            used_ids.add(sess_id)
+        return sess_id
 
     @classmethod
     def generate_config(
         cls,
         service_id: int,
         config: Dict[str, Any],
-        runtime_dir: str
+        runtime_dir: str,
+        ptp_support: str = "software"
     ) -> str:
         """
         Generate PipeWire SPA/JSON configuration.
@@ -158,25 +256,37 @@ class PipeWireConfigGenerator:
             service_id: Unique identifier of the service.
             config: Dictionary containing audio parameters and virtual sink configurations.
             runtime_dir: Path to runtime directory where sockets (e.g. pulse.sock) will be created.
+            ptp_support: NIC PTP timestamping mode ('hardware' or 'software').
 
         Returns:
             Formatted PipeWire SPA/JSON configuration string.
         """
-        sample_rate = int(config.get("sample_rate", 48000))
+        aes67_net = config.get("aes67_network", {})
+        aoip_profile = str(config.get("aoip_profile") or aes67_net.get("aoip_profile") or "standalone").lower()
+        sample_rate = 48000 if aoip_profile == "dante" else int(config.get("sample_rate", 48000))
         quantum = int(config.get("quantum", 1024))
-        min_quantum = int(config.get("min_quantum", 128))
         max_quantum = int(config.get("max_quantum", 2048))
         debug_mode = bool(config.get("debug_mode", False))
         log_level = int(config.get("log_level", 2 if debug_mode else 1))
-        aes67_net = config.get("aes67_network", {})
         nic_ip = aes67_net.get("ip", "0.0.0.0")
         nic_name = aes67_net.get("interface")
+        nic_mac = aes67_net.get("mac") or aes67_net.get("interface_mac")
         base_prefix = aes67_net.get("base_multicast_prefix") or cls.get_canonical_base_multicast_prefix(nic_ip)
+        eui64 = cls.get_canonical_eui64(nic_mac, nic_name=nic_name)
+        ptp_cfg = aes67_net.get("ptp", {})
+        ptp_enabled = bool(ptp_cfg.get("enabled") and aes67_net.get("enabled", True) and nic_name)
+        _, uds_ro_path = cls.get_ptp_uds_paths(service_id)
 
-        ptime_mode = aes67_net.get("rtp_ptime_mode") or config.get("rtp_ptime_mode") or "auto"
+        if aoip_profile == "dante":
+            ptime_mode = "1ms"
+        else:
+            ptime_mode = aes67_net.get("rtp_ptime_mode") or config.get("rtp_ptime_mode") or "auto"
         min_ptime, max_ptime = cls.resolve_rtp_ptime_limits(ptime_mode)
+        raw_min_quantum = int(config.get("min_quantum", 32 if (aes67_net.get("enabled", True) and ptime_mode == "1ms") else 128))
+        # Clamp min-quantum <= 32 when 1ms packetization is active so PTP0-Driver can request 48-sample (1ms) cycles
+        min_quantum = min(raw_min_quantum, 32) if (aes67_net.get("enabled", True) and ptime_mode == "1ms") else raw_min_quantum
         raw_jitter_ms = aes67_net.get("jitter_buffer_ms", config.get("jitter_buffer_ms", "auto"))
-        effective_latency_ms = cls.resolve_safe_jitter_latency_ms(raw_jitter_ms, quantum, sample_rate)
+        effective_latency_ms = cls.resolve_safe_jitter_latency_ms(raw_jitter_ms, quantum, sample_rate, ptime_mode)
 
         pulse_socket = os.path.join(runtime_dir, "pulse.sock")
 
@@ -193,6 +303,7 @@ class PipeWireConfigGenerator:
             f"    default.clock.max-quantum = {max_quantum}",
             f"    log.level = {log_level}",
             "    mem.warn-mlock = false",
+            "    support.dbus = false",
             "}",
             "",
             "context.spa-libs = {",
@@ -203,6 +314,15 @@ class PipeWireConfigGenerator:
             "",
             "context.modules = [",
             "    { name = \"libpipewire-module-rt\"",
+            "        args = {",
+            "            nice.level = -11",
+            "            rt.prio = 88",
+            "            rt.time.soft = -1",
+            "            rt.time.hard = -1",
+            "            rlimits.enabled = true",
+            "            rtportal.enabled = false",
+            "            rtkit.enabled = false",
+            "        }",
             "        flags = [ ifexists nofail ]",
             "    },",
             "    { name = \"libpipewire-module-protocol-native\" },",
@@ -224,10 +344,12 @@ class PipeWireConfigGenerator:
         virtual_sinks = config.get("virtual_sinks", [])
         remote_sinks = config.get("remote_sinks", [])
         has_aes67_tx = any(sink.get("aes67_enabled", False) for sink in virtual_sinks)
+        use_hw_ptp_driver = bool(ptp_enabled and ptp_support == "hardware" and nic_name and has_aes67_tx)
+        sap_ip = aes67_net.get("sap_ip") or config.get("sap_ip") or "239.255.255.255"
 
         if has_aes67_tx:
             sap_args = [
-                "            sap.ip = \"224.0.0.56\"",
+                f"            sap.ip = {cls._spa_val(sap_ip)}",
                 "            sap.port = 9875",
                 "            net.ttl = 32",
                 "            net.loop = false",
@@ -236,6 +358,9 @@ class PipeWireConfigGenerator:
                 sap_args.append(f"            local.ifname = {cls._spa_val(nic_name)}")
             if nic_ip and nic_ip != "0.0.0.0":
                 sap_args.append(f"            source.ip = {cls._spa_val(nic_ip)}")
+            if ptp_enabled:
+                # Query ptp4l read-only management UDS for live Grandmaster Clock ID (a=ts-refclk)
+                sap_args.append(f"            ptp.management-socket = {cls._spa_val(uds_ro_path)}")
 
             # Restrict stream.rules strictly to announce-stream.
             # CRITICAL: If create-stream is not explicitly suppressed, libpipewire-module-rtp-sap
@@ -264,6 +389,9 @@ class PipeWireConfigGenerator:
                 "    },",
             ])
 
+        used_sess_ids: Set[int] = set()
+        sess_version = (int(time.time()) & 0x7FFFFFFF) or 1
+
         for idx, sink in enumerate(virtual_sinks, start=1):
             if sink.get("aes67_enabled", False):
                 sink_id = sink.get("id", "sink")
@@ -274,9 +402,20 @@ class PipeWireConfigGenerator:
                 dest_ip = sink.get("multicast_ip")
                 if not dest_ip:
                     dest_ip = cls.get_canonical_sink_multicast_ip(base_prefix, idx)
-                dest_port = int(sink.get("rtp_port", 5004))
+                dest_port = 5004 if aoip_profile == "dante" else int(sink.get("rtp_port", 5004))
                 raw_sap = sink.get("sap_name") or sink.get("name") or sink_id
                 sap_name = cls.format_sap_name(raw_sap)
+                audio_fmt = "S24BE" if aoip_profile == "dante" else sink.get("format", "S24BE")
+                sess_id = cls.get_rtp_session_id(
+                    eui64=eui64,
+                    nic_ip=nic_ip or "0.0.0.0",
+                    service_id=service_id,
+                    sink_id=sink_id,
+                    sink_index=idx,
+                    dest_ip=dest_ip,
+                    dest_port=dest_port,
+                    used_ids=used_sess_ids,
+                )
 
                 rtp_args = []
                 if nic_name:
@@ -284,29 +423,66 @@ class PipeWireConfigGenerator:
                 if nic_ip and nic_ip != "0.0.0.0":
                     rtp_args.append(f"            source.ip = {cls._spa_val(nic_ip)}")
 
+                # TX sink latency must stay tight (3 ms per PipeWire AES67 reference) so RTP timestamps
+                # are not pushed +170ms ahead of the hardware receiver's playout window.
+                tx_latency_ms = int(sink.get("tx_latency_ms", 3))
                 rtp_args.extend([
                     f"            destination.ip = {cls._spa_val(dest_ip)}",
                     f"            destination.port = {dest_port}",
                     f"            sess.name = {cls._spa_val(sap_name)}",
+                    f"            sess.id = {sess_id}",
+                    f"            sess.version = {sess_version}",
                     "            sess.media = \"audio\"",
-                    "            audio.format = \"S24BE\"",
+                    "            sess.ts-offset = 0",
+                    f"            sess.ts-refclk = {cls._spa_val(f'ptp=IEEE1588-2008:{eui64}:0')}",
+                    f"            audio.format = {cls._spa_val(audio_fmt)}",
                     f"            audio.rate = {sample_rate}",
                     f"            audio.channels = {channels}",
                     f"            audio.position = {pos_formatted}",
                     f"            sess.min-ptime = {min_ptime}",
                     f"            sess.max-ptime = {max_ptime}",
-                    f"            sess.latency.msec = {effective_latency_ms}",
+                    f"            sess.latency.msec = {tx_latency_ms}",
                     "            net.ttl = 32",
                     "            net.loop = false",
+                    "            net.dscp = 46",
+                ])
+                if use_hw_ptp_driver:
+                    rtp_args.append("            aes67.driver-group = \"pipewire.ptp0\"")
+
+                rtp_payload = sink.get("rtp_payload")
+                if rtp_payload is None and aoip_profile == "dante":
+                    rtp_payload = 96
+
+                stream_props_lines = [
                     "            stream.props = {",
                     f"                node.name = {cls._spa_val(f'rtp_tx_{sink_id}')}",
                     f"                node.description = {cls._spa_val(f'AES67 Tx for {sink_name}')}",
                     f"                target.object = {cls._spa_val(sink_id)}",
+                    "                device.api = \"aes67\"",
+                    f"                sess.name = {cls._spa_val(sap_name)}",
+                    f"                sess.id = {sess_id}",
+                    f"                sess.version = {sess_version}",
+                    f"                rtp.destination.ip = {cls._spa_val(dest_ip)}",
+                    f"                rtp.destination.port = {dest_port}",
+                    "                rtp.media = \"audio\"",
+                    f"                rtp.mime = {cls._spa_val('L24' if '24' in audio_fmt else ('L16' if '16' in audio_fmt else 'L24'))}",
+                    f"                rtp.rate = {sample_rate}",
+                    f"                rtp.channels = {channels}",
+                    f"                rtp.ptime = {1.0 if aoip_profile == 'dante' else float(min_ptime)}",
+                    "                rtp.ntp = 0",
+                    f"                rtp.ts-refclk = {cls._spa_val(f'ptp=IEEE1588-2008:{eui64}:0')}",
+                ]
+                if rtp_payload is not None:
+                    stream_props_lines.append(f"                rtp.payload = {int(rtp_payload)}")
+                if ptp_enabled:
+                    stream_props_lines.append("                rtp.fetch-ts-refclk = true")
+                stream_props_lines.extend([
                     "                sess.sap.announce = true",
                     "                stream.dont-remix = true",
                     "                node.always-process = true",
                     "            }",
                 ])
+                rtp_args.extend(stream_props_lines)
 
                 lines.extend([
                     "    {",
@@ -329,7 +505,7 @@ class PipeWireConfigGenerator:
             audio_format = rs.get("format", "S24BE")
             audio_rate = int(rs.get("rate") or sample_rate)
             rs_jitter = rs.get("jitter_buffer_ms", raw_jitter_ms)
-            rs_latency_ms = cls.resolve_safe_jitter_latency_ms(rs_jitter, quantum, audio_rate)
+            rs_latency_ms = cls.resolve_safe_jitter_latency_ms(rs_jitter, quantum, audio_rate, ptime_mode)
 
             rtp_rx_args = []
             if nic_name:
@@ -344,6 +520,8 @@ class PipeWireConfigGenerator:
                 f"            audio.rate = {audio_rate}",
                 f"            audio.channels = {channels}",
                 f"            audio.position = {pos_formatted}",
+                f"            sess.min-ptime = {min_ptime}",
+                f"            sess.max-ptime = {max_ptime}",
                 f"            sess.latency.msec = {rs_latency_ms}",
                 "            stream.props = {",
                 f"                node.name = {cls._spa_val(f'rtp_rx_{rs_id}')}",
@@ -386,6 +564,21 @@ class PipeWireConfigGenerator:
             "        }",
             "    }",
         ])
+        if use_hw_ptp_driver:
+            lines.extend([
+                "    { factory = spa-node-factory",
+                "        args = {",
+                "            factory.name    = support.node.driver",
+                "            node.name       = PTP0-Driver",
+                "            node.group      = pipewire.ptp0",
+                "            priority.driver = 100000",
+                "            clock.name      = \"clock.system.ptp0\"",
+                f"            clock.interface = {cls._spa_val(nic_name)}",
+                "            resync.ms       = 1.5",
+                "            object.export   = true",
+                "        }",
+                "    }",
+            ])
 
         # Virtual Sinks (Nodes created via adapter factory for all virtual sinks to provide playback and monitor ports)
         for sink in virtual_sinks:
@@ -456,7 +649,8 @@ class PipeWireConfigGenerator:
         service_id: int,
         config: Dict[str, Any],
         target_path: str,
-        runtime_dir: str
+        runtime_dir: str,
+        ptp_support: str = "software"
     ) -> str:
         """
         Write generated PipeWire configuration to file atomically.
@@ -466,11 +660,12 @@ class PipeWireConfigGenerator:
             config: PipeWire configuration parameters.
             target_path: Destination file path.
             runtime_dir: Path to runtime directory.
+            ptp_support: NIC PTP timestamping mode ('hardware' or 'software').
 
         Returns:
             target_path written.
         """
-        config_content = cls.generate_config(service_id, config, runtime_dir)
+        config_content = cls.generate_config(service_id, config, runtime_dir, ptp_support=ptp_support)
         target_abs = os.path.abspath(target_path)
         target_dir = os.path.dirname(target_abs)
         os.makedirs(target_dir, exist_ok=True)
@@ -493,25 +688,44 @@ class PipeWireConfigGenerator:
         Supports hardware and software timestamping, auto-inhibition (BMCA masterOnly flag),
         priority1, domain, and transport profiles.
         """
-        priority1 = int(ptp_cfg.get("priority1", 128))
-        priority1 = max(0, min(255, priority1))
-        domain = int(ptp_cfg.get("domain", 0))
-        domain = max(0, min(127, domain))
-        auto_inhibit = bool(ptp_cfg.get("auto_inhibit", True))
-        profile = str(ptp_cfg.get("profile", "aes67")).lower()
+        aoip_profile = str(ptp_cfg.get("aoip_profile") or ptp_cfg.get("profile", "")).lower()
+        force_local_master = bool(ptp_cfg.get("force_local_master", False))
+        profile = "aes67" if aoip_profile in ("dante", "aes67") else str(ptp_cfg.get("profile", "aes67")).lower()
 
-        # If auto_inhibit is False, node forces itself as Server/Master Only (serverOnly 1).
-        # If auto_inhibit is True, node allows BMCA negotiation (serverOnly 0) to avoid clock collisions.
-        # (serverOnly is the standard IEEE 1588-2019 directive replacing deprecated masterOnly in linuxptp).
-        server_only = 0 if auto_inhibit else 1
+        if aoip_profile == "dante":
+            domain = 0
+            if force_local_master:
+                # 253 yields to hardware Dante consoles (e.g. AEQ 249, standard 247-252) while beating 254 slave nodes
+                raw_prio1 = ptp_cfg.get("priority1")
+                priority1 = max(0, min(255, int(raw_prio1))) if raw_prio1 is not None else 253
+                priority2 = max(0, min(255, int(ptp_cfg.get("priority2", priority1))))
+                client_only = 0
+                server_only = 0
+            else:
+                priority1 = 254
+                priority2 = 254
+                client_only = 1
+                server_only = 0
+        else:
+            priority1 = int(ptp_cfg.get("priority1", 128))
+            priority1 = max(0, min(255, priority1))
+            priority2 = int(ptp_cfg.get("priority2", 128))
+            priority2 = max(0, min(255, priority2))
+            domain = int(ptp_cfg.get("domain", 0))
+            domain = max(0, min(127, domain))
+            auto_inhibit = bool(ptp_cfg.get("auto_inhibit", True))
+            client_only = 1 if ptp_cfg.get("client_only") else 0
+            server_only = 0 if auto_inhibit else 1
 
         is_hw = (ptp_support == "hardware")
         ts_mode = "hardware" if is_hw else "software"
 
+        # In software timestamping mode, free_running defaults to 1 to protect CLOCK_REALTIME from NTP/timescale collisions.
+        # In hardware timestamping mode, ptp4l disciplines the PHC directly (/dev/ptpX).
+        free_running = 1 if ts_mode == "software" else int(ptp_cfg.get("free_running", 0))
+
         # Dedicated ephemeral UDS IPC socket paths in /dev/shm (or /tmp) to prevent permission errors in /var/run
-        shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
-        uds_path = os.path.join(shm_dir, f"ptp4l_{service_id}.uds")
-        uds_ro_path = os.path.join(shm_dir, f"ptp4lro_{service_id}.uds")
+        uds_path, uds_ro_path = cls.get_ptp_uds_paths(service_id)
 
         # AES67 specifies 8 sync packets per second (logSyncInterval -3), logAnnounceInterval 0 (1s)
         log_sync = -3 if profile == "aes67" else 0
@@ -528,12 +742,17 @@ class PipeWireConfigGenerator:
             "[global]",
             f"domainNumber            {domain}",
             f"priority1               {priority1}",
-            "priority2               128",
+            f"priority2               {priority2}",
             "clockClass              248",
             "clockAccuracy           0xFE",
             "offsetScaledLogVariance 0xFFFF",
-            "free_running            0",
+            f"free_running            {free_running}",
             "freq_est_interval       1",
+            "step_threshold          0.0",
+            "first_step_threshold    0.00002",
+            "sanity_freq_limit       0",
+            "announceReceiptTimeout  6",
+            f"clientOnly              {client_only}",
             f"serverOnly              {server_only}",
             f"uds_address             {uds_path}",
             f"uds_ro_address          {uds_ro_path}",
@@ -544,11 +763,12 @@ class PipeWireConfigGenerator:
             f"dscp_general            {dscp_general}",
             f"time_stamping           {ts_mode}",
             "tx_timestamp_timeout    10",
-            "summary_interval        1",
+            "summary_interval        3",
             "",
             f"[{clean_iface}]",
             "network_transport       UDPv4",
             "delay_mechanism         E2E",
+            f"serverOnly              {server_only}",
             ""
         ]
         return "\n".join(lines)

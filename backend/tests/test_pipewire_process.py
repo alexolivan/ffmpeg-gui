@@ -964,9 +964,86 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             self.assertIn("enp9s0", ptp_call)
             self.assertIn("-S", ptp_call)  # software timestamping
             self.assertIn(mock_ptp_proc, self.pm.auxiliary_processes.get(40, []))
+            self.assertIn(40002, self.pm.auxiliary_pids.get(40, []))
 
             # Stop process and verify auxiliary cleanup
             await self.pm.stop_process(40)
+            mock_ptp_proc.terminate.assert_called()
+
+    async def test_start_ptp4l_sidecar_dante_hardware_spawns_phc2sys(self):
+        """Verifies that Dante profile with hardware PTP does NOT spawn phc2sys to preserve system CLOCK_REALTIME."""
+        with self.Session() as session:
+            hub = Service(
+                id=41,
+                name="Dante Hardware PTP Hub 41",
+                service_type="pipewire_hub",
+                status="stopped",
+                config={
+                    "pipewire_config": {
+                        "aoip_profile": "dante",
+                        "aes67_network": {
+                            "enabled": True,
+                            "interface": "enp9s0",
+                            "ptp": {
+                                "enabled": True,
+                                "aoip_profile": "dante"
+                            }
+                        },
+                        "virtual_sinks": [{"id": "dante_sink"}]
+                    }
+                }
+            )
+            session.add(hub)
+            session.commit()
+
+        mock_pw_proc = self._create_mock_proc(pid=41001)
+        mock_ptp_proc = self._create_mock_proc(pid=41002)
+
+        def mock_exec(*cmd, **kwargs):
+            if "ptp4l" in cmd[0]:
+                return mock_ptp_proc
+            return mock_pw_proc
+
+        def mock_find_bin(name):
+            if name == "ptp4l":
+                return "/usr/sbin/ptp4l"
+            if name == "phc2sys":
+                return "/usr/sbin/phc2sys"
+            return None
+
+        with patch("asyncio.create_subprocess_exec", side_effect=mock_exec) as mock_spawn, \
+             patch("core.network_inspector.find_system_binary", side_effect=mock_find_bin), \
+             patch("core.network_inspector.audit_pipewire_network_capabilities", return_value={
+                 "interfaces": [{"name": "enp9s0", "ptp_support": "hardware"}]
+             }), \
+             patch("os.path.exists", side_effect=lambda p: True if "ptp4l" in str(p) or "pipewire" in str(p) else False), \
+             patch("shutil.which", return_value="/usr/bin/pipewire"), \
+             patch.object(self.pm, "_watchdog", new_callable=AsyncMock):
+
+            await self.pm.start_process(41)
+
+            spawn_calls = [c[0] for c in mock_spawn.call_args_list]
+
+            # 1. ptp4l spawned with hardware timestamping (no -S)
+            ptp_call = next((c for c in spawn_calls if any("ptp4l" in str(arg) for arg in c)), None)
+            self.assertIsNotNone(ptp_call)
+            self.assertNotIn("-S", ptp_call)
+            self.assertIn("-i", ptp_call)
+            self.assertIn("enp9s0", ptp_call)
+
+            # 2. phc2sys must NOT be spawned to prevent overwriting host OS CLOCK_REALTIME
+            phc_call = next((c for c in spawn_calls if any("phc2sys" in str(arg) for arg in c)), None)
+            self.assertIsNone(phc_call)
+
+            # 3. Only ptp4l tracked in auxiliary_processes and auxiliary_pids
+            aux_procs = self.pm.auxiliary_processes.get(41, [])
+            self.assertIn(mock_ptp_proc, aux_procs)
+            aux_pids = self.pm.auxiliary_pids.get(41, [])
+            self.assertIn(41002, aux_pids)
+            self.assertEqual(len(aux_pids), 1)
+
+            # 4. Stop process and verify ptp4l terminates
+            await self.pm.stop_process(41)
             mock_ptp_proc.terminate.assert_called()
 
     def test_get_aoip_discovery_endpoint(self):
@@ -982,6 +1059,233 @@ class TestPipeWireProcess(unittest.IsolatedAsyncioTestCase):
             self.assertIn("remote_sinks_status", data)
         finally:
             app.dependency_overrides.pop(verify_token, None)
+
+    @patch("psutil.process_iter")
+    def test_reap_orphan_pipewire_for_service(self, mock_proc_iter):
+        """Verifies that _reap_orphan_pipewire_for_service kills rogue pipewire processes and purges stale lockfiles."""
+        fake_proc = MagicMock()
+        fake_proc.info = {
+            "pid": 77777,
+            "name": "pipewire",
+            "cmdline": ["/usr/bin/pipewire", "-c", "/dev/shm/pipewire_77.conf"]
+        }
+        mock_proc_iter.return_value = [fake_proc]
+
+        runtime_dir = "/tmp/ffmpeg-gui/pipewire-77"
+        os.makedirs(runtime_dir, exist_ok=True)
+        self.cleanup_dirs.append(runtime_dir)
+
+        lock_path = os.path.join(runtime_dir, "pipewire-0.lock")
+        sock_path = os.path.join(runtime_dir, "pipewire-0")
+        pulse_path = os.path.join(runtime_dir, "pulse.sock")
+
+        for fpath in (lock_path, sock_path, pulse_path):
+            with open(fpath, "w") as f:
+                f.write("test")
+
+        self.assertTrue(os.path.exists(lock_path))
+        self.assertTrue(os.path.exists(sock_path))
+        self.assertTrue(os.path.exists(pulse_path))
+
+        self.pm._reap_orphan_pipewire_for_service(77)
+
+        fake_proc.terminate.assert_called_once()
+        self.assertFalse(os.path.exists(lock_path))
+        self.assertFalse(os.path.exists(sock_path))
+        self.assertFalse(os.path.exists(pulse_path))
+
+    async def test_file_log_tailer_captures_early_crash_output(self):
+        """Verifies that _file_log_tailer reads from byte 0 and captures startup crash messages before process exits."""
+        import tempfile
+        from collections import deque
+
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".log") as tmp:
+            tmp.write("mod.rt: Failed to connect to session bus\n")
+            tmp.write("default: failed to create context: Resource temporarily unavailable\n")
+            tmp.flush()
+            log_path = tmp.name
+        self.cleanup_files.append(log_path)
+
+        mock_proc = MagicMock()
+        mock_proc.pid = 88888
+        mock_proc.returncode = 245  # Process already exited with early failure
+
+        self.pm.log_buffers[88] = deque(maxlen=100)
+
+        # Run the tailer
+        await self.pm._file_log_tailer(88, log_path, proc=mock_proc)
+
+        buffered_messages = [item["message"] for item in self.pm.log_buffers[88]]
+        self.assertIn("mod.rt: Failed to connect to session bus", buffered_messages)
+        self.assertIn("default: failed to create context: Resource temporarily unavailable", buffered_messages)
+
+    def test_ptp4l_config_syntax_strict_port_section_rules(self):
+        """Verifies that clientOnly is restricted to [global] and never placed in the port section."""
+        from core.pipewire_config import PipeWireConfigGenerator
+        ptp_cfg = {
+            "enabled": True,
+            "force_local_master": False,
+            "domain": 0,
+            "auto_inhibit": False,
+            "aoip_profile": "standalone"
+        }
+        cfg_str = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=7,
+            ptp_cfg=ptp_cfg,
+            iface="enp6s0",
+            ptp_support="software"
+        )
+        self.assertIn("[global]", cfg_str)
+        self.assertIn("[enp6s0]", cfg_str)
+        # clientOnly must exist in global
+        global_part, port_part = cfg_str.split("[enp6s0]")
+        self.assertIn("clientOnly", global_part)
+        self.assertIn("serverOnly              1", global_part)
+        # clientOnly MUST NOT exist in port section (syntax error in linuxptp)
+        self.assertNotIn("clientOnly", port_part)
+        # serverOnly is valid in port section
+        self.assertIn("serverOnly              1", port_part)
+
+    def test_sidecar_logs_api_endpoint(self):
+        """Verifies GET /api/services/{service_id}/sidecar-logs/{sidecar_name} returns buffered logs and validates sidecar."""
+        from collections import deque
+        try:
+            from main import app, verify_token, get_db, process_manager
+        except ImportError:
+            from backend.main import app, verify_token, get_db, process_manager
+
+        with self.Session() as session:
+            svc_hub = Service(
+                id=701,
+                name="Sidecar PW Hub",
+                service_type="pipewire_hub",
+                status="running",
+                config={"pipewire_config": {}}
+            )
+            session.add(svc_hub)
+            session.commit()
+
+        def override_get_db():
+            db = self.Session()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        app.dependency_overrides[verify_token] = lambda: "admin"
+        app.dependency_overrides[get_db] = override_get_db
+        try:
+            client = TestClient(app)
+
+            # 1. Invalid sidecar name -> 400
+            res_bad = client.get("/api/services/701/sidecar-logs/invalid_daemon")
+            self.assertEqual(res_bad.status_code, 400)
+
+            # 2. ptp4l from buffer
+            process_manager.sidecar_log_buffers["701:ptp4l"] = deque([
+                {"timestamp": "2026-11-03T13:00:00Z", "level": "INFO", "message": "selected local clock as best master"}
+            ], maxlen=100)
+
+            res_ptp = client.get("/api/services/701/sidecar-logs/ptp4l")
+            self.assertEqual(res_ptp.status_code, 200)
+            data_ptp = res_ptp.json()
+            self.assertEqual(len(data_ptp), 1)
+            self.assertEqual(data_ptp[0]["message"], "selected local clock as best master")
+
+            # 3. Non-existent service -> 404
+            res_404 = client.get("/api/services/99999/sidecar-logs/ptp4l")
+            self.assertEqual(res_404.status_code, 404)
+        finally:
+            app.dependency_overrides.pop(verify_token, None)
+            app.dependency_overrides.pop(get_db, None)
+            process_manager.sidecar_log_buffers.pop("701:ptp4l", None)
+
+    def test_handle_sidecar_log_msg_buffering(self):
+        """Verifies _handle_sidecar_log_msg properly creates sidecar deque and parses levels."""
+        self.pm._handle_sidecar_log_msg(55, "ptp4l", "port 1 (enp6s0): INITIALIZING to LISTENING on INIT_COMPLETE")
+        self.pm._handle_sidecar_log_msg(55, "ptp4l", "port 1 (enp6s0): failed to bind socket: permission denied")
+        self.pm._handle_sidecar_log_msg(55, "phc2sys", "clock check warning: offset is large")
+
+        self.assertIn("55:ptp4l", self.pm.sidecar_log_buffers)
+        self.assertIn("55:phc2sys", self.pm.sidecar_log_buffers)
+
+        ptp_logs = list(self.pm.sidecar_log_buffers["55:ptp4l"])
+        self.assertEqual(len(ptp_logs), 2)
+        self.assertEqual(ptp_logs[0]["level"], "INFO")
+        self.assertEqual(ptp_logs[1]["level"], "ERROR")
+
+        phc_logs = list(self.pm.sidecar_log_buffers["55:phc2sys"])
+        self.assertEqual(len(phc_logs), 1)
+        self.assertEqual(phc_logs[0]["level"], "WARN")
+
+    async def test_get_pipewire_telemetry_exposes_sidecar_active_flags(self):
+        with self.Session() as s:
+            svc = Service(
+                name="PW Hub Sidecar Telemetry",
+                service_type="pipewire_hub",
+                config={"pipewire_config": {}}
+            )
+            s.add(svc)
+            s.commit()
+            s_id = svc.id
+
+        with patch.object(self.pm, "_get_pipewire_sidecar_status", return_value={"ptp4l_active": True, "phc2sys_active": False}):
+            with patch("asyncio.create_subprocess_exec") as mock_exec:
+                mock_proc = MagicMock()
+                mock_proc.communicate = AsyncMock(return_value=(b"[]", b""))
+                mock_proc.returncode = 0
+                mock_exec.return_value = mock_proc
+
+                res = await self.pm.get_pipewire_telemetry(s_id)
+                self.assertIn("sidecars", res)
+                self.assertTrue(res["sidecars"]["ptp4l_active"])
+                self.assertFalse(res["sidecars"]["phc2sys_active"])
+
+    async def test_ensure_pipewire_sidecars_reattaches_live_ptp4l_without_killing(self):
+        with self.Session() as s:
+            svc = Service(
+                name="PW Reattach Hub",
+                service_type="pipewire_hub",
+                config={"pipewire_config": {"aes67_network": {"enabled": True, "interface": "enp6s0", "ptp": {"enabled": True}}}}
+            )
+            s.add(svc)
+            s.commit()
+            s_id = svc.id
+
+        # Mock find_auxiliary_pids returns alive ptp4l PID 9999
+        self.pm.find_auxiliary_pids = MagicMock(return_value=[9999])
+        mock_proc = MagicMock()
+        mock_proc.cmdline.return_value = ["/usr/sbin/ptp4l", "-f", f"/dev/shm/ptp4l_{s_id}.conf", "-i", "enp6s0"]
+
+        with patch("psutil.pid_exists", return_value=True):
+            with patch("psutil.Process", return_value=mock_proc):
+                with patch.object(self.pm, "_start_ptp4l_sidecar", new_callable=AsyncMock) as mock_start:
+                    with patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock) as mock_tailer:
+                        await self.pm._ensure_pipewire_sidecars(s_id)
+                        # Shouldn't restart because PID 9999 is already alive
+                        mock_start.assert_not_called()
+                        self.assertIn(9999, self.pm.auxiliary_pids.get(s_id, []))
+
+    async def test_ensure_pipewire_sidecars_respawns_dead_ptp4l_when_enabled(self):
+        with self.Session() as s:
+            svc = Service(
+                name="PW Respawn Hub",
+                service_type="pipewire_hub",
+                config={"pipewire_config": {"aes67_network": {"enabled": True, "interface": "enp6s0", "ptp": {"enabled": True}}}}
+            )
+            s.add(svc)
+            s.commit()
+            s_id = svc.id
+
+        self.pm.find_auxiliary_pids = MagicMock(return_value=[])
+        self.pm.auxiliary_pids[s_id] = []
+        with patch.object(self.pm, "_start_ptp4l_sidecar", new_callable=AsyncMock) as mock_start:
+            await self.pm._ensure_pipewire_sidecars(s_id)
+            mock_start.assert_called_once()
+            args, kwargs = mock_start.call_args
+            self.assertEqual(args[0], s_id)
+            self.assertEqual(args[1], "enp6s0")
+            self.assertTrue(kwargs.get("is_restart", False))
 
 
 if __name__ == "__main__":

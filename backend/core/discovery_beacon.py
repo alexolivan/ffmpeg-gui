@@ -1,12 +1,14 @@
 import os
+import re
 import sys
 import json
 import uuid
 import time
 import socket
 import logging
+import ipaddress
 import threading
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger("DiscoveryBeacon")
 
@@ -93,6 +95,118 @@ def get_primary_ip() -> str:
         pass
 
     return "127.0.0.1"
+
+
+_IGNORED_IFACE_PREFIXES = (
+    "lo",
+    "docker",
+    "veth",
+    "virbr",
+    "lxc",
+    "lxd",
+    "podman",
+    "cni",
+    "flannel",
+    "kube",
+    "calico",
+    "tun",
+    "tap",
+    "wg",
+    "tailscale",
+    "zt",
+    "vmnet",
+    "vboxnet",
+    "dummy",
+    "ifb",
+)
+_DOCKER_BRIDGE_RE = re.compile(r"^br-[0-9a-f]{6,}$", re.IGNORECASE)
+
+
+def _is_virtual_or_ignored_iface(iface_name: str) -> bool:
+    """Filter loopback, container, hypervisor, and tunnel virtual interfaces."""
+    if not iface_name:
+        return True
+    lower = iface_name.lower()
+    if lower == "lo" or lower.startswith(_IGNORED_IFACE_PREFIXES):
+        return True
+    if _DOCKER_BRIDGE_RE.match(lower):
+        return True
+    return False
+
+
+def get_advertisable_interfaces(max_interfaces: int = 8) -> List[Dict[str, Any]]:
+    """
+    Enumerate active, non-virtual IPv4 interfaces with subnet mask, MAC, and
+    directed broadcast address for multi-NIC discovery.
+    """
+    results: List[Dict[str, Any]] = []
+    try:
+        import psutil
+        addrs = psutil.net_if_addrs()
+        stats = psutil.net_if_stats()
+    except Exception:
+        return results
+
+    default_gw_iface: Optional[str] = None
+    try:
+        from core.network_inspector import _get_default_gateway_interface
+        default_gw_iface = _get_default_gateway_interface()
+    except Exception:
+        pass
+
+    af_packet = getattr(psutil, "AF_LINK", None)
+    if af_packet is None and hasattr(socket, "AF_PACKET"):
+        af_packet = socket.AF_PACKET
+
+    for iface_name, iface_addrs in addrs.items():
+        if _is_virtual_or_ignored_iface(iface_name):
+            continue
+        iface_stat = stats.get(iface_name)
+        if iface_stat is not None and not iface_stat.isup:
+            continue
+
+        mac: Optional[str] = None
+        if af_packet is not None:
+            for addr in iface_addrs:
+                if addr.family == af_packet and addr.address:
+                    mac = addr.address
+                    break
+
+        for addr in iface_addrs:
+            if addr.family != socket.AF_INET or not addr.address:
+                continue
+            try:
+                ip_obj = ipaddress.IPv4Address(addr.address)
+            except ValueError:
+                continue
+            if ip_obj.is_loopback or ip_obj.is_unspecified or ip_obj.is_multicast:
+                continue
+
+            netmask = addr.netmask or "255.255.255.0"
+            try:
+                iface_net = ipaddress.IPv4Interface(f"{ip_obj}/{netmask}")
+            except ValueError:
+                netmask = "255.255.255.0"
+                iface_net = ipaddress.IPv4Interface(f"{ip_obj}/{netmask}")
+
+            broadcast = (
+                str(iface_net.network.broadcast_address)
+                if iface_net.network.prefixlen < 32
+                else None
+            )
+
+            results.append({
+                "ip": str(ip_obj),
+                "netmask": netmask,
+                "broadcast": broadcast,
+                "iface": iface_name,
+                "mac": mac,
+                "default": (iface_name == default_gw_iface),
+                "_is_link_local": ip_obj.is_link_local,
+            })
+
+    results.sort(key=lambda item: (item["_is_link_local"], item["iface"], item["ip"]))
+    return results[:max_interfaces]
 
 
 def get_network_info() -> Dict[str, Any]:
@@ -220,6 +334,18 @@ class DiscoveryBeaconService:
         except Exception:
             ver = "2.50.0"
 
+        advertisable = get_advertisable_interfaces()
+        ips_payload = [
+            {
+                "ip": item["ip"],
+                "netmask": item["netmask"],
+                "iface": item["iface"],
+                "mac": item["mac"],
+                "default": item["default"],
+            }
+            for item in advertisable
+        ]
+
         return {
             "app": "ffmpeg-gui",
             "protocol_version": 1,
@@ -227,6 +353,7 @@ class DiscoveryBeaconService:
             "node_name": node_name,
             "node_alias": node_alias,
             "ip": ip,
+            "ips": ips_payload,
             "http_port": http_port,
             "https_port": effective_https_port,
             "web_url": web_url,
@@ -304,16 +431,41 @@ class DiscoveryBeaconService:
         logger.info("Discovery Beacon service stopped.")
 
     def send_beacon(self, target_addr: Optional[tuple] = None) -> None:
-        """Send a beacon packet. If target_addr is None, broadcasts to 255.255.255.255."""
+        """
+        Send a beacon packet. If target_addr is provided, replies unicast to that address.
+        Otherwise broadcasts to each active subnet's directed broadcast address plus 255.255.255.255.
+        """
         if not self._sock or not self.is_enabled():
             return
         try:
             payload = self.build_payload()
             raw_bytes = json.dumps(payload).encode("utf-8")
-            dest = target_addr or ("255.255.255.255", self.port)
-            self._sock.sendto(raw_bytes, dest)
         except Exception as e:
-            logger.debug(f"Failed to send discovery beacon: {e}")
+            logger.debug(f"Failed to build discovery beacon: {e}")
+            return
+
+        if target_addr is not None:
+            try:
+                self._sock.sendto(raw_bytes, target_addr)
+            except Exception as e:
+                logger.debug(f"Failed to send unicast discovery beacon to {target_addr}: {e}")
+            return
+
+        destinations: List[str] = []
+        seen = set()
+        for item in get_advertisable_interfaces():
+            bcast = item.get("broadcast")
+            if bcast and bcast not in seen:
+                seen.add(bcast)
+                destinations.append(bcast)
+        if "255.255.255.255" not in seen:
+            destinations.append("255.255.255.255")
+
+        for dest_ip in destinations:
+            try:
+                self._sock.sendto(raw_bytes, (dest_ip, self.port))
+            except Exception as e:
+                logger.debug(f"Failed to send discovery beacon to {dest_ip}:{self.port}: {e}")
 
     def _broadcast_loop(self) -> None:
         """Periodic passive broadcast heartbeat."""

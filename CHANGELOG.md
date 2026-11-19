@@ -5,6 +5,552 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.68.0] - 2026-11-19
+
+### Added
+- **Hardware & Signal I/O Extraction (`frontend/src/components/views/HardwareIOView.tsx`, `frontend/src/components/Sidebar.tsx`)**:
+  - Extracted ALSA Mixer & Devices, Blackmagic DeckLink, and Magewell capture/driver controls out of `SettingsView.tsx` into a dedicated `Hardware & I/O` view with level-aware `monitor`/`operate`/`manage` controls.
+- **Fine-Grained CloudHub Authorization Enforcement (`backend/core/authz.py`, `backend/core/cloud_tunnel_client.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`)**:
+  - Advertised `authz_claims` tunnel capability and verified HMAC-SHA256 `X-CloudHub-Authz-Claims` assertions over the reverse tunnel.
+  - Added HTTP, WebSocket, telemetry filtering, configuration redaction, dependency-driven downward `monitor` cascades, and VNC `view_only` input blocking on `/ws/desktop/{service_id}/vnc`.
+- **Authorization-Aware Edge UI (`frontend/src/utils/permissions.ts`, `frontend/src/components/common/PermissionLevelBadge.tsx`, views, service cards & preview modals)**:
+  - Filtered sidebar navigation, dashboard API calls, service/task/forge/settings controls, `noVNC` `viewOnly` mode, Icecast `/admin/` link, MediaMTX publish credentials, Kiosk cache clear, and PipeWire matrix reconciliation based on `/api/auth/status` capability claims.
+- **CloudHub Chunked Streaming & Internal Icecast Reverse Proxy (`backend/core/cloud_tunnel_client.py`, `backend/main.py`, `backend/requirements.txt`, `frontend/src/components/modals/`)**:
+  - Added chunked HTTP streaming and cancellation over the CloudHub reverse tunnel, unlocked live MJPEG previews through tunnels, added async `httpx` internal Icecast reverse proxying for live status iframes and HTML5 audio playback, and resolved real `primary_ip` on copied modal URLs.
+
+### Changed
+- **Public Documentation & Release Screenshots (`README.md`, `INSTALL.md`, `docs/assets/`)**:
+  - Refreshed screenshots (`screenshot1`, `2`, `4`, `6`, `8`, `10`, `24`, `25`), added new screenshots (`screenshot26` Maintenance Restart modal, `screenshot27` Watchdog & In-Band Signal tab, `screenshot28` Prometheus Exporter), fixed README section numbering, and updated feature/installation docs.
+
+## [2.67.3] - 2026-11-16
+
+### Fixed
+- **PipeWire Sink & Remote Sink Selector Resolution (`frontend/src/components/source/InputSourcePanel.tsx`, `frontend/src/components/destination/DestinationPanel.tsx`, `frontend/src/components/forms/PipeWireConfigForm.tsx`)**:
+  - Prioritized `config.pipewire_config.{virtual_sinks, remote_sinks}` over stale empty `[]` root arrays when resolving PipeWire Hub sinks in input/output selectors (preventing JavaScript's truthy `[] || [...]` from hiding newly imported `remote_sinks`).
+  - Added numeric `Number(id)` matching with fallback to `pipewire_service_id` and `pipewireHubs[0]` when switching an existing service to PipeWire input/output.
+  - Synchronized root `virtual_sinks` and `remote_sinks` alongside `pipewire_config` on `PipeWireConfigForm` submission.
+
+## [2.67.2] - 2026-11-13
+
+### Added
+- **Watchdog Mode Indicators & Backup Badge (`frontend/src/components/cards/{FfmpegServiceCard,UnifiedServiceCard}.tsx`, `frontend/src/components/views/ServicesView.tsx`)**:
+  - Updated the `WATCHDOG` card badge to render when either process watchdog or any in-band signal sensor is active, displaying compact mode icons (`ShieldIcon`, `🔇`, `⬛`, `❄️`) before the `WATCHDOG` label with a full tooltip breakdown.
+  - Added a compact truncated `🔁 <BackupName>` badge on FFmpeg service cards configured with `activate_backup` failover.
+
+## [2.67.1] - 2026-11-13
+
+### Fixed
+- **Watchdog UI & Failover Candidate Guardrails (`frontend/src/components/form/WatchdogFormSection.tsx`, `backend/main.py`, `frontend/src/locales/{en,es,ca}.json`)**:
+  - Disabled the `AND / OR` trigger logic selector (defaulting to `OR`) when fewer than 2 signal sensors are active (including audio-only services).
+  - Restricted signal-watchdog backup service candidates to `ffmpeg_stream` services in both UI and backend validation (`_validate_signal_watchdog_config`), excluding hubs, Icecast, MediaMTX, Desktop, and Kiosk services.
+  - Marked any service that already uses the currently edited service as its backup as `disabled` in the backup selector dropdown to prevent circular failover loops at the UI level.
+
+## [2.67.0] - 2026-11-13
+
+### Added
+- **In-Band Signal Watchdog & Continuity Failover (`backend/core/filter_graph.py`, `backend/core/process_manager.py`, `backend/core/notification_manager.py`, `backend/core/prometheus_exporter.py`, `backend/main.py`)**:
+  - Added pass-through FFmpeg signal detectors (`silencedetect`, `blackdetect` with `metadata=mode=print` real-time events, and `freezedetect`), automatically bridging hardware-accelerated pipelines (VAAPI/NVENC/QSV) via `hwdownload,format=nv12` / `hwupload` and skipping sensors on `Stream Copy`.
+  - Added real-time `stderr` event parsing and `OR`/`AND` anomaly evaluation with recovery hold-off hysteresis in `ProcessManager`, supporting `alert_only`, `restart_self`, and `activate_backup` reactions via `DependencyManager` `failover:<id>` leases with 1-hop anti-cascade protection.
+  - Added coalesced email alerts (`notify_signal_alarm` / `notify_signal_recovery`) and Prometheus gauge `ffmpeg_gui_service_signal_alarm{id,name,type}`.
+  - Added API cycle/self-reference validation, `backup_service_name` re-linking during JSON Backup/Restore, and dangling reference cleanup on service deletion.
+- **Dedicated Watchdog Tab & Service Alarm Badges (`frontend/src/components/form/WatchdogFormSection.tsx`, `frontend/src/components/ProcessConfigForm.tsx`, `frontend/src/components/cards/{FfmpegServiceCard,UnifiedServiceCard}.tsx`, `frontend/src/locales/{en,es,ca}.json`)**:
+  - Added a dedicated `Watchdog` tab between `General` and `Input` consolidating process crash-recovery controls (moved from `LifecycleFormSection`) and conditional in-band signal sensors.
+  - Added pulsing `SIGNAL ALARM` badges on service cards with tripped sensor indicators.
+
+## [2.66.0] - 2026-11-13
+
+### Added
+- **Multi-NIC / Multi-Subnet Discovery Beacon (`backend/core/discovery_beacon.py`)**:
+  - Added `get_advertisable_interfaces()` and `_is_virtual_or_ignored_iface()` to enumerate all active physical/VLAN/LAN-bridge IPv4 interfaces with netmask, MAC address, and default-gateway flag while filtering loopback, container, hypervisor, and VPN virtual adapters (`lo`, `docker*`, `veth*`, `virbr*`, `br-<hex>`, `tun*`, `wg*`, `tailscale*`, etc.).
+  - Extended beacon JSON payload with the backward-compatible `"ips"` list while preserving `"ip"` and `"web_url"` for legacy scanners.
+  - Updated `DiscoveryBeaconService.send_beacon()` to emit passive broadcasts to every active subnet's directed broadcast address in addition to `255.255.255.255`, while keeping `DISCOVER_QUERY` replies unicast to the requesting scanner.
+
+## [2.65.0] - 2026-11-13
+
+### Changed
+- **AoIP Profile Gating & Broadcast Standard Naming (`frontend/src/components/forms/PipeWireConfigForm.tsx`, `frontend/src/locales/{en,es,ca}.json`)**:
+  - Disabled `Audinate Dante / AES67 (Strict)` when the selected NIC lacks a hardware PTP clock (`ptp_support !== 'hardware'`), automatically switching to `Broadcast / AES67 (Standard)` when changing to a non-PHC NIC.
+  - Renamed the `ravenna` profile title to `Broadcast / AES67 (Standard)` with updated descriptions covering Ravenna, AES67 standard devices, and receiving (RX) Audinate Dante AES67 streams.
+
+### Fixed
+- **Dante / AES67 Hardware TX Silence & DSCP (`backend/core/pipewire_config.py`)**:
+  - Set `sess.latency.msec = 3` (configurable via `tx_latency_ms`) on `libpipewire-module-rtp-sink` instead of inheriting the ~171 ms RX jitter buffer, eliminating excessive RTP timestamp presentation offsets rejected by Dante hardware receivers (e.g., AEQ).
+  - Emitted `net.dscp = 46` (EF) on `libpipewire-module-rtp-sink` and clamped `default.clock.min-quantum = 32` when `1ms` AES67 packetization is active.
+- **PTP `UNCALIBRATED` False Positive on Long-Running Nodes (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Expanded `_run_ptp_monitor` log tail window dynamically (up to 8 MB or until `--- PTP4L` boundary / role transition) when >64 KB of `rms` telemetry lines push the `UNCALIBRATED to SLAVE` line out of the initial 64 KB tail.
+- **CloudHub Reverse Tunnel `1009` Disconnect Guard (`backend/core/cloud_tunnel_client.py`)**:
+  - Added a `MAX_TUNNEL_FRAME_BYTES` (`15_500_000`) guard in `_handle_asgi_http` (returning `413 Payload Too Large`) and `_handle_asgi_ws_open` (closing only the oversized virtual stream with `ws_close` `1009`) to prevent crashing the multiplexed CloudHub WebSocket tunnel.
+
+## [2.64.13] - 2026-11-12
+
+### Fixed
+- **Non-Root `/dev/ptp*` Hardware Clock Access (`scripts/setup-system-capabilities.sh`, `uninstall.sh`)**:
+  - Installs `/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules` (`SUBSYSTEM=="ptp", KERNEL=="ptp[0-9]*"`, `GROUP="ffmpeg-gui"` / `MODE="0660"`) and triggers `udevadm` so both `ptp4l` and PipeWire `PTP0-Driver` can open hardware `/dev/ptpX` clocks without running as `root` or requiring `CAP_DAC_OVERRIDE`.
+  - Cleans up `/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules` during system service uninstallation (`uninstall.sh`).
+
+## [2.64.12] - 2026-11-12
+
+### Fixed
+- **Dante RTP Dynamic Payload Type Alignment (`backend/core/pipewire_config.py`)**:
+  - Explicitly emits `rtp.payload = 96` (or `sink.rtp_payload` override) in `libpipewire-module-rtp-sink` `stream.props` for the `dante` profile, matching Dante Virtual Soundcard (`RTP/AVP 96`) instead of PipeWire's default `127`.
+- **PTP4L Log Tail Session Boundary (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Extracted `_parse_ptp4l_log_lines` and stopped backward log scanning at `--- PTP4L` launch/restart markers so stale BMCA roles, `rms` reports, and master clock identities from previous runs never bleed into the freshly restarted session's discovery status.
+
+## [2.64.11] - 2026-11-12
+
+### Fixed
+- **Unique AES67 SDP Session IDs (`o= <sess-id>`) Across Multi-Stream & Multi-Host Fleets (`backend/core/pipewire_config.py`)**:
+  - Added deterministic, collision-guarded 31-bit positive `sess.id` derivation (`PipeWireConfigGenerator.get_rtp_session_id`) scoped by host identity (`EUI-64`, `source.ip`) and stream tuple (`service_id`, `sink_id`, `sink_index`, `dest_ip`, `dest_port`), along with positive 31-bit `sess.version` per generation.
+  - Prevents PipeWire from assigning identical fallback `<sess-id>` values when multiple `libpipewire-module-rtp-sink` streams initialize in the same second with `rtp.ntp = 0`, which caused RFC 4566 `o=` collisions in Dante Controller (collapsing multiple buses down to only the last announced stream).
+
+## [2.64.10] - 2026-11-12
+
+### Fixed
+- **AES67 / Dante SDP & PTPv2 Clock Compliance (`backend/core/pipewire_config.py`, `backend/core/process_manager.py`)**:
+  - Replaced unrecognized `sess.mediaclk = "direct=0"` with PipeWire's actual `sess.ts-offset = 0`, `device.api = "aes67"`, and `rtp.ntp = 0` properties so SAP SDP announcements properly emit `a=mediaclk:direct=0` instead of random 32-bit offsets.
+  - Enabled live PTP Grandmaster clock identity resolution in PipeWire via `ptp.management-socket` (`ptp4lro_{id}.uds`) on `libpipewire-module-rtp-sap` and `rtp.fetch-ts-refclk = true` on `libpipewire-module-rtp-sink`, ensuring `a=ts-refclk` dynamically advertises the active network Grandmaster (e.g., AEQ hardware) instead of a local fallback ID.
+  - Fixed `PipeWireConfigGenerator.get_canonical_eui64` to reject IPv4 strings (preventing decimal IP octets like `192.168.100.154` from being formatted into bogus `19-21-68-FF-FE-10-01-54` MACs) and read the NIC hardware MAC from `/sys/class/net/<iface>/address`.
+  - Pre-spawns managed `ptp4l` before PipeWire startup (waiting briefly for `ptp4lro_{id}.uds` socket readiness) and enables PipeWire `PTP0-Driver` (`clock.interface`) + `aes67.driver-group = "pipewire.ptp0"` automatically when hardware PTP timestamping (`/dev/ptpX`) is detected.
+
+## [2.64.9] - 2026-11-11
+
+### Fixed
+- **Dante BMCA Backup Default Priority & Legacy UI State (`backend/core/pipewire_config.py`, `frontend/src/components/forms/PipeWireConfigForm.tsx`, `frontend/src/components/cards/PipeWireServiceCard.tsx`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Updated Dante BMCA backup master default `priority1` from `240` to `253` after wire verification against AEQ hardware (`priority1 = 249`), ensuring Linux backup nodes yield gracefully to standard Dante consoles (`247-252`) while assuming Grandmaster only when no hardware clock is active (outranking passive `254` clients).
+  - Fixed `PipeWireConfigForm` state initialization and toggle logic so opening services with missing `priority1` or legacy DB values (`128` while backup mode was disabled) resolves cleanly to `254` / `253` without leaking `128` when enabling BMCA backup mode.
+  - Localized Dante `priority1` helper strings in `en.json`, `es.json`, and `ca.json`.
+- **SAP Radar Table Column Density & Badge Wrapping (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Folded stream `Origin` IP as a compact subtitle beneath `Multicast Endpoint` and enforced `whitespace-nowrap inline-flex items-center` on all `Status` and `Action / State` pills/buttons so badges never wrap or clip across multiple lines.
+
+## [2.64.8] - 2026-11-11
+
+### Added
+- **PTP4L Free-Running Calibration vs Uncalibrated State Semantics (`backend/core/aoip_discovery_supervisor.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Differentiated continuous calibration in software timestamping mode (`free_running 1`) as an active healthy state (`CALIBRATING` in emerald/green) rather than an alarming error condition (`UNCALIBRATED` in amber).
+  - Added discreet clock operating mode badges (`SW · Free-Running` vs `HW · PHC`) on the local PTP status badge in `PipeWirePreviewModal`.
+- **Dedicated Status Column in SAP Radar Stream Table (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Extracted inline stream status badges (`Active` / `Waiting`) from the description/session name cell into a dedicated `Status` column, maintaining visual consistency with all other modal tables.
+- **Dynamic Real-Time PTP Role Telemetry on Service Cards (`frontend/src/components/cards/PipeWireServiceCard.tsx`, `backend/main.py`)**:
+  - Replaced static `PTP Master (prio ...)` badge on PipeWire service cards with a reactive, compact badge displaying real-time PTP status (`PTP: SLAVE`, `PTP: CALIBRATING`, `PTP: MASTER`, etc.) with semantic status colors.
+
+### Changed
+- **Dante Profile BMCA Backup Master Architecture (`backend/core/pipewire_config.py`, `frontend/src/components/forms/PipeWireConfigForm.tsx`, locales `en.json`, `es.json`, `ca.json`)**:
+  - Reformed `force_local_master` in Dante profile: replaced restrictive `serverOnly 1` with `serverOnly 0` and `clientOnly 0`, transforming the node into a true IEEE 1588 BMCA Backup Master.
+  - Unlocked `Priority 1 (BMCA)` input field when backup master is active, defaulting to lower-priority fallback `240` (instead of locked `128`), allowing the node to act as Grandmaster when hardware consoles are off and automatically yield back to SLAVE when a hardware console (AEQ/Yamaha) powers on.
+  - Updated localized descriptions and warnings to clearly reflect BMCA backup behavior.
+
+### Fixed
+- **Host System Clock Protection Against Arbitrary PTP Epochs (`backend/core/pipewire_config.py`, `backend/core/process_manager.py`, `backend/tests/test_pipewire_process.py`)**:
+  - Enforced `free_running 1` for software timestamping (`-S`), preventing `ptp4l` from attempting to step/slew the Linux host `CLOCK_REALTIME` and eliminating timescale collisions and `Invalid argument` errors with legacy 1970 ARB hardware clocks.
+  - Completely stopped spawning `phc2sys -s <iface> -c CLOCK_REALTIME` in slave mode, ensuring host OS system time (NTP / `systemd-timesyncd`) is never disrupted by AoIP networks.
+
+## [2.64.7] - 2026-11-10
+
+### Fixed
+- **ptp4l Servo Jump Hair-Trigger & Announce Timeout Flapping (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Replaced runtime `step_threshold 1.0` with standard `step_threshold 0.0` and explicit `first_step_threshold 0.00002`: prevents `pi.c` from transitioning to `SERVO_JUMP` and dispatching `EV_SYNCHRONIZATION_FAULT` whenever transient network jitter spikes offset above 1 second during active sync.
+  - Added `sanity_freq_limit 0` to disable false-positive `clockcheck` resets caused by software timestamping context switching.
+  - Increased `announceReceiptTimeout` from default 3 to 6 to eliminate spurious `ANNOUNCE_RECEIPT_TIMEOUT_EXPIRES` resets on standard Linux networks.
+
+## [2.64.6] - 2026-11-10
+
+### Fixed
+- **Persistent PTP4L Role Tracking & Active RMS Metric Calibration (`backend/core/aoip_discovery_supervisor.py`, `backend/tests/test_aoip_discovery_supervisor.py`)**:
+  - Expanded `ptp4l` log inspection tail from 8 KB to 64 KB and implemented `self._last_ptp4l_role` state persistence across discovery loops.
+  - Resolves UI getting permanently trapped in `INITIALIZING` on long-running nodes when initial transition messages (`to UNCALIBRATED`, `to SLAVE`) scroll beyond the tail buffer while continuous `rms ... max ... freq ... delay ...` lines are active.
+  - Automatically identifies active servo tracking (`rms` metrics) as `UNCALIBRATED` (or preserved `SLAVE`) instead of defaulting to `INITIALIZING`.
+- **Restoration of Default free_running 0 for Active Clock Steer & SLAVE Transition (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Re-established `free_running 0` by default in `generate_ptp4l_config`: in `linuxptp`, setting `free_running 1` invokes `clock_no_adjust()` which perpetually reports `SERVO_UNLOCKED`, permanently barring `ptp4l` from ever firing `EV_MASTER_CLOCK_SELECTED` and locking to `SLAVE`.
+  - When synchronizing to peer master nodes or AES67 Grandmasters on current epoch (such as `test3` with ~150 ms offset), `free_running 0` combined with `step_threshold 1.0` enables immediate locking into `SLAVE` without `Invalid argument` errors.
+
+## [2.64.5] - 2026-11-10
+
+### Fixed
+- **Conditional free_running in Software Timestamping Client Nodes (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Automatically activates `free_running 1` in `ptp4l.conf` specifically when running in software timestamping mode (`ts_mode == "software"`) as a client/slave node (`client_only == 1`).
+  - Resolves `failed to step clock: Invalid argument` error caused by Linux kernel safety limits (`MAX_PAST_SECS / MAX_FUTURE_SECS = 1000 days`) when receiving PTP broadcasts from Grandmasters operating on arbitrary or 1970 relative epochs (e.g. legacy broadcast matrices / AEQ consoles).
+  - Preserves host system clock (`CLOCK_REALTIME`) integrity at the current date (avoiding certificate and systemd corruption) while enabling `ptp4l` to achieve clean, stable `SLAVE` state via BMCA.
+  - Leaves `free_running 0` intact for all hardware timestamping NICs (disciplining isolated `/dev/ptp0` hardware crystals) and for local PTP Masters.
+
+## [2.64.4] - 2026-11-10
+
+### Fixed
+- **PipeWire ptp4l Slew-Rate Saturation & Synchronization Fault Oscillation (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Added `step_threshold 1.0` to the global configuration template of `ptp4l` daemon.
+  - Resolves infinite oscillation between `SLAVE` and `UNCALIBRATED` caused by `linuxptp`'s default `step_threshold 0.0`: when large initial epoch offsets exist (e.g. TAI epoch vs local clock), the servo maxed out frequency slew at `+100000000 ppb` (+10%), tripping internal sanity checks (`clockcheck: clock jumped forward or running faster than expected!`) and throwing `SYNCHRONIZATION_FAULT`.
+  - Enables instantaneous one-shot clock step on cold start while preserving microsecond-accurate slewing during continuous sync.
+
+## [2.64.3] - 2026-11-10
+
+### Fixed
+- **Strict PTP Grandmaster Detection & Slave Packet Discrimination (`backend/core/network_inspector.py`, `backend/core/aoip_discovery_supervisor.py`)**:
+  - Excluded `Delay_Req` (`msg_type = 0x1`) from `probe_network_ptp_master`: client nodes in E2E delay mode (`clientOnly 1`) periodically transmit `Delay_Req` packets to multicast `224.0.1.129`, which were mistakenly being identified as Grandmasters by peering slave nodes (`test1` and `test3` seeing each other).
+  - Restricted PTP master detection strictly to true Master broadcasts: `Announce` (`0xB` on port 320) and `Sync` (`0x0` on port 319).
+  - Enhanced Grandmaster Identity resolution: parses `grandmasterIdentity` from body octets 53..60 of IEEE 1588 Announce frames.
+  - Linked `ptp4l` log parser directly to BMCA selection (`selected best master clock <clock_id>` and `new foreign master`), binding the discovered Clock ID to the daemon's active clock choice.
+  - Stabilized telemetry persistence: prevents aging out or clearing `source_ip` and `clock_identity` while `ptp4l` remains actively synchronized in `SLAVE` or `UNCALIBRATED` state, eliminating cyclical jumping to `Searching Grandmaster...`.
+
+## [2.64.2] - 2026-11-10
+
+### Fixed
+- **PipeWire AoIP PTP Dynamic Status Synchronization & Contract Alignment (`frontend/src/components/modals/PipeWirePreviewModal.tsx`, `backend/core/aoip_discovery_supervisor.py`, `backend/core/network_inspector.py`)**:
+  - Resolved contract mismatch where backend emitted `local_ptp4l_role` and `source_ip` while UI inspected `state` and `grandmaster_ip`, causing blind fallbacks to `MASTER` and `Local Node` when PTP was enabled.
+  - Normalized telemetry keys in `AoIpDiscoverySupervisor.get_discovery_status()` (`state`, `local_ptp4l_role`, `grandmaster_ip`, `source_ip`).
+  - Added extraction of Grandmaster `clock_identity` (EUI-64) directly from network PTPv2 announce/sync headers in `probe_network_ptp_master`.
+  - Upgraded `_run_ptp_monitor` in `AoIpDiscoverySupervisor` to parse all linuxptp port states (`MASTER`, `SLAVE`, `UNCALIBRATED`, `PASSIVE`, `LISTENING`, `FAULTY`, `INITIALIZING`) and trigger immediate WebSocket graph invalidation on state changes.
+  - Eliminated hardcoded `MASTER` fallback in UI: displays accurate real-time state with dynamic semantic colors (`MASTER` in purple, `SLAVE` in emerald green, `UNCALIBRATED` in amber, `LISTENING` in cyan, `FAULTY` in red, `INACTIVE` in zinc), resolving Dante slave mode (`clientOnly 1 · Priority 254`) confusion.
+  - Added i18n localization keys (`ptpSearching`, `ptpLocalNode`, `ptpMasterDisabled`) across English, Spanish, and Catalan locales.
+
+## [2.64.1] - 2026-11-10
+
+### Changed
+- **PipeWire Active Graph Links Table Cleanup (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Removed internal numerical `Link ID` column from the *Active Graph Links (pw-dump)* table under the Links & Routes tab.
+  - Aligned presentation with human-readable node and port names, source-to-target routing directions, and connection states.
+
+## [2.64.0] - 2026-11-10
+
+### Removed
+- **PipeWire Meter Collector & Parasitic Subprocess Monitoring (`backend/core/pipewire_meter_collector.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`, `backend/core/process_manager.py`)**:
+  - Completely decommissioned `PipeWireMeterCollector` and its ephemeral WebSocket endpoint `/ws/pipewire/meters/{service_id}`.
+  - Eliminated the risk of fork cascades and graph pollution from background `pw-record` capture clients, restoring clean, zero-overhead PipeWire operations.
+
+### Changed
+- **PipeWire Audio Nodes Table Optimization (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Removed canvas VU meter and Level column from the Audio Nodes table.
+  - Retained the removal of the redundant numeric `#ID` column, giving primary focus to `Node / Entity Name`, `Media Class`, `State`, `Format`, and `Description`.
+
+## [2.63.1] - 2026-11-10
+
+### Fixed
+- **PipeWire Audio Node VU Meters Vertical ALSA-Style Realignment (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Homogenized audio node VU meter visual design with the established vertical stereo LED meter design from the ALSA settings card (`AlsaAudioSettingsCard.tsx`).
+  - Switched from horizontal bars to compact vertical stereo LED bars (`width={16} height={22}` inside `w-6 h-6 rounded bg-black/90` border box), displaying green-to-amber-to-red vertical gradients.
+  - Eliminated dead black placeholder boxes: every node in the graph mounts an HTML5 `<canvas>` initialized with dimmed resting tracks, seamlessly lighting up when real-time peak audio telemetries arrive.
+- **PipeWire Audio Capture Resolution & Target Fallbacks (`backend/core/pipewire_meter_collector.py`)**:
+  - Resolved zero-activity / black meter issue where overly restrictive eligibility checks (`state == "running" and linked_node_ids > 0`) dropped landing sinks (`remote_sinks`), virtual buses (`aes_bus_1`), and audio streams in `idle` or internal routing states.
+  - Relaxed collector eligibility to actual audio endpoints (`Audio/Sink`, `Audio/Source`, `Stream/Output/Audio`).
+  - Implemented strict anti-recursion filtering (`_is_audio_node`): explicitly blocks `pw-record`, `pw-cat`, `pw-meter-collector`, and `Stream/Input/Audio` (capture consumers) to prevent infinite recursive fork cascades where meter processes spawned meters on themselves.
+  - Added hard cap guardrail (`MAX_CONCURRENT_METERS = 12`) and immediate process kill on rejected candidate targets.
+  - Implemented prioritized target resolution for `pw-record`: automatically applies `-P '{ stream.capture.sink = true }'` when capturing from `Audio/Sink` nodes, with fallback to `<node_name>.monitor` and numerical node IDs.
+  - Replaced `stderr=DEVNULL` with pipe logging to capture and diagnose `pw-record` link negotiation errors.
+- **PipeWire Forge Build Recipe & Dependency Alignment (`backend/forge/recipes/pipewire.py`, `backend/core/build_manager.py`, `install.sh`, `INSTALL.md`)**:
+  - Incorporated `libsndfile1-dev` (and `meson`, `ninja-build`) into the system dependencies of PipeWire's Forge recipe and the pre-flight dependency checker (`build_manager.py`).
+  - Added `-Dpw-cat=enabled` and `-Dsndfile=enabled` options to Meson setup: prevents PipeWire from silently skipping compilation of `pw-cat`, `pw-record`, and `pw-play` binaries due to missing libsndfile headers.
+  - Updated `install.sh` and `INSTALL.md` across Debian, RHEL, and Arch distributions to ensure audio recording tools are built by default.
+
+## [2.63.0] - 2026-11-09
+
+### Added
+- **PipeWire Audio Node Real-Time VU Meters (`backend/core/pipewire_meter_collector.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`, `frontend/src/locales/`)**:
+  - Replaced the low-utility numeric `#ID` column in the **Audio Nodes** tab with a dedicated, compact visual **`Level`** column (`w-16`).
+  - Implemented zero-react-rerender HTML5 `<canvas>` horizontal stereo LED meter bars (L/R) rendering real-time peaks with segmented green/amber/red coloration at ~10 Hz.
+  - Nodes in `idle`, `suspended`, or unlinked state (`links == 0`) render a dimmed placeholder meter in rest state, reserving active VU meter monitoring strictly for nodes in `running` state with active graph links.
+  - Built an on-demand, lightweight backend capture manager (`PipeWireMeterCollector`) utilizing native low-rate (8 kHz s16) `pw-record` sessions connected to the hub's local `pipewire-0` socket.
+  - Created dedicated ephemeral WebSocket `/ws/pipewire/meters/{service_id}` and multiplexed `pipewire_meters` topic in `WebSocketSubscriptionHub`: capture workers run strictly while the `Audio Nodes` tab is visible, immediately halting all sub-processes upon tab switch or modal dismissal for zero standby CPU load.
+  - Added unit test suite `test_pipewire_meter_collector.py` verifying active node filtering, level formatting, and process termination.
+
+## [2.62.2] - 2026-11-09
+
+### Fixed
+- **AoIP Stream Lifecycle State Machine & Silence Recovery (`backend/core/aoip_discovery_supervisor.py`, `backend/core/websocket_subscription_hub.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Implemented dynamic detection of recovered streams (`is_new or was_inactive`) in `AoIpDiscoverySupervisor.handle_sap_packet`: when an announcement arrives for a stream previously silent or waiting, the supervisor immediately logs the recovery, transitions the stream back to `online`, and invalidates the PipeWire graph subscription to notify WebSocket clients without stalling.
+  - Eliminated `SO_REUSEPORT` from SAP listener UDP socket setup, retaining exclusively `SO_REUSEADDR` to avoid Linux kernel 4-tuple hash packet balancing that blocked multicast SAP announcements from reaching Python when PipeWire or other services coexisted on UDP port 9875.
+  - Hardened multicast group joins (`IP_ADD_MEMBERSHIP`) with `struct ip_mreqn` using `INADDR_ANY` as local IP to prevent interface binding exceptions when DHCP or interface aliases differ.
+  - Added periodic silence and timeout detection (`_check_stream_timeouts_and_prune`) in background monitoring, transitioning silent streams to `waiting` at 60s and invalidating the WebSocket graph proactively without requiring user polling.
+  - Exposed live `status` attribute on all discovered streams in `get_discovery_status()` (`online` vs `waiting`), ensuring the WebSocket graph hash signature accurately triggers diff broadcasts on state transitions.
+  - Hardened frontend status calculation in `PipeWirePreviewModal.tsx`: requires affirmative `liveSink.status === 'online'` to show `Online / Linked`, preventing false-positive greens when telemetries are missing or silent. Added cache-busting timestamp `_t` on manual refreshes.
+  - Added unit test `test_stream_recovery_after_silence_invalidates_pipewire_graph` in `test_aoip_discovery_supervisor.py`.
+
+## [2.62.1] - 2026-11-09
+
+### Fixed
+- **AoIP Remote Sinks Live Status Accuracy (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Fixed false-positive `Online / Linked` status on remote sinks when the source stream changes port or stops broadcasting.
+  - Linked the status check to real-time network presence from `aoip_discovery.remote_sinks_status` in addition to PipeWire OS node availability: distinguishes between active streams (`Online / Linked`), silent/changed streams (`Waiting for Stream`), and unloaded receiver modules (`Offline / Unloaded`).
+- **Dynamic SAP Radar Pruning & Instant Refresh (`backend/core/aoip_discovery_supervisor.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Reduced SAP stream expiration window from 120s to 45s (`SAP_STREAM_EXPIRATION_SEC = 45.0`, `SAP_ACTIVE_STREAM_WINDOW_SEC = 45.0`), allowing rapid discovery updates when streams migrate across ports.
+  - Implemented on-demand active stream pruning inside `get_discovery_status()`, ensuring manual refreshes and API queries immediately discard dead streams without waiting for the background loop.
+  - Added dedicated refresh button directly in the SAP Radar card header in the PipeWire preview modal.
+  - Added automated unit test in `test_aoip_discovery_supervisor.py` verifying immediate cache pruning and remote sink transition to `waiting`.
+
+## [2.62.0] - 2026-11-09
+
+### Added
+- **AoIP Profile-Based RTP Port Policy & Dante Standards Compliance (`backend/core/pipewire_config.py`, `frontend/src/components/forms/PipeWireConfigForm.tsx`, `frontend/src/locales/`)**:
+  - Enforced strict destination port locking to `5004` (standard AES67/Dante RTP port) when using the `Audinate Dante / AES67 (Strict)` profile, preventing multi-sink port drift (e.g. 5006, 5008) that breaks compatibility with hardware receivers and Sound-Net Virtual Sound Card (VSC).
+  - Automatically resets existing virtual sinks to port `5004` when switching to the Dante profile in the PipeWire Hub configuration form.
+  - Implemented subtle non-standard port warning for `Ravenna / Broadcast AES67` profile (`services.pipewire.nonStandardPortNotice`) when a port other than 5004 is configured, while keeping the field editable.
+  - Removed legacy generic RTP `+ idx * 2` multiplier from route recalculation (`handleRecalculateRoutes`), initializing all sinks to port `5004` while preserving independent canonical multicast IP allocation per sink (`239.69.X.1`, `239.69.X.2`, etc.).
+  - Added backend defense-in-depth guardrail in `PipeWireConfigGenerator.generate_pipewire_conf` forcing `dest_port = 5004` under Dante profile regardless of raw payload values.
+  - Added automated unit tests in `test_pipewire_config.py` verifying Dante port 5004 enforcement and custom port preservation in Ravenna/standalone profiles.
+
+## [2.61.1] - 2026-11-09
+
+### Fixed
+- **Prometheus Fan Speed Metrics Duplicate Label Collision (`backend/core/prometheus_exporter.py`, `backend/tests/test_prometheus_exporter.py`)**:
+  - Fixed duplicate OpenMetrics label sets on hosts with multiple cooling fans by enumerating fan indices (`idx + 1`) and reading the tachometer sensor name (`name` or `label`) rather than hardcoding identical IDs and label attributes.
+  - Updated test suite `test_prometheus_exporter.py` with multi-fan scenario.
+
+### Added
+- **Packaging Templates for Prometheus & Grafana Integration (`packaging/prometheus/`)**:
+  - Added [prometheus.yml.example](file:///home/alex/LocalRepositories/ffmpeg-gui/packaging/prometheus/prometheus.yml.example) providing an out-of-the-box Prometheus scrape configuration with bearer token authentication and target definitions.
+  - Added [grafana-dashboard-ffmpeg-gui.json](file:///home/alex/LocalRepositories/ffmpeg-gui/packaging/prometheus/grafana-dashboard-ffmpeg-gui.json) featuring a ready-to-import Grafana dashboard model with Host & System Health, Broadcast Services, FFmpeg Live Stream Performance (FPS, Bitrate, Realtime Speed ratio), Subsystems (Icecast2, MediaMTX, PipeWire), and Federated Node latencies.
+  - Added [README.md](file:///home/alex/LocalRepositories/ffmpeg-gui/packaging/prometheus/README.md) with quick start guide and scrape validation instructions.
+
+## [2.61.0] - 2026-11-09
+
+### Added
+- **Prometheus & OpenMetrics Exporter v2 Taxonomy & Subsystems (`backend/core/prometheus_exporter.py`, `backend/core/process_manager.py`, `backend/main.py`)**:
+  - Implemented modular OpenMetrics 0.0.4 exporter architecture with semantic capability filtering (`service_has_video`, `service_has_bitrate`), eliminating false zero metrics on incompatible services.
+  - Corrected RAM metric nomenclature from `ffmpeg_gui_service_ram_percent` to `ffmpeg_gui_service_ram_mb` to match actual RSS usage in Megabytes.
+  - Added service watchdog cumulative restart counters (`ffmpeg_gui_service_restarts_total{id, name, type}`).
+  - Exported Icecast2 server and per-mountpoint telemetry: active listeners, peak listeners, active mount count, mount listeners, mount peak, and mount bitrate (`ffmpeg_gui_icecast_*`).
+  - Exported MediaMTX live path telemetry from volatile cache: total paths, ready paths, per-path readiness, connected readers count, and cumulative received/sent bytes (`ffmpeg_gui_mediamtx_*`).
+  - Exported PipeWire Hub telemetry: virtual sinks count, remote AoIP sinks count, and sidecar clock/discovery statuses (`ptp4l`, `phc2sys`, `sap`).
+  - Exported comprehensive host and daemon health metrics directly from volatile in-memory snapshots with zero disk I/O: CPU/RAM percentages, RAM used/total in MB, host and daemon uptime, CPU package temperature, thermal throttling active state and cumulative events, cooling fan rotational speed (RPM), dedicated GPU utilization, VRAM usage and temperature, storage pool capacities and writability, scheduled tasks status counts, and federated peer statuses and round-trip latency.
+  - Added comprehensive test suite in `test_prometheus_exporter.py` validating capability filters, label escaping, and OpenMetrics payload generation.
+
+## [2.60.1] - 2026-11-09
+
+### Fixed
+- **Prometheus & OpenMetrics Exporter Authentication Barrier Bypass (`backend/main.py`, `backend/tests/test_prometheus_exporter.py`)**:
+  - Whitelisted `/metrics` and `/api/metrics` in `AuthBarrierMiddleware` so scrape requests pass through to `get_prometheus_metrics` without being prematurely intercepted and rejected with `401 Unauthorized` when a GUI master password is configured on the appliance.
+  - Metrics endpoints remain strictly protected by their own dedicated two-layer defense (`metrics_exporter_token` with constant-time `secrets.compare_digest` and `metrics_exporter_allowed_ips` CIDR whitelist).
+  - Added unit test `test_prometheus_metrics_with_gui_password_configured` validating scrape authentication when GUI password protection is active.
+- **Universal Clipboard Fallback in Exporter Card (`frontend/src/components/views/settings/MetricsExporterSettingsCard.tsx`)**:
+  - Integrated `copyToClipboard` utility with hidden textarea `execCommand('copy')` fallback. Resolves failures in plain HTTP LAN environments (`http://<ip>:<port>`) where modern browsers restrict `navigator.clipboard.writeText` exclusively to secure HTTPS contexts.
+
+### Changed
+- **Metrics Exporter UI & Dynamic LAN IP Resolution (`backend/main.py`, `frontend/src/components/views/settings/MetricsExporterSettingsCard.tsx`, `frontend/src/locales/`)**:
+  - Added dedicated "Copy Token" button alongside "Copy URL" so operators can directly copy the raw bearer authentication token with a single click.
+  - Resolved dynamic `primary_ip` and `gui_port` from the backend settings API so scrape target URLs and Prometheus YAML configurations show the real host IP (e.g. `192.168.100.154:8011`) even when managed remotely through CloudHub reverse tunnels, avoiding generic `<node-ip>` placeholders.
+  - Added localized strings for token copy and CloudHub notice in English, Spanish, and Catalan.
+
+## [2.60.0] - 2026-11-09
+
+### Added
+- **Service Maintenance Restart Orchestrator Task (`backend/core/task_manager.py`, `backend/main.py`, `frontend/src/components/ScheduledTasks.tsx`)**:
+  - Implemented scheduled system task type `system://service_restart` for clean, preventive maintenance of 24/7 continuous services (such as DeckLink playouts or long-running encoders).
+  - Configurable ordered service sequence (`service_ids`), inter-service stagger delay (`stagger_delay_seconds`), and running-only safeguard (`only_if_running`) to avoid activating deliberately paused/stopped services.
+  - Abort/cancellation support mid-cascade and live line-by-line task execution logging streamed to the UI and WebSocket.
+  - Updated API task schemas, serialization, and import/export with validation and protection against cloning maintenance tasks as FFmpeg media services.
+  - Added dedicated `ServiceRestartTaskForm` modal component, tabbed creation selector in `ScheduledTasks`, maintenance sequence card badges, and full multi-language translations (`en`, `es`, `ca`).
+  - Refined task card typography and preview modal architecture: removed heterogeneous restart icon from task card titles, replaced lengthy service card chains with a compact single-line target counter (`Target Services: X services`), and overhauled the execution preview modal to display the wide, ordered restart sequence flow while eliminating irrelevant FFmpeg video encoding telemetry (bitrate, FPS, speed) for all system maintenance tasks and log rotators.
+
+## [2.59.1] - 2026-11-06
+
+### Fixed
+- **Software Engines Hard RAM Limit Integer Preservation (`backend/core/software_manager.py`, `frontend/src/components/views/settings/SoftwareEngineCard.tsx`)**:
+  - Fixed regression where `SoftwareManager.load_config` coerced all section keys into booleans, turning numeric integer memory caps (e.g. 4096 MB) into `True` (`1 MB`).
+  - Added explicit numeric integer preservation in `load_config`, robust fallback in `get_hard_memory_limit`, and safe lower-bound checks in `SoftwareEngineCard.tsx`.
+
+## [2.59.0] - 2026-11-06
+
+### Added
+- **Two-Tier Watchdog RAM Guardrail (`backend/core/process_manager.py`, `backend/database/models.py`, `backend/main.py`)**:
+  - Implemented proactive memory runaway protection for streaming services. The watchdog continuously monitors real RSS against an effective threshold (`min(soft_limit, hard_limit)`). If RAM exceeds this ceiling for longer than the configured duration (default 30s), the watchdog terminates the process cleanly (`SIGTERM` -> `SIGKILL`) to protect host memory and schedules automatic backoff restart.
+  - Added service-level soft limit parameters: `watchdog_max_memory_mb` and `watchdog_max_memory_duration` in service models, schemas, and lifecycle form.
+  - Added global system hard RAM cap: `watchdog_hard_memory_limit_mb` (default 4096 MB) in `WatchdogSettings` and `config.ini`, editable both in Settings (General Watchdog) and in the Software Engines FFmpeg card.
+- **FFmpeg Muxing Queue Ceiling Guardrail (`backend/core/builders/ffmpeg_builder.py`)**:
+  - Injected `-max_muxing_queue_size 1024` on all live, network, and hardware outputs (DeckLink, NDI, RTMP, SRT, UDP, PipeWire, ALSA, etc.). This ensures that asymmetrical stream desynchronizations (e.g. PipeWire audio disconnect with continuous X11 video capture) quickly trigger clean FFmpeg aborts within 10-15 seconds rather than buffering gigabytes of uncompressed frames in memory.
+- **UI & Multi-Language Support (`frontend/src/`)**:
+  - Added `Max RAM (MB)` and `Tolerance (s)` inputs in `LifecycleFormSection.tsx` alongside minimum speed controls.
+  - Added `Hard RAM Limit (MB)` in `SettingsView.tsx` (Watchdog & Startup Timing card) and in `SoftwareEngineCard.tsx` (FFmpeg engine card).
+  - Complete i18n localization in `en.json`, `es.json`, and `ca.json`.
+
+## [2.58.3] - 2026-11-05
+
+### Changed
+- **PTP Summary Log Cadence (`backend/core/pipewire_config.py`, `backend/tests/test_pipewire_config.py`)**:
+  - Relaxed `summary_interval` in `ptp4l.conf` from `1` ($2^1 = 2$ seconds) to `3` ($2^3 = 8$ seconds), significantly cutting down stdout/stderr log spam without altering PTP synchronization or packet exchange intervals (`logSyncInterval`, `logMinDelayReqInterval`).
+
+## [2.58.2] - 2026-11-05
+
+### Fixed
+- **WebSocket Broadcast Dead Connection Pruning (`backend/main.py`, `backend/core/cloud_tunnel_client.py`)**:
+  - Implemented auto-pruning in `ConnectionManager.broadcast`: dead or terminated sockets (e.g. reverse CloudHub tunnels restarting with code `1012`) are caught, gracefully removed from `active_connections`, and unregistered from `subscription_hub` without crashing the global `telemetry_broadcast_loop`.
+  - Added tunnel disconnect signaling (`queue.put(None)`) in `cloud_tunnel_client.py` when outbound frame transmissions fail during tunnel reconnections.
+
+## [2.58.1] - 2026-11-05
+
+### Fixed
+- **PipeWire Sidecar Tab Visibility & Log Counts Cleanup (`frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Enforced strict backend telemetry liveness for `ptp4l` and `phc2sys` tabs when service is in `RUNNING` state, preventing `phc2sys` from appearing on machines without hardware PTP support or inactive daemons.
+  - Retained stopped-service fallback visibility strictly when historical log captures exist on disk.
+  - Removed misleading line count badges from `Console & Logs`, `PTP Clock (ptp4l)`, and `HW Sync (phc2sys)` tabs, aligning with application-wide preview modal standards.
+
+## [2.58.0] - 2026-11-05
+
+### Added
+- **Reactive WebSocket PipeWire Graph Telemetry (`backend/core/websocket_subscription_hub.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Implemented initial snapshots and throttled diff-based broadcasts (2.5s) for the `pipewire_graph` WebSocket topic, streaming audio nodes, links, and discovery state exclusively to open preview modals without client-side HTTP polling.
+  - Added volatile field masking (`last_seen`, `timestamp`) to prevent spurious socket spam when network audio topology is unchanged.
+  - Added `invalidate_pipewire_graph` hook in `AoIpDiscoverySupervisor` to push instant WebSocket updates upon discovery, deletion, or expiry of SAP/SDP streams.
+- **AES67 Organization-Local Multicast Group Discovery (`backend/core/aoip_discovery_supervisor.py`)**:
+  - Joined `239.192.255.255` alongside `239.255.255.255`, `224.0.0.56`, and `224.2.127.254` conforming to AES67-2018 §8.2 / RFC 2365 for broad compatibility with virtual soundcards and radio routing software.
+- **Hitless PipeWire Sidecar Reattachment & Self-Healing Watchdog (`backend/core/process_manager.py`)**:
+  - Extended `find_auxiliary_pids` to discover running `ptp4l` and `phc2sys` processes by service configuration tokens.
+  - Implemented `_ensure_pipewire_sidecars` to reattach live PTP daemons and log tailers upon system restart (`update.sh` / `systemctl restart ffmpeg-gui`) without dropping clock mastership, and automatically respawn dead sidecars in `_watchdog`.
+  - Exposed live `sidecars: { ptp4l_active, phc2sys_active }` flags in PipeWire telemetry.
+
+### Fixed
+- **Stopped Sidecar Log History AttributeError (`backend/main.py`, `backend/core/websocket_subscription_hub.py`)**:
+  - Fixed `AttributeError: module 'datetime' has no attribute 'utcnow'` on `GET /api/services/{id}/sidecar-logs/{sidecar}` when in-memory buffers are empty and historical logs exist on disk.
+  - Added disk-based log history fallback in `WebSocketSubscriptionHub` for `sidecar_logs` initial snapshots.
+- **AoIP Radar UX & Multi-Theme Design Tokens (`frontend/src/components/modals/PipeWirePreviewModal.tsx`, `en.json`, `es.json`, `ca.json`)**:
+  - Replaced confusing static single-IP text (`Listening on 224.2.127.254...`) with clear scanning states (`Scanning LAN for AoIP streams...`, `Escaneando red en busca de flujos AoIP...`) and interface badges.
+  - Removed deprecated `autoRefresh` polling checkbox in favor of native WebSocket streaming.
+  - Synchronized `ptp4l` and `phc2sys` tab visibility with backend sidecar telemetry and localized all table headers across English, Spanish, and Catalan.
+
+## [2.57.1] - 2026-11-05
+
+### Fixed
+- **Service RRD Drawer Metric Filtering & Tab Ordering Consistency (`frontend/src/components/cards/ServiceRRDDrawer.tsx`, `FfmpegServiceCard.tsx`, `UnifiedServiceCard.tsx`)**:
+  - Dynamically filtered histogram tabs based on real telemetry data (`hasBitrate`, `hasFps`), completely omitting `Bitrate` for uncompressed audio services (ALSA, raw RTP) and omitting `FPS` for audio-only streams.
+  - Standardized tab ordering across all service cards to consistently begin with universal metrics (`CPU`, `RAM`), followed by active stream metrics (`Bitrate`, `FPS`, `Speed`).
+  - Ensured drawer opens directly to `CPU` matching the clicked `[ CPU ∿∿∿ ▼ ]` micro-sparkline, preventing jarring reordering and blank initial charts.
+
+## [2.57.0] - 2026-11-04
+
+### Added
+- **Volatile In-Memory RRD Engine (`backend/core/rrd_store.py`)**:
+  - Implemented multi-tier circular ring buffer tracker (`30m` @ 5s, `6h` @ 60s, `24h` @ 300s) storing telemetry metrics (bitrate, fps, speed, cpu, ram) completely in volatile RAM (< 100 KB per service) with zero writes to disk, protecting SATADom and flash-based appliances against storage degradation.
+  - Preserved brief anomalies (e.g. bitrate dropping to 0 for 5s) across 24h retention through continuous Min/Max/Avg bucket envelopes rather than lossy averaging.
+- **WebSocket On-Demand RRD Subscription Protocol (`backend/core/websocket_subscription_hub.py`, `backend/main.py`)**:
+  - Added `service_metrics_rrd` WebSocket topic support, pushing initial historical snapshots on demand and broadcasting live metric updates to open cards without polling HTTP endpoints.
+- **Micro-Sparklines & Collapsible RRD Drawers (`frontend/src/components/common/MicroSparkline.tsx`, `frontend/src/components/cards/ServiceRRDDrawer.tsx`)**:
+  - Designed lightweight SVG micro-sparklines (~84×20px) embedded in live telemetry strips with anomaly pulse indicator dots.
+  - Implemented expandable card drawers rendering 24h interactive SVG histograms with shaded Min/Max corridors, continuous average lines, hover crosshairs, and time range toggles across all 5 UI themes.
+  - Integrated across all service cards (`UnifiedServiceCard`, `FfmpegServiceCard`, `DesktopServiceCard`, `KioskServiceCard`, `IcecastServiceCard`, `MediaMtxServiceCard`, `PipeWireServiceCard`).
+- **Authenticated Prometheus & OpenMetrics Exporter (`backend/main.py`, `frontend/src/components/views/settings/MetricsExporterSettingsCard.tsx`)**:
+  - Added pass-through `/api/metrics` and `/metrics` OpenMetrics HTTP scraping endpoints exposing system and per-service gauges (uptime, cpu, ram, pid, bitrate, fps, speed, watchdog restarts).
+  - Configurable in Settings with master toggle, secret Bearer token authentication, IP/CIDR whitelist restriction, and copyable `prometheus.yml` scrape target configuration.
+- **Internationalization (i18n)**:
+  - Added full localization for all RRD and Prometheus exporter strings across English (`en.json`), Spanish (`es.json`), and Catalan (`ca.json`).
+
+## [2.56.5] - 2026-11-03
+
+### Fixed
+- **Virtual Desktop & Kiosk X11VNC WebSocket Proxy Dereferencing (`backend/main.py`)**:
+  - Dereferenced parent Virtual Desktop service IDs (`desktop_service_id` or `target_desktop_service_id`) when `/ws/desktop/{service_id}/vnc` receives a `kiosk_browser` service identifier, preventing premature `1008 Policy Violation` closes and routing the socket to the active `x11vnc` port.
+- **In-Memory ASGI WebSocket Subprotocol Negotiation (`backend/core/cloud_tunnel_client.py`)**:
+  - Extracted and forwarded client-requested subprotocols (e.g. `binary` for noVNC) from `Sec-WebSocket-Protocol` headers into the in-memory ASGI scope, aligning edge subprotocol negotiation with CloudHub reverse proxies.
+- **Desktop Preview Modal Fallback ID Resolution (`frontend/src/components/modals/DesktopPreviewModal.tsx`)**:
+  - Added fallback check for `target_desktop_service_id` in addition to `desktop_service_id` to ensure correct virtual desktop binding for kiosk displays.
+
+## [2.56.4] - 2026-11-03
+
+### Fixed
+- **PipeWire Core D-Bus Plugin Suppression (`backend/core/pipewire_config.py`)**:
+  - Set `support.dbus = false` inside `context.properties` so `pw_context_new()` does not load `libspa-dbus.so` in headless server environments. This eliminates the residual `spa.dbus | Failed to connect to session bus` error from `libpipewire-module-protocol-pulse` and prevents `libpipewire-module-rt` from falling back to Portal/RTKit bus lookups.
+- **POSIX Realtime Scheduling Capabilities for Systemd Daemon (`install.sh`, `scripts/setup-system-capabilities.sh`, `INSTALL.md`)**:
+  - Added `CAP_SYS_NICE`, `CAP_IPC_LOCK`, `LimitRTPRIO=95`, `LimitNICE=-19`, and `LimitMEMLOCK=infinity` to `/etc/systemd/system/ffmpeg-gui.service` and the idempotent `setup-system-capabilities.sh` helper so unprivileged `User=ffmpeg-gui` PipeWire instances acquire deterministic `SCHED_FIFO` realtime priority `88` and `nice -11` natively via `rlimits`.
+
+## [2.56.3] - 2026-11-03
+
+### Fixed
+- **PipeWire Headless Realtime Scheduling & D-Bus Warning Suppression (`backend/core/pipewire_config.py`)**:
+  - Configured `libpipewire-module-rt` with `rtkit.enabled = false` and `rtportal.enabled = false` in daemon configuration, silencing benign headless system bus errors (`Failed to connect to session bus: Unable to autolaunch a dbus-daemon without a $DISPLAY for X11` and `RTKit error: org.freedesktop.DBus.Error.ServiceUnknown`), while enforcing direct Linux POSIX realtime limits via `rlimits.enabled = true` and `rt.prio = 88`.
+- **RTP SAP Stream Properties for Built-in SDP Creation (`backend/core/pipewire_config.py`)**:
+  - Populated stream node properties (`stream.props`) for AES67 transmitters (`libpipewire-module-rtp-sink`) with complete SDP metadata (`rtp.destination.ip`, `rtp.destination.port`, `sess.name`, `rtp.media`, `rtp.mime`, `rtp.rate`, `rtp.channels`, `rtp.ptime`, `rtp.ts-refclk`). This satisfies `libpipewire-module-rtp-sap`'s destination address resolution, completely eliminating startup error `mod.rtp-sap | Failed to create SDP: Invalid argument`.
+- **RTP Source Packet Time & Jitter Latency Quantization (`backend/core/pipewire_config.py`)**:
+  - Configured `sess.min-ptime` and `sess.max-ptime` on `libpipewire-module-rtp-source` receivers, matching the active profile (e.g. 1ms for Dante, 4ms or auto for AES67) rather than defaulting to generic MTU 1280.
+  - Aligned `resolve_safe_jitter_latency_ms` to quantize buffer latency to integer multiples of the configured packet time, eliminating the startup warning `sess.latency.msec ... should be an integer multiple of rtp.ptime`.
+
+## [2.56.2] - 2026-11-03
+
+### Fixed
+- **PipeWire Log Noise Reduction & RTP Jitter Warning Suppression (`backend/core/process_manager.py`, `backend/main.py`, `backend/core/websocket_subscription_hub.py`)**:
+  - Scoped `PIPEWIRE_DEBUG` environment variable to `2,mod.rtp-sink:1,mod.rtp-source:1` (or `3,mod.rtp-sink:1,mod.rtp-source:1` in debug mode), instructing PipeWire's native logging engine to suppress repetitive timerfd micro-jitter warnings (`missing timeout`) while preserving all genuine errors and daemon warnings.
+  - Added multi-layered filtering in `_file_log_tailer`, `get_service_logs`, and `WebSocketSubscriptionHub` to prevent any residual or historical `missing timeout` lines from flooding the virtual console buffer.
+
+## [2.56.1] - 2026-11-03
+
+### Fixed
+- **PipeWire Daemon Console Logs Hydration & WebSocket Snapshots (`backend/main.py`, `backend/core/websocket_subscription_hub.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`, `frontend/src/context/TelemetryContext.tsx`)**:
+  - Upgraded `/api/services/{id}/logs` to check the running in-memory ring buffer and physical disk log file (`process_{id}.log`) before falling back to the `ServiceLog` table, ensuring active execution logs appear immediately when the console tab is opened.
+  - Destructured and rendered `externalLogs` in `PipeWirePreviewModal`, ensuring logs buffered upon process selection are displayed instantly without waiting for new events.
+  - Normalized `item_id` in `WebSocketSubscriptionHub` between integer and string formats and fixed the `database.models` import path during disk log fallback.
+  - Updated `TelemetryContext` to send a subscription request whenever a subscriber mounts and fixed composite subscription key parsing (`sidecar_logs:id:sidecar`) on WebSocket reconnection.
+- **Sidecar Log File Truncation & Stale Crash Wipe (`backend/core/process_manager.py`)**:
+  - Truncated `ptp4l_{id}.log` and `phc2sys_{id}.log` with a clean launch banner on non-restart service startups, preventing historical crash artifacts from earlier failed runs from being replayed in the virtual terminal.
+
+## [2.56.0] - 2026-11-03
+
+### Added
+- **PipeWire Sidecars Live Observability (`backend/core/process_manager.py`, `backend/core/websocket_subscription_hub.py`, `backend/main.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Added dedicated conditional tabs in `PipeWirePreviewModal` for `ptp4l` (PTP Clock) and `phc2sys` (Hardware PHC Sync).
+  - Implemented REST endpoint `GET /api/services/{id}/sidecar-logs/{sidecar_name}` (`ptp4l`, `phc2sys`) with memory buffer streaming and disk log fallback.
+  - Added WebSocket topic `sidecar_logs` (`<id>:<sidecar_name>`) for real-time live log deltas with zero HTTP polling.
+  - Added full multi-language translations in `en.json`, `es.json`, `ca.json` and multi-theme terminal styling with copy-to-clipboard and log file downloads.
+
+### Fixed
+- **PipeWire Logging Redirection & Systemd Bypass (`backend/core/process_manager.py`)**:
+  - Injected `PIPEWIRE_LOG_SYSTEMD="false"`, `PIPEWIRE_LOG=log_path`, and `PIPEWIRE_DEBUG=2/3` in PipeWire startup environment to prevent the daemon from silently bypassing stdout/stderr directly into journald when running under systemd.
+- **ptp4l Section Scope Syntax Correction (`backend/core/pipewire_config.py`)**:
+  - Removed `clientOnly` from port section (`[{clean_iface}]`) in `generate_ptp4l_config` to comply with `linuxptp` grammar where `clientOnly` is strictly a global option (`GLOB_ITEM_INT`), eliminating parser failure `unknown option clientOnly at line in section`.
+- **Watchdog Auxiliary Process Resilience (`backend/core/process_manager.py`)**:
+  - Prevented auxiliary sidecar termination (`ptp4l`/`phc2sys`) from breaking out of the PipeWire Hub watchdog loop, allowing continuous monitoring and health checks of the primary PipeWire process.
+
+## [2.55.1] - 2026-11-03
+
+### Fixed
+- **PipeWire Restart Lockfile Collision & Rogue Process Reaping (`backend/core/process_manager.py`, `backend/utils/process_utils.py`)**:
+  - Implemented `_reap_orphan_pipewire_for_service` in `ProcessManager` to terminate rogue/orphan PipeWire processes holding runtime directories and purge stale `pipewire-0.lock`, `pipewire-0`, and `pulse.sock` files, preventing exit code 245 (`Resource temporarily unavailable`).
+  - Added early startup exit check in `start_process` to abort companion supervisor spawning if PipeWire fails to boot.
+  - Registered `pipewire`, `ptp4l`, and `phc2sys` under `cleanup_rogue_processes` with regex matching for configuration files.
+- **Virtual Console Early Crash Capture & Stopped Service Log Persistence (`backend/core/process_manager.py`, `frontend/src/components/modals/PipeWirePreviewModal.tsx`)**:
+  - Fixed `_file_log_tailer` to read from byte 0 and drain log lines prior to exit detection, ensuring startup errors are captured into log buffers.
+  - Updated `PipeWirePreviewModal` to retain console history when a daemon stops or crashes, and automatically fetch past execution logs via `/api/services/:id/logs` upon opening the console tab.
+- **PTP Sidecar Interface-Level BMCA Override (`backend/core/pipewire_config.py`)**:
+  - Explicitly declared `serverOnly` and `clientOnly` directives in both `[global]` and the interface section (`[{iface}]`) of `ptp4l.conf` to guarantee port-level Master/Slave compliance.
+
+## [2.55.0] - 2026-11-03
+
+### Added
+- **AoIP Profiles & Audinate Dante / AES67 Interoperability (`backend/core/pipewire_config.py`, `frontend/src/components/forms/PipeWireConfigForm.tsx`)**:
+  - Introduced AoIP Operating Profiles (`standalone` ffmpeg-gui mesh, `dante` strict AES67, `ravenna` broadcast).
+  - Emitted SAP announcements to RFC 2974 administratively scoped multicast (`239.255.255.255:9875`) by default, enabling zero-configuration discovery by Audinate Dante Controller (appearing in blue as AES67 device with 2 channels) and standard broadcast AES67 receivers.
+  - Injected RFC 7273 PTP clock headers (`sess.mediaclk = "direct=0"`, `sess.ts-refclk = "ptp=IEEE1588-2008:<EUI64>:0"`) into `libpipewire-module-rtp-sink` with canonical EUI-64 generation derived from network interfaces.
+  - Added multi-group multicast SAP listener subscription (`239.255.255.255`, `224.0.0.56`, `224.2.127.254`) in `AoIpDiscoverySupervisor` for universal AoIP stream discovery.
+  - Implemented automatic hardware PTP detection with `phc2sys -s <iface> -c CLOCK_REALTIME -w` companion daemon in `ProcessManager` for Dante profile slave synchronization.
+  - Added UI mode selector in `PipeWireConfigForm` with reactive parameter enclavation (locking 48 kHz sample rate, 1 ms ptime, S24BE format, and domain 0 under Dante mode).
+  - Provided safe passive PTP client configuration (`clientOnly 1`, `serverOnly 0`, `priority1 254`) to guarantee zero clock hierarchy collisions on production Dante networks, alongside a laboratory override checkbox.
+
+### Fixed
+- **ptp4l Sidecar Lifecycle & Orphan Process Elimination (`backend/core/process_manager.py`)**:
+  - Bound auxiliary PIDs (`self.auxiliary_pids`) upon spawning `ptp4l` and `phc2sys` processes, ensuring graceful termination when the PipeWire Hub service stops.
+  - Added pre-flight and teardown orphan process reaping (`_reap_orphan_ptp4l_for_service`) to kill any rogue background `ptp4l` processes holding UDP ports 319/320.
+
+## [2.54.1] - 2026-11-02
+
+### Fixed
+- **CloudHub Reverse Tunnel ASGI Streaming Disconnect & MJPEG Previews (`cloud_tunnel_client.py`, `backend/main.py`)**:
+  - Complied with ASGI 3.0 specification in `_handle_asgi_http` by awaiting disconnect rather than re-yielding unexpected `http.request` events after body completion, eliminating the Starlette `Unexpected message received: http.request` 500 error.
+  - Implemented single-frame snapshot resolution via `PreviewManager.get_snapshot()` for CloudHub reverse bastion requests (`x-authenticated-channel: cloudhub`), preventing infinite stream buffering on HTTP request/response frames.
+  - Added periodic snapshot key refresh in `FfmpegPreviewModal`, `ProcessPreviewModal`, and `ScheduledTasks` when running behind a CloudHub proxy.
+
+## [2.54.0] - 2026-11-02
+
+### Added
+- **Centralized Bidirectional Telemetry Subscription Hub (`backend/core/websocket_subscription_hub.py`, `backend/main.py`)**:
+  - Implemented `WebSocketSubscriptionHub` managing per-client subscriptions over the existing `/ws/telemetry` socket.
+  - Supports on-demand subscriptions for `process_logs`, `task_logs`, and `resource_locks` with initial backlog snapshots and live delta broadcasts.
+  - Integrated heartbeat ping/pong handling and automatic subscription cleanup on client disconnect.
+- **Frontend Telemetry Context & Subscription Hook (`frontend/src/context/TelemetryContext.tsx`)**:
+  - Created `<TelemetryProvider>` holding a single authenticated WebSocket connection with exponential backoff auto-reconnect.
+  - Implemented `useTelemetrySubscription(topic, targetId)` hook that automatically subscribes on mount, buffers live log lines, and unsubscribes on unmount.
+  - Added reactive system telemetry state sharing (`systemTelemetry`, `resourceLocks`, `processesData`, `taskExecutions`).
+
+### Changed
+- **Eradication of Client-Side HTTP Polling Cascades**:
+  - Converted all preview modals (`FfmpegPreviewModal`, `ProcessPreviewModal`, `DesktopPreviewModal`, `KioskPreviewModal`, `IcecastPreviewModal`, `MediaMtxPreviewModal`, `PipeWirePreviewModal`, `MediaMtxServiceModal`) to use WebSocket telemetry subscriptions for logs and progress.
+  - Converted task details and execution log tracking in `ScheduledTasks.tsx` to on-demand WebSocket subscriptions.
+  - Replaced periodic lock polling in `DestinationPanel.tsx` with reactive `useTelemetry().resourceLocks`.
+  - Replaced periodic LCD locator polling in `DashboardView.tsx` with reactive `system.lcd.locator_active` telemetry.
+  - Removed blind interval polling in `CloudHubSettingsCard`, `BruteForceProtectionCard`, `DecklinkSettingsCard`, `MagewellSettingsCard`, and `useAuth`.
+
 ## [2.53.2] - 2026-11-02
 
 ### Fixed

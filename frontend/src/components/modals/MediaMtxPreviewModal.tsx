@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
 import { ClipboardIcon, CheckIcon, ShieldIcon } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
+import { useTelemetry } from '../../context/TelemetryContext';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 interface MediaMtxPreviewModalProps {
   selectedProcess: any;
@@ -16,6 +19,9 @@ interface MediaMtxPreviewModalProps {
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
   API: string;
+  settings?: any;
+  isCloudHubSession?: boolean;
+  permissions?: EdgePermissionsSummary | null;
 }
 
 const formatUptime = (lastStartStr: string | null | undefined, isRunning: boolean = true): string => {
@@ -46,12 +52,18 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   onStopService,
   onRestartService,
   API,
+  settings,
+  isCloudHubSession = false,
+  permissions,
 }) => {
   const { t } = useTranslation();
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isRunning = currentProcess.status === 'running';
+  const svcLevel = getServiceLevel(permissions, currentProcess);
+  const canOperate = hasMinLevel(svcLevel, 'operate');
+  const canManage = hasMinLevel(svcLevel, 'manage');
 
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -144,9 +156,13 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   }, [configuredPaths, activePathSlug, mtxCfg]);
 
   // Host resolver
-  const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+  const isCloudHub = Boolean(
+    isCloudHubSession || (typeof window !== 'undefined' && window.location.pathname.includes('/proxy/'))
+  );
+  const windowHost = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
+  const host = isCloudHub ? (settings?.primary_ip || windowHost) : windowHost;
   const isHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  const webScheme = mtxCfg.ssl_enabled || isHttps ? 'https' : 'http';
+  const webScheme = mtxCfg.ssl_enabled || (!isCloudHub && isHttps) ? 'https' : 'http';
 
   // Helper to cleanly extract target path slug from any output configuration or URL
   const extractPathFromOutput = (out: any): string | null => {
@@ -246,30 +262,22 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
     };
 
     fetchLivePaths();
-    const interval = setInterval(fetchLivePaths, 5000);
-    return () => clearInterval(interval);
   }, [isRunning, mtxCfg.api_enabled, currentProcess.id, API]);
 
-  // Poll logs for MediaMTX daemon
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setDaemonLogs(data);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch daemon logs', err);
-      }
-    };
+  const { subscribe } = useTelemetry();
 
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, API]);
+  // Subscribe to logs via WebSocket on-demand (Zero HTTP polling)
+  useEffect(() => {
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, subscribe]);
 
   const activeLogs = daemonLogs.length > 0 ? daemonLogs : externalLogs;
 
@@ -317,7 +325,9 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   // Build generated URLs based on active path and credentials
   const { pubUser, pubPass, readUser, readPass } = activePathDetails;
 
-  const pubAuthPrefix = pubUser ? `${encodeURIComponent(pubUser)}:${encodeURIComponent(pubPass)}@` : '';
+  const effectivePubUser = canManage ? pubUser : '';
+  const effectivePubPass = canManage ? pubPass : '';
+  const pubAuthPrefix = effectivePubUser ? `${encodeURIComponent(effectivePubUser)}:${encodeURIComponent(effectivePubPass)}@` : '';
   const readAuthPrefix = readUser ? `${encodeURIComponent(readUser)}:${encodeURIComponent(readPass)}@` : '';
 
   // RTMP / RTMPS
@@ -340,7 +350,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
 
   // SRT Caller Ingest & Playback
   const srtPort = mtxCfg.srt_port || 8890;
-  const srtPubAuthSuffix = pubUser ? `,u=${pubUser},p=${pubPass}` : '';
+  const srtPubAuthSuffix = effectivePubUser ? `,u=${effectivePubUser},p=${effectivePubPass}` : '';
   const srtReadAuthSuffix = readUser ? `,u=${readUser},p=${readPass}` : '';
   const srtIngestUrl = `srt://${host}:${srtPort}?streamid=#!::r=${activePathSlug},m=publish${srtPubAuthSuffix}`;
   const srtPlaybackUrl = `srt://${host}:${srtPort}?streamid=#!::r=${activePathSlug},m=request${srtReadAuthSuffix}`;
@@ -354,7 +364,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   const webrtcWhepUrl = `${webScheme}://${readAuthPrefix}${host}:${webrtcPort}/${activePathSlug}/whep`;
   const webrtcWhipUrl = `${webScheme}://${pubAuthPrefix}${host}:${webrtcPort}/${activePathSlug}/whip`;
 
-  const hasCredentialsOnActivePath = Boolean(pubUser || readUser);
+  const hasCredentialsOnActivePath = Boolean(effectivePubUser || readUser);
 
   return (
     <div
@@ -377,6 +387,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
                 <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold bg-emerald-500/10 text-emerald-400 border-emerald-500/30">
                   MediaMTX Hub
                 </span>
+                <PermissionLevelBadge level={svcLevel} />
                 {mtxCfg.ssl_enabled && (
                   <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold bg-emerald-500/10 text-emerald-400 border-emerald-500/30 flex items-center gap-1">
                     <ShieldIcon size={10} /> TLS/SSL
@@ -804,28 +815,30 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
 
                   <div className="space-y-2 text-xs">
                     {/* Standard RTMP Push */}
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
-                        {t('services.mediamtx.connectionMatrix.pushUrl', 'Push (Publish):')}
-                      </span>
-                      <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-1.5">
-                        <div className="font-mono text-[11px] text-[var(--text-primary)] truncate flex-1 px-1 select-all" title={rtmpPushUrl}>
-                          {rtmpPushUrl}
+                    {canManage && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                          {t('services.mediamtx.connectionMatrix.pushUrl', 'Push (Publish):')}
+                        </span>
+                        <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-1.5">
+                          <div className="font-mono text-[11px] text-[var(--text-primary)] truncate flex-1 px-1 select-all" title={rtmpPushUrl}>
+                            {rtmpPushUrl}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard('rtmp-push', rtmpPushUrl)}
+                            className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                              copiedKey === 'rtmp-push'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40'
+                            }`}
+                          >
+                            {copiedKey === 'rtmp-push' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                            <span>{copiedKey === 'rtmp-push' ? t('services.mediamtx.connectionMatrix.copied', '✓ Copied') : t('services.mediamtx.connectionMatrix.copy', 'Copy')}</span>
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard('rtmp-push', rtmpPushUrl)}
-                          className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
-                            copiedKey === 'rtmp-push'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                              : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40'
-                          }`}
-                        >
-                          {copiedKey === 'rtmp-push' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
-                          <span>{copiedKey === 'rtmp-push' ? t('services.mediamtx.connectionMatrix.copied', '✓ Copied') : t('services.mediamtx.connectionMatrix.copy', 'Copy')}</span>
-                        </button>
                       </div>
-                    </div>
+                    )}
 
                     {/* Standard RTMP Pull */}
                     <div className="space-y-1">
@@ -854,28 +867,30 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
                     {/* RTMPS if TLS enabled */}
                     {mtxCfg.ssl_enabled && mtxCfg.rtmps_enabled && (
                       <div className="space-y-2 pt-2 border-t border-[var(--glass-border)]">
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
-                            <ShieldIcon size={10} /> RTMPS Push (TLS :{rtmpsPort}):
-                          </span>
-                          <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-emerald-500/20 rounded-lg p-1.5">
-                            <div className="font-mono text-[11px] text-emerald-300 truncate flex-1 px-1 select-all" title={rtmpsPushUrl}>
-                              {rtmpsPushUrl}
+                        {canManage && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
+                              <ShieldIcon size={10} /> RTMPS Push (TLS :{rtmpsPort}):
+                            </span>
+                            <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-emerald-500/20 rounded-lg p-1.5">
+                              <div className="font-mono text-[11px] text-emerald-300 truncate flex-1 px-1 select-all" title={rtmpsPushUrl}>
+                                {rtmpsPushUrl}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard('rtmps-push', rtmpsPushUrl)}
+                                className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                                  copiedKey === 'rtmps-push'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                    : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                }`}
+                              >
+                                {copiedKey === 'rtmps-push' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                                <span>{copiedKey === 'rtmps-push' ? t('services.mediamtx.connectionMatrix.copied', '✓ Copied') : t('services.mediamtx.connectionMatrix.copy', 'Copy')}</span>
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard('rtmps-push', rtmpsPushUrl)}
-                              className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
-                                copiedKey === 'rtmps-push'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              }`}
-                            >
-                              {copiedKey === 'rtmps-push' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
-                              <span>{copiedKey === 'rtmps-push' ? t('services.mediamtx.connectionMatrix.copied', '✓ Copied') : t('services.mediamtx.connectionMatrix.copy', 'Copy')}</span>
-                            </button>
                           </div>
-                        </div>
+                        )}
 
                         <div className="space-y-1">
                           <span className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
@@ -922,28 +937,30 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
 
                   <div className="space-y-2 text-xs">
                     {/* RTSP Push */}
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
-                        {t('services.mediamtx.connectionMatrix.pushUrl', 'Push (Publish):')}
-                      </span>
-                      <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-1.5">
-                        <div className="font-mono text-[11px] text-[var(--text-primary)] truncate flex-1 px-1 select-all" title={rtspPushUrl}>
-                          {rtspPushUrl}
+                    {canManage && (
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
+                          {t('services.mediamtx.connectionMatrix.pushUrl', 'Push (Publish):')}
+                        </span>
+                        <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg p-1.5">
+                          <div className="font-mono text-[11px] text-[var(--text-primary)] truncate flex-1 px-1 select-all" title={rtspPushUrl}>
+                            {rtspPushUrl}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard('rtsp-push', rtspPushUrl)}
+                            className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                              copiedKey === 'rtsp-push'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40'
+                            }`}
+                          >
+                            {copiedKey === 'rtsp-push' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                            <span>{copiedKey === 'rtsp-push' ? t('services.mediamtx.connectionMatrix.copied', '✓ Copied') : t('services.mediamtx.connectionMatrix.copy', 'Copy')}</span>
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => copyToClipboard('rtsp-push', rtspPushUrl)}
-                          className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
-                            copiedKey === 'rtsp-push'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                              : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40'
-                          }`}
-                        >
-                          {copiedKey === 'rtsp-push' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
-                          <span>{copiedKey === 'rtsp-push' ? t('services.mediamtx.connectionMatrix.copied', '✓ Copied') : t('services.mediamtx.connectionMatrix.copy', 'Copy')}</span>
-                        </button>
                       </div>
-                    </div>
+                    )}
 
                     {/* RTSP Pull */}
                     <div className="space-y-1">
@@ -972,28 +989,30 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
                     {/* RTSPS if TLS enabled */}
                     {mtxCfg.ssl_enabled && mtxCfg.rtsps_enabled && (
                       <div className="space-y-2 pt-2 border-t border-[var(--glass-border)]">
-                        <div className="space-y-1">
-                          <span className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
-                            <ShieldIcon size={10} /> RTSPS Push (TLS :{rtspsPort}):
-                          </span>
-                          <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-emerald-500/20 rounded-lg p-1.5">
-                            <div className="font-mono text-[11px] text-emerald-300 truncate flex-1 px-1 select-all" title={rtspsPushUrl}>
-                              {rtspsPushUrl}
+                        {canManage && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
+                              <ShieldIcon size={10} /> RTSPS Push (TLS :{rtspsPort}):
+                            </span>
+                            <div className="flex items-center gap-2 bg-[var(--bg-card)] border border-emerald-500/20 rounded-lg p-1.5">
+                              <div className="font-mono text-[11px] text-emerald-300 truncate flex-1 px-1 select-all" title={rtspsPushUrl}>
+                                {rtspsPushUrl}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => copyToClipboard('rtsps-push', rtspsPushUrl)}
+                                className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
+                                  copiedKey === 'rtsps-push'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                    : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                }`}
+                              >
+                                {copiedKey === 'rtsps-push' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                                <span>{copiedKey === 'rtsps-push' ? t('services.mediamtx.connectionMatrix.copied', '✓ Copied') : t('services.mediamtx.connectionMatrix.copy', 'Copy')}</span>
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => copyToClipboard('rtsps-push', rtspsPushUrl)}
-                              className={`px-2 py-1 text-[10px] font-bold rounded uppercase tracking-wider transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
-                                copiedKey === 'rtsps-push'
-                                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                                  : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              }`}
-                            >
-                              {copiedKey === 'rtsps-push' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
-                              <span>{copiedKey === 'rtsps-push' ? t('services.mediamtx.connectionMatrix.copied', '✓ Copied') : t('services.mediamtx.connectionMatrix.copy', 'Copy')}</span>
-                            </button>
                           </div>
-                        </div>
+                        )}
 
                         <div className="space-y-1">
                           <span className="text-[10px] font-bold uppercase text-emerald-400 flex items-center gap-1">
@@ -1024,7 +1043,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
               )}
 
               {/* 3. SRT Caller Ingest (Push / Publish) */}
-              {mtxCfg.srt_enabled !== false && (
+              {canManage && mtxCfg.srt_enabled !== false && (
                 <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3 flex flex-col justify-between">
                   <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
                     <div className="flex items-center gap-2">
@@ -1144,7 +1163,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
               )}
 
               {/* 6. WebRTC WHIP (Ingest) */}
-              {mtxCfg.webrtc_enabled !== false && (
+              {canManage && mtxCfg.webrtc_enabled !== false && (
                 <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-xl p-3.5 space-y-3 flex flex-col justify-between">
                   <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2">
                     <div className="flex items-center gap-2">
@@ -1302,48 +1321,54 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
         {/* Footer */}
         <div className="p-4 border-t border-[var(--glass-border)] flex-shrink-0 bg-white/2 flex justify-between items-center flex-wrap gap-3">
           <div>
-            <button
-              onClick={() => {
-                fetch(`${API}/processes/${currentProcess.id}/export`)
-                  .then((r) => r.json())
-                  .then((data) => {
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(blob);
-                    a.download = `${currentProcess.name}_profile.json`;
-                    a.click();
-                  });
-              }}
-              className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 cursor-pointer text-[var(--text-primary)]"
-            >
-              {t('services.exportProfile', 'EXPORT PROFILE')}
-            </button>
+            {canManage && (
+              <button
+                onClick={() => {
+                  fetch(`${API}/processes/${currentProcess.id}/export`)
+                    .then((r) => r.json())
+                    .then((data) => {
+                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `${currentProcess.name}_profile.json`;
+                      a.click();
+                    });
+                }}
+                className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 cursor-pointer text-[var(--text-primary)]"
+              >
+                {t('services.exportProfile', 'EXPORT PROFILE')}
+              </button>
+            )}
           </div>
 
           <div className="flex gap-2">
-            <button
-              disabled={!!actionPending[currentProcess.id]}
-              onClick={() => {
-                onEditProcess(currentProcess);
-                onClose();
-              }}
-              className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-1.5 px-4 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-            >
-              {t('common.editConfig', 'EDIT CONFIG')}
-            </button>
+            {canManage && (
+              <>
+                <button
+                  disabled={!!actionPending[currentProcess.id]}
+                  onClick={() => {
+                    onEditProcess(currentProcess);
+                    onClose();
+                  }}
+                  className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-1.5 px-4 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                >
+                  {t('common.editConfig', 'EDIT CONFIG')}
+                </button>
 
-            <button
-              disabled={!!actionPending[currentProcess.id]}
-              onClick={() => {
-                onCloneProcess(currentProcess);
-                onClose();
-              }}
-              className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 disabled:opacity-50 disabled:pointer-events-none cursor-pointer text-[var(--text-primary)]"
-            >
-              {t('services.cloneService', 'CLONE SERVICE')}
-            </button>
+                <button
+                  disabled={!!actionPending[currentProcess.id]}
+                  onClick={() => {
+                    onCloneProcess(currentProcess);
+                    onClose();
+                  }}
+                  className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 disabled:opacity-50 disabled:pointer-events-none cursor-pointer text-[var(--text-primary)]"
+                >
+                  {t('services.cloneService', 'CLONE SERVICE')}
+                </button>
+              </>
+            )}
 
-            {currentProcess.status === 'running' ? (
+            {canOperate && (currentProcess.status === 'running' ? (
               <>
                 <button
                   disabled={!!actionPending[currentProcess.id]}
@@ -1387,7 +1412,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
                   ? t('services.starting', 'STARTING...')
                   : t('services.startService', 'START SERVICE')}
               </button>
-            )}
+            ))}
 
             <button
               onClick={onClose}

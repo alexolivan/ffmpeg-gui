@@ -20,7 +20,7 @@ from PIL import Image
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, Response
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from database.db import init_db, get_db, SessionLocal
 from database.models import FfmpegBuild, SoftwareBuild, Service as MediaProcess, ServiceLog as ProcessLog, ScheduledTask, TaskExecution, TaskExecutionLog, Storage, PeerInboundKey, PeerRemoteNode, SystemSettings, AuditLog
 from core.audit_logger import audit_logger, calculate_dict_delta
@@ -34,6 +34,28 @@ from core.patch_manager import PatchManager
 from core.notification_manager import NotificationManager
 notification_manager = NotificationManager()
 from core.auth_manager import auth_manager
+try:
+    from core.authz import (
+        AuthzContext,
+        authorize_http_request,
+        has_min_level,
+        redact_service_dict,
+        redact_task_dict,
+        redact_settings_dict,
+        _extract_kiosk_desktop_id,
+        _extract_desktop_pipewire_id,
+    )
+except ImportError:
+    from backend.core.authz import (
+        AuthzContext,
+        authorize_http_request,
+        has_min_level,
+        redact_service_dict,
+        redact_task_dict,
+        redact_settings_dict,
+        _extract_kiosk_desktop_id,
+        _extract_desktop_pipewire_id,
+    )
 from core.alsa_manager import alsa_manager
 try:
     from core.decklink_manager import DecklinkManager
@@ -255,28 +277,41 @@ class AuthBarrierMiddleware(BaseHTTPMiddleware):
             or path in ("/logout", "/api/auth/logout")
             or path in ("/api/peers/rpc", "/api/peer-federation/v1/rpc")
             or path in ("/docs", "/openapi.json", "/redoc")
+            or path in ("/metrics", "/api/metrics")
         ):
             return await call_next(request)
             
         # 3. Check if GUI password is set (cached with 5s TTL to eliminate DB locking)
         gui_password = get_cached_gui_password()
-            
+
+        authenticated_ok = False
         if not gui_password:
-            return await call_next(request)
-            
-        # 4. Check session cookie or Authorization header or token query param
-        token = request.cookies.get(auth_manager.COOKIE_NAME)
-        if not token:
-            auth_hdr = request.headers.get("Authorization")
-            if auth_hdr:
-                token = auth_hdr.replace("Bearer ", "").strip()
-        if not token:
-            token = request.query_params.get("token")
-            
-        if token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)):
-            return await call_next(request)
-            
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+            authenticated_ok = True
+        else:
+            # 4. Check session cookie or Authorization header or token query param
+            token = request.cookies.get(auth_manager.COOKIE_NAME)
+            if not token:
+                auth_hdr = request.headers.get("Authorization")
+                if auth_hdr:
+                    token = auth_hdr.replace("Bearer ", "").strip()
+            if not token:
+                token = request.query_params.get("token")
+
+            if token and (auth_manager.validate_session(token, gui_password) or secrets.compare_digest(token, gui_password)):
+                authenticated_ok = True
+
+        if not authenticated_ok:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+        # 5. Enforce CloudHub capability claims on restricted tunnel sessions
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner:
+            with SessionLocal() as db_authz:
+                deny_reason = authorize_http_request(request, ctx, db_authz)
+            if deny_reason:
+                return JSONResponse(status_code=403, content={"detail": deny_reason})
+
+        return await call_next(request)
 
 app.add_middleware(AuthBarrierMiddleware)
 
@@ -370,12 +405,15 @@ class ProcessCreate(BaseModel):
     watchdog_circuit_breaker: Optional[bool] = True
     watchdog_min_speed: Optional[float] = None
     watchdog_min_speed_duration: Optional[int] = 30
+    watchdog_max_memory_mb: Optional[int] = None
+    watchdog_max_memory_duration: Optional[int] = 30
     alias: Optional[str] = None
     network_timeout: Optional[int] = 15
     debug_mode: Optional[bool] = False
     log_storage_id: Optional[int] = None
     is_shared_with_peers: Optional[bool] = False
     allow_peer_lease: Optional[bool] = False
+    signal_watchdog: Optional[dict] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -408,12 +446,15 @@ class ProcessUpdate(BaseModel):
     watchdog_circuit_breaker: Optional[bool] = None
     watchdog_min_speed: Optional[float] = None
     watchdog_min_speed_duration: Optional[int] = None
+    watchdog_max_memory_mb: Optional[int] = None
+    watchdog_max_memory_duration: Optional[int] = None
     alias: Optional[str] = None
     network_timeout: Optional[int] = None
     debug_mode: Optional[bool] = None
     log_storage_id: Optional[int] = None
     is_shared_with_peers: Optional[bool] = None
     allow_peer_lease: Optional[bool] = None
+    signal_watchdog: Optional[dict] = None
 
     @validator('alias')
     def validate_alias(cls, v):
@@ -534,11 +575,13 @@ class WatchdogSettings(BaseModel):
     startup_grace_delay: int = 10
     network_wait_timeout: int = 60
     watchdog_max_backoff: int = 30
+    watchdog_hard_memory_limit_mb: int = 4096
 
 class WatchdogSettingsUpdate(BaseModel):
     startup_grace_delay: Optional[int] = None
     network_wait_timeout: Optional[int] = None
     watchdog_max_backoff: Optional[int] = None
+    watchdog_hard_memory_limit_mb: Optional[int] = None
 
 class SettingsResponse(BaseModel):
     id: Optional[int] = None
@@ -604,6 +647,10 @@ class SettingsResponse(BaseModel):
     cloudhub_sso_enabled: Optional[bool] = True
     cloudhub_org_name: Optional[str] = None
     cloudhub_group_name: Optional[str] = None
+    metrics_exporter_enabled: Optional[bool] = False
+    metrics_exporter_token: Optional[str] = None
+    metrics_exporter_allowed_ips: Optional[str] = None
+    primary_ip: Optional[str] = None
 
 class SettingsUpdate(BaseModel):
     node_name: Optional[str] = None
@@ -654,6 +701,10 @@ class SettingsUpdate(BaseModel):
     cloudhub_enabled: Optional[bool] = None
     cloudhub_url: Optional[str] = None
     cloudhub_sso_enabled: Optional[bool] = None
+    metrics_exporter_enabled: Optional[bool] = None
+    metrics_exporter_token: Optional[str] = None
+    metrics_exporter_allowed_ips: Optional[str] = None
+    primary_ip: Optional[str] = None
 
 
     @validator('brute_force_whitelist')
@@ -819,6 +870,7 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
         "startup_grace_delay": 10,
         "network_wait_timeout": 60,
         "watchdog_max_backoff": 30,
+        "watchdog_hard_memory_limit_mb": 4096,
     }
 
     if config_path and os.path.exists(config_path):
@@ -938,6 +990,8 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
                 try: watchdog_data["network_wait_timeout"] = wd_cfg.getint("network_wait_timeout", fallback=60)
                 except ValueError: pass
                 try: watchdog_data["watchdog_max_backoff"] = wd_cfg.getint("watchdog_max_backoff", fallback=30)
+                except ValueError: pass
+                try: watchdog_data["watchdog_hard_memory_limit_mb"] = wd_cfg.getint("watchdog_hard_memory_limit_mb", fallback=4096)
                 except ValueError: pass
         except Exception as e:
             logger.error(f"Error reading settings from config file: {e}")
@@ -1085,6 +1139,24 @@ def make_settings_response(settings, current_request_port: Optional[int] = None)
     if discovery_beacon_enabled is None:
         discovery_beacon_enabled = True
     res["discovery_beacon_enabled"] = bool(discovery_beacon_enabled)
+
+    # Resolve primary LAN IP for node identification & scraper targets
+    primary_ip = None
+    try:
+        from core.network_inspector import get_network_interfaces
+        ifaces = get_network_interfaces()
+        for iface in ifaces:
+            if iface.get("is_default_gateway") and iface.get("ipv4_addresses"):
+                primary_ip = iface["ipv4_addresses"][0]["address"]
+                break
+        if not primary_ip:
+            for iface in ifaces:
+                if not iface.get("is_loopback") and iface.get("is_up") and iface.get("ipv4_addresses"):
+                    primary_ip = iface["ipv4_addresses"][0]["address"]
+                    break
+    except Exception as e:
+        logger.debug(f"Could not determine primary IP: {e}")
+    res["primary_ip"] = primary_ip
     
     return SettingsResponse(**res).model_dump()
 
@@ -1101,7 +1173,9 @@ def get_settings(request: Request, db: Session = Depends(get_db)):
         db.refresh(settings)
     
     current_port = request.url.port if request else None
-    return make_settings_response(settings, current_request_port=current_port)
+    payload = make_settings_response(settings, current_request_port=current_port)
+    ctx = AuthzContext.from_request(request) if request else AuthzContext.owner()
+    return redact_settings_dict(payload, ctx.domain_level("settings"))
     
     # Backwards compatibility auto-normalization for pre-existing rows
     dirty = False
@@ -1565,6 +1639,11 @@ def update_settings(settings_in: SettingsUpdate, request: Request, db: Session =
     if settings_in.cloudhub_url is not None:
         settings.cloudhub_url = settings_in.cloudhub_url.strip().rstrip("/") if settings_in.cloudhub_url else None
     if settings_in.cloudhub_sso_enabled is not None: settings.cloudhub_sso_enabled = settings_in.cloudhub_sso_enabled
+    if settings_in.metrics_exporter_enabled is not None: settings.metrics_exporter_enabled = settings_in.metrics_exporter_enabled
+    if settings_in.metrics_exporter_token is not None:
+        settings.metrics_exporter_token = settings_in.metrics_exporter_token.strip() if settings_in.metrics_exporter_token else None
+    if settings_in.metrics_exporter_allowed_ips is not None:
+        settings.metrics_exporter_allowed_ips = settings_in.metrics_exporter_allowed_ips.strip() if settings_in.metrics_exporter_allowed_ips else None
 
     db.commit()
     db.refresh(settings)
@@ -1795,11 +1874,25 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
     if req.services:
         from database.models import Service
         procs = db.query(Service).filter(Service.service_type.notin_(["desktop", "kiosk_browser", "pipewire_hub"])).all()
-        sections["services"] = [
-            {
+        id_to_name = {svc.id: svc.name for svc in procs}
+        serialized_services = []
+        for p in procs:
+            p_cfg = copy.deepcopy(p.config or {})
+            sw_cfg = p_cfg.get("signal_watchdog")
+            if isinstance(sw_cfg, dict) and sw_cfg.get("backup_service_id"):
+                try:
+                    b_name = id_to_name.get(int(sw_cfg["backup_service_id"]))
+                    if not b_name:
+                        b_svc = db.query(Service).get(int(sw_cfg["backup_service_id"]))
+                        b_name = b_svc.name if b_svc else None
+                    if b_name:
+                        sw_cfg["backup_service_name"] = b_name
+                except Exception:
+                    pass
+            serialized_services.append({
                 "name": p.name,
                 "service_type": p.service_type or "ffmpeg_stream",
-                "config": p.config or {},
+                "config": p_cfg,
                 "input_config": p.input_config,
                 "output_config": p.output_config,
                 "codec_config": p.codec_config,
@@ -1815,6 +1908,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "watchdog_circuit_breaker": getattr(p, "watchdog_circuit_breaker", True),
                 "watchdog_min_speed": p.watchdog_min_speed,
                 "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+                "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
+                "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
                 "alias": p.alias,
                 "network_timeout": p.network_timeout,
                 "debug_mode": p.debug_mode,
@@ -1827,9 +1922,8 @@ def export_backup_json(req: BackupExportRequest, db: Session = Depends(get_db)):
                 "is_shared_with_peers": getattr(p, "is_shared_with_peers", False),
                 "allow_peer_lease": getattr(p, "allow_peer_lease", False),
                 "log_storage_id": getattr(p, "log_storage_id", None),
-            }
-            for p in procs
-        ]
+            })
+        sections["services"] = serialized_services
 
     # 7b. PipeWire Audio Hubs
     if getattr(req, "pipewire_hubs", True):
@@ -2263,6 +2357,8 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     watchdog_circuit_breaker=p_data.get("watchdog_circuit_breaker", True),
                     watchdog_min_speed=p_data.get("watchdog_min_speed", 0.85),
                     watchdog_min_speed_duration=p_data.get("watchdog_min_speed_duration", 30),
+                    watchdog_max_memory_mb=p_data.get("watchdog_max_memory_mb"),
+                    watchdog_max_memory_duration=p_data.get("watchdog_max_memory_duration", 30),
                     alias=p_data.get("alias"),
                     network_timeout=p_data.get("network_timeout", 30),
                     debug_mode=p_data.get("debug_mode", False),
@@ -2289,6 +2385,34 @@ def import_backup_json(payload: BackupImportPayload, db: Session = Depends(get_d
                     imported_summary["pipewire_hubs"] += 1
                 else:
                     imported_summary["services"] += 1
+
+        # Second pass: re-link signal_watchdog.backup_service_name -> backup_service_id
+        db.flush()
+        from sqlalchemy.orm.attributes import flag_modified
+        for p_data in sections["services"]:
+            svc_obj = db.query(Service).filter(Service.name == p_data.get("name")).first()
+            if not svc_obj or not isinstance(svc_obj.config, dict):
+                continue
+            sw_cfg = svc_obj.config.get("signal_watchdog")
+            if not isinstance(sw_cfg, dict):
+                continue
+            b_name = sw_cfg.get("backup_service_name")
+            if b_name:
+                target_svc = db.query(Service).filter(Service.name == b_name).first()
+                if target_svc and target_svc.id != svc_obj.id:
+                    sw_cfg["backup_service_id"] = target_svc.id
+                else:
+                    sw_cfg["backup_service_id"] = None
+                    if sw_cfg.get("reaction_mode") == "activate_backup":
+                        sw_cfg["reaction_mode"] = "alert_only"
+                flag_modified(svc_obj, "config")
+            elif sw_cfg.get("backup_service_id") is not None:
+                target_svc = db.query(Service).filter(Service.id == sw_cfg.get("backup_service_id")).first()
+                if not target_svc or target_svc.id == svc_obj.id:
+                    sw_cfg["backup_service_id"] = None
+                    if sw_cfg.get("reaction_mode") == "activate_backup":
+                        sw_cfg["reaction_mode"] = "alert_only"
+                    flag_modified(svc_obj, "config")
 
     # Restore PipeWire Audio Hubs
     if "pipewire_hubs" in sections and isinstance(sections["pipewire_hubs"], list):
@@ -2563,6 +2687,7 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.warning(f"Error checking storage health in get_auth_status: {e}")
 
+    ctx = AuthzContext.from_request(request)
     if not settings:
         return {
             "password_required": False,
@@ -2572,7 +2697,9 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
             "logo_text": "FF",
             "accent_color": "#FF6B00",
             "version": ver,
-            "storage_warnings": storage_warnings
+            "storage_warnings": storage_warnings,
+            "channel": ctx.channel,
+            "permissions": ctx.to_summary_dict(db),
         }
     password_required = bool(settings.gui_password)
     is_authenticated = True
@@ -2594,8 +2721,56 @@ def get_auth_status(request: Request, db: Session = Depends(get_db)):
         "logo_text": settings.logo_text or "FF",
         "accent_color": settings.accent_color or "#FF6B00",
         "version": ver,
-        "storage_warnings": storage_warnings
+        "storage_warnings": storage_warnings,
+        "channel": ctx.channel,
+        "permissions": ctx.to_summary_dict(db) if is_authenticated else None,
     }
+
+
+@app.get("/api/cloudhub/catalog")
+def get_cloudhub_catalog(request: Request, db: Session = Depends(get_db)):
+    """Lightweight appliance catalog for CloudHub permission assignment UI."""
+    ctx = AuthzContext.from_request(request)
+    if not ctx.is_owner and not ctx.has_domain("settings", "monitor") and not ctx.has_any_process_level(db, "monitor"):
+        raise HTTPException(status_code=403, detail="Insufficient permissions to read appliance catalog")
+
+    from database.models import ServiceDependency
+    services = db.query(MediaProcess).order_by(MediaProcess.id.asc()).all()
+    all_deps = db.query(ServiceDependency).filter(ServiceDependency.consumer_type == "service").all()
+    dep_map: Dict[int, List[int]] = {}
+    for d in all_deps:
+        dep_map.setdefault(d.consumer_id, []).append(d.provider_service_id)
+
+    svc_items = []
+    for s in services:
+        deps = list(dep_map.get(s.id, []))
+        desk_id = _extract_kiosk_desktop_id(s)
+        if desk_id is not None and desk_id not in deps:
+            deps.append(desk_id)
+        pw_id = _extract_desktop_pipewire_id(s)
+        if pw_id is not None and pw_id not in deps:
+            deps.append(pw_id)
+        svc_items.append({
+            "id": s.id,
+            "name": s.name,
+            "alias": s.alias,
+            "service_type": getattr(s, "service_type", "ffmpeg_stream") or "ffmpeg_stream",
+            "status": s.status,
+            "dependencies": deps,
+        })
+
+    tasks = db.query(ScheduledTask).order_by(ScheduledTask.id.asc()).all()
+    task_items = [
+        {
+            "id": t.id,
+            "name": t.name,
+            "alias": t.alias,
+            "command": t.command,
+            "schedule_type": t.schedule_type,
+        }
+        for t in tasks
+    ]
+    return {"services": svc_items, "tasks": task_items}
 
 
 @app.post("/login")
@@ -3542,17 +3717,83 @@ async def get_ndi_sources(build_id: Optional[int] = None):
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
+        self.connection_contexts: Dict[WebSocket, AuthzContext] = {}
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, ctx: Optional[AuthzContext] = None):
         await websocket.accept()
         self.active_connections.append(websocket)
+        self.connection_contexts[websocket] = ctx or AuthzContext.owner()
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        self.connection_contexts.pop(websocket, None)
+
+    @staticmethod
+    def _filter_message_for_context(
+        message: dict,
+        ctx: AuthzContext,
+        svc_levels: Dict[int, str],
+        task_levels: Dict[int, str],
+    ) -> dict:
+        if ctx.is_owner:
+            return message
+        filtered = dict(message)
+        if "data" in filtered and isinstance(filtered["data"], list):
+            allowed_svcs = []
+            for p in filtered["data"]:
+                pid = p.get("id")
+                lvl = svc_levels.get(pid, ctx.explicit_service_level(pid, p.get("service_type"))) if pid is not None else "none"
+                if has_min_level(lvl, "monitor"):
+                    allowed_svcs.append(redact_service_dict(p, lvl))
+            filtered["data"] = allowed_svcs
+        if "task_executions" in filtered and isinstance(filtered["task_executions"], list):
+            filtered["task_executions"] = [
+                ex for ex in filtered["task_executions"]
+                if ex.get("task_id") is not None and has_min_level(task_levels.get(ex.get("task_id"), ctx.task_level(ex.get("task_id"))), "monitor")
+            ]
+        if "upcoming_tasks" in filtered and isinstance(filtered["upcoming_tasks"], list):
+            filtered["upcoming_tasks"] = [
+                ut for ut in filtered["upcoming_tasks"]
+                if ut.get("id") is not None and has_min_level(task_levels.get(ut.get("id"), ctx.task_level(ut.get("id"))), "monitor")
+            ]
+        if "system" in filtered and not ctx.has_domain("dashboard", "monitor"):
+            filtered["system"] = {}
+        return filtered
 
     async def broadcast(self, message: dict):
-        for connection in self.active_connections:
-            await connection.send_json(message)
+        has_restricted = any(
+            not (self.connection_contexts.get(ws) or AuthzContext.owner()).is_owner
+            for ws in self.active_connections
+        )
+        restricted_maps: Dict[WebSocket, Tuple[Dict[int, str], Dict[int, str]]] = {}
+        if has_restricted:
+            with SessionLocal() as db:
+                for ws in list(self.active_connections):
+                    ctx = self.connection_contexts.get(ws)
+                    if ctx and not ctx.is_owner:
+                        restricted_maps[ws] = (
+                            ctx.resolve_all_service_levels(db),
+                            ctx.resolve_all_task_levels(db),
+                        )
+
+        dead_connections = []
+        for connection in list(self.active_connections):
+            ctx = self.connection_contexts.get(connection) or AuthzContext.owner()
+            payload = message
+            if not ctx.is_owner:
+                svc_levels, task_levels = restricted_maps.get(connection, ({}, {}))
+                payload = self._filter_message_for_context(message, ctx, svc_levels, task_levels)
+            try:
+                await connection.send_json(payload)
+            except Exception:
+                dead_connections.append(connection)
+
+        if dead_connections:
+            from core.websocket_subscription_hub import subscription_hub
+            for dead in dead_connections:
+                self.disconnect(dead)
+                subscription_hub.unregister_client(dead)
 
 manager = ConnectionManager()
 
@@ -3676,12 +3917,21 @@ async def websocket_telemetry(websocket: WebSocket):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
 
-    await manager.connect(websocket)
+    from core.websocket_subscription_hub import subscription_hub
+    ctx = AuthzContext.from_websocket(websocket)
+    await manager.connect(websocket, ctx=ctx)
     try:
         while True:
-            await websocket.receive_text()
+            raw_msg = await websocket.receive_text()
+            await subscription_hub.handle_client_message(
+                websocket, raw_msg, process_manager=process_manager, db_session_factory=SessionLocal
+            )
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        subscription_hub.unregister_client(websocket)
+    except Exception:
+        manager.disconnect(websocket)
+        subscription_hub.unregister_client(websocket)
 
 def resolve_lease_display_name(token: str, services_lookup: dict, tasks_lookup: dict) -> str:
     """
@@ -3708,6 +3958,79 @@ def resolve_lease_display_name(token: str, services_lookup: dict, tasks_lookup: 
         except (ValueError, TypeError):
             pass
     return token
+
+def is_ip_allowed_for_metrics(client_ip: str, allowed_ips_str: Optional[str]) -> bool:
+    if not allowed_ips_str or not allowed_ips_str.strip():
+        return True
+    if client_ip in ("testclient", "localhost"):
+        client_ip = "127.0.0.1"
+    import ipaddress
+    try:
+        client_addr = ipaddress.ip_address(client_ip)
+    except ValueError:
+        return False
+
+    for item in allowed_ips_str.split(","):
+        token = item.strip()
+        if not token:
+            continue
+        try:
+            if "/" in token:
+                net = ipaddress.ip_network(token, strict=False)
+                if client_addr in net:
+                    return True
+            else:
+                addr = ipaddress.ip_address(token)
+                if client_addr == addr:
+                    return True
+        except ValueError:
+            pass
+    return False
+
+
+_LAST_TELEMETRY_SNAPSHOT: dict = {}
+
+@app.get("/api/metrics")
+@app.get("/metrics")
+def get_prometheus_metrics(request: Request, db: Session = Depends(get_db)):
+    from database.models import SystemSettings, MediaProcess
+    settings = db.query(SystemSettings).first()
+    if not settings or not settings.metrics_exporter_enabled:
+        raise HTTPException(status_code=404, detail="Metrics exporter is disabled")
+
+    # Client IP validation
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    if not is_ip_allowed_for_metrics(client_ip, settings.metrics_exporter_allowed_ips):
+        raise HTTPException(status_code=403, detail="Forbidden: IP address not allowed to scrape metrics")
+
+    # Authentication token validation
+    auth_header = request.headers.get("authorization", "")
+    token = None
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+    if not token:
+        token = request.query_params.get("token")
+
+    expected_token = settings.metrics_exporter_token or ""
+    if not token or not expected_token or not secrets.compare_digest(token, expected_token):
+        raise HTTPException(status_code=401, detail="Unauthorized metrics access: Invalid or missing token")
+
+    from core.prometheus_exporter import build_openmetrics_payload
+    from core.hardware_health import hardware_health_manager
+
+    services = db.query(MediaProcess).all()
+    payload = build_openmetrics_payload(
+        services=services,
+        telemetry_snapshot=_LAST_TELEMETRY_SNAPSHOT,
+        hardware_health=hardware_health_manager.get_health_snapshot(),
+        process_manager=process_manager,
+    )
+
+    return Response(
+        content=payload,
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
+
 
 async def telemetry_broadcast_loop():
     gpu_sensor = GPUSensor()
@@ -3763,6 +4086,39 @@ async def telemetry_broadcast_loop():
                         p_deps.append(fed_dep)
                     raw_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
                     p_leases = [resolve_lease_display_name(l, services_lookup, tasks_lookup) for l in raw_leases]
+
+                    # Feed volatile RRD store if service is running
+                    sparkline = []
+                    has_outlier = False
+                    is_running = (p.status == 'running') or (p.id in process_manager.processes)
+                    if is_running:
+                        try:
+                            from core.rrd_store import volatile_rrd_store
+                            volatile_rrd_store.record_service_sample(
+                                service_id=p.id,
+                                cpu=p.cpu_usage,
+                                ram=p.ram_usage,
+                                fps=p.fps,
+                                bitrate=p.bitrate,
+                                speed=p.speed,
+                            )
+                            tracker = volatile_rrd_store.get(p.id)
+                            if tracker:
+                                # Fixed consistent CPU sparkline across all cards
+                                sparkline = tracker.get_sparkline(metric="cpu", count=24)
+                                series_info = tracker.get_series(metric="cpu", range="24h")
+                                has_outlier = series_info.get("anomaly_summary", {}).get("has_outliers", False)
+                        except Exception as rrd_err:
+                            logger.warning(f"Error updating volatile RRD metrics for service {p.id}: {rrd_err}")
+
+                    ptp_role = None
+                    ptp_ts = None
+                    if getattr(p, "service_type", None) == "pipewire_hub" and hasattr(process_manager, "aoip_discovery_supervisors"):
+                        aoip_sup = process_manager.aoip_discovery_supervisors.get(p.id)
+                        if aoip_sup and hasattr(aoip_sup, "_ptp_status"):
+                            ptp_role = aoip_sup._ptp_status.get("local_ptp4l_role")
+                            ptp_ts = aoip_sup._ptp_status.get("time_stamping")
+
                     processes_data.append({
                         "id": p.id,
                         "name": p.name,
@@ -3790,6 +4146,8 @@ async def telemetry_broadcast_loop():
                         "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
                         "watchdog_min_speed": p.watchdog_min_speed,
                         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+                        "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
+                        "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
                         "pending_changes": p.pending_changes,
                         "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
                         "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
@@ -3808,6 +4166,11 @@ async def telemetry_broadcast_loop():
                         "is_shared_with_peers": bool(p.is_shared_with_peers),
                         "allow_peer_lease": bool(p.allow_peer_lease),
                         "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
+                        "sparkline": sparkline,
+                        "sparkline_metric": "cpu",
+                        "has_rrd_outlier": has_outlier,
+                        "ptp_role": ptp_role,
+                        "ptp_time_stamping": ptp_ts,
                     })
 
                 active_executions = db.query(TaskExecution).filter(TaskExecution.status.in_(["running", "pending"])).all()
@@ -3953,7 +4316,8 @@ async def telemetry_broadcast_loop():
                 "release_url": updates.get("release_url"),
                 "lcd": {
                     "connected": lcd_manager is not None and lcd_manager._running,
-                    "port": lcd_manager.port if lcd_manager else None
+                    "port": lcd_manager.port if lcd_manager else None,
+                    "locator_active": bool(lcd_manager.locator_active if (lcd_manager and lcd_manager._running) else False)
                 },
                 "system_uptime_seconds": int(time.time() - psutil.boot_time()),
                 "service_uptime_seconds": int(time.time() - SERVICE_START_TIME),
@@ -3976,6 +4340,13 @@ async def telemetry_broadcast_loop():
             except Exception as e:
                 logger.error(f"Error evaluating thermal notification alerts: {e}")
 
+            global _LAST_TELEMETRY_SNAPSHOT
+            _LAST_TELEMETRY_SNAPSHOT = {
+                "system": system_data,
+                "storages": storages_data,
+                "task_stats": task_stats,
+                "peers": peers_data,
+            }
 
             await manager.broadcast({
                 "type": "telemetry",
@@ -3989,6 +4360,11 @@ async def telemetry_broadcast_loop():
                 "resource_locks": active_resource_locks,
                 "hardware_health": hardware_health_data,
             })
+
+            from core.websocket_subscription_hub import subscription_hub
+            await subscription_hub.broadcast_deltas(
+                process_manager=process_manager, db_session_factory=SessionLocal
+            )
 
         except Exception as e:
             logger.exception(f"Error in telemetry broadcast loop: {e}")
@@ -4554,6 +4930,10 @@ def notify_storage_alert(storage_id: int, storage_name: str, storage_path: str, 
 
 @app.websocket("/ws/build/{build_id}")
 async def websocket_build(websocket: WebSocket, build_id: int):
+    ctx = AuthzContext.from_websocket(websocket)
+    if not ctx.has_domain("forge", "operate"):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
     if not token:
         auth_hdr = websocket.headers.get("authorization")
@@ -4735,8 +5115,12 @@ def get_lcd_locator_status():
 # ══════════════════════════════════════════════════════════════════
 
 @app.get("/builds")
-def list_builds(db: Session = Depends(get_db)):
+def list_builds(request: Request = None, db: Session = Depends(get_db)):
     """List all build profiles."""
+    if request is not None:
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner and not (ctx.has_domain("forge", "monitor") or ctx.has_any_process_level(db, "monitor")):
+            return []
     builds = db.query(FfmpegBuild).order_by(FfmpegBuild.created_at.desc()).all()
     return [_serialize_build(b) for b in builds]
 
@@ -4806,8 +5190,12 @@ async def get_software_tags(software_type: str):
     return {"tags": tags}
 
 @app.get("/builds/disk-info")
-def get_disk_info():
+def get_disk_info(request: Request = None, db: Session = Depends(get_db)):
     """Get free space on the partition where builds are stored."""
+    if request is not None:
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner and not (ctx.has_domain("forge", "monitor") or ctx.has_any_process_level(db, "monitor")):
+            return {"free_gb": 0, "free_mb": 0}
     return build_manager.get_partition_free_space()
 
 @app.get("/builds/check")
@@ -5363,8 +5751,10 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════
 
 @app.get("/processes")
-def list_processes(db: Session = Depends(get_db)):
+def list_processes(request: Request = None, db: Session = Depends(get_db)):
     from database.models import ServiceDependency
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
+    svc_levels = ctx.resolve_all_service_levels(db)
     processes = db.query(MediaProcess).all()
     from core.dependency_manager import dependency_manager
 
@@ -5390,12 +5780,23 @@ def list_processes(db: Session = Depends(get_db)):
     tasks_lookup = {t.id: ((getattr(t, 'alias', None) or '').strip() or t.name) for t in db.query(ScheduledTask).all()}
     processes_data = []
     for p in processes:
+        svc_lvl = svc_levels.get(p.id, "monitor" if ctx.is_owner else "none")
+        if not ctx.is_owner and not has_min_level(svc_lvl, "monitor"):
+            continue
         p_deps = list(deps_by_consumer.get(('service', p.id), []))
         fed_dep = get_federated_peer_dependency(p.config or {"output_config": p.output_config, "input_config": p.input_config}, peer_nodes_map)
         if fed_dep:
             p_deps.append(fed_dep)
         raw_leases = dependency_manager.get_active_leases(p.id) + peer_manager.get_active_remote_leases(p.id, db)
         p_leases = [resolve_lease_display_name(l, services_lookup, tasks_lookup) for l in raw_leases]
+        ptp_role = None
+        ptp_ts = None
+        if getattr(p, "service_type", None) == "pipewire_hub" and hasattr(process_manager, "aoip_discovery_supervisors"):
+            aoip_sup = process_manager.aoip_discovery_supervisors.get(p.id)
+            if aoip_sup and hasattr(aoip_sup, "_ptp_status"):
+                ptp_role = aoip_sup._ptp_status.get("local_ptp4l_role")
+                ptp_ts = aoip_sup._ptp_status.get("time_stamping")
+
         processes_data.append({
             "id": p.id,
             "name": p.name,
@@ -5423,6 +5824,8 @@ def list_processes(db: Session = Depends(get_db)):
             "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
             "watchdog_min_speed": p.watchdog_min_speed,
             "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+            "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
+            "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
             "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
             "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
             "active_leases": p_leases,
@@ -5441,13 +5844,56 @@ def list_processes(db: Session = Depends(get_db)):
             "public_hls_path": resolve_service_public_hls_path(p, hls_storages),
             "is_shared_with_peers": bool(getattr(p, 'is_shared_with_peers', False)),
             "allow_peer_lease": bool(getattr(p, 'allow_peer_lease', False)),
+            "ptp_role": ptp_role,
+            "ptp_time_stamping": ptp_ts,
         })
+        if not ctx.is_owner:
+            processes_data[-1] = redact_service_dict(processes_data[-1], svc_lvl)
+        else:
+            processes_data[-1]["effective_level"] = "admin"
 
     return processes_data
+
+def _validate_signal_watchdog_config(db: Session, service_id: Optional[int], sw: Optional[dict]):
+    if not isinstance(sw, dict):
+        return
+    if sw.get("reaction_mode") != "activate_backup":
+        return
+    backup_id = sw.get("backup_service_id")
+    if backup_id is None or backup_id == "":
+        return
+    try:
+        b_id = int(backup_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid signal watchdog backup_service_id")
+
+    if service_id is not None and b_id == int(service_id):
+        raise HTTPException(status_code=400, detail="Service cannot reference itself as its own signal watchdog backup")
+
+    backup_svc = db.query(MediaProcess).get(b_id)
+    if not backup_svc:
+        raise HTTPException(status_code=400, detail="Selected signal watchdog backup service does not exist")
+    if getattr(backup_svc, "service_type", "ffmpeg_stream") not in (None, "", "ffmpeg_stream"):
+        raise HTTPException(status_code=400, detail="Signal watchdog backup service must be an FFmpeg stream service")
+
+    if service_id is not None:
+        b_sw = (backup_svc.config or {}).get("signal_watchdog") or {}
+        if isinstance(b_sw, dict) and b_sw.get("reaction_mode") == "activate_backup":
+            b_target = b_sw.get("backup_service_id")
+            if b_target is not None:
+                try:
+                    if int(b_target) == int(service_id):
+                        raise HTTPException(status_code=400, detail="Circular signal watchdog failover dependency detected")
+                except (ValueError, TypeError):
+                    pass
+
 
 @app.post("/processes")
 def create_process(proc_in: ProcessCreate, request: Request, db: Session = Depends(get_db)):
     svc_type = proc_in.service_type or "ffmpeg_stream"
+    ctx = AuthzContext.from_request(request)
+    if not ctx.can_create_service(svc_type):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to create '{svc_type}' services")
     
     # If no build specified and ffmpeg_stream, use default ffmpeg build
     build_id = proc_in.ffmpeg_build_id
@@ -5504,10 +5950,15 @@ def create_process(proc_in: ProcessCreate, request: Request, db: Session = Depen
         if output_cfg is not None:
             sanitize_output_config_data(output_cfg)
 
+    proc_cfg = dict(proc_in.config) if proc_in.config is not None else {}
+    if proc_in.signal_watchdog is not None:
+        proc_cfg["signal_watchdog"] = proc_in.signal_watchdog
+    _validate_signal_watchdog_config(db, None, proc_cfg.get("signal_watchdog"))
+
     db_proc = MediaProcess(
         name=proc_in.name,
         service_type=svc_type,
-        config=proc_in.config if proc_in.config is not None else {},
+        config=proc_cfg,
         input_config=input_cfg,
         output_config=output_cfg,
         codec_config=codec_cfg,
@@ -5521,6 +5972,8 @@ def create_process(proc_in: ProcessCreate, request: Request, db: Session = Depen
         watchdog_circuit_breaker=proc_in.watchdog_circuit_breaker if proc_in.watchdog_circuit_breaker is not None else True,
         watchdog_min_speed=proc_in.watchdog_min_speed,
         watchdog_min_speed_duration=proc_in.watchdog_min_speed_duration if proc_in.watchdog_min_speed_duration is not None else 30,
+        watchdog_max_memory_mb=proc_in.watchdog_max_memory_mb,
+        watchdog_max_memory_duration=proc_in.watchdog_max_memory_duration if proc_in.watchdog_max_memory_duration is not None else 30,
         alias=proc_in.alias,
         network_timeout=proc_in.network_timeout if proc_in.network_timeout is not None else 15,
         debug_mode=proc_in.debug_mode if proc_in.debug_mode is not None else False,
@@ -5575,10 +6028,15 @@ def preview_command(proc_in: ProcessCreate, process_id: Optional[int] = Query(No
     filter_cfg = dict(proc_in.filter_config) if proc_in.filter_config is not None else {}
     sanitize_process_config_data(input_cfg, filter_cfg)
 
+    preview_cfg = dict(proc_in.config) if proc_in.config is not None else {}
+    if proc_in.signal_watchdog is not None:
+        preview_cfg["signal_watchdog"] = proc_in.signal_watchdog
+
     db_proc = MediaProcess(
         id=process_id,
         name=proc_in.name,
         type=proc_in.type,
+        config=preview_cfg,
         input_config=input_cfg,
         output_config=proc_in.output_config,
         codec_config=proc_in.codec_config,
@@ -5630,6 +6088,18 @@ def update_process(process_id: int, proc_in: ProcessUpdate, request: Request, db
             flag_modified(db_proc, "config")
         except Exception:
             pass
+    if proc_in.signal_watchdog is not None:
+        cfg_copy = dict(db_proc.config or {})
+        cfg_copy["signal_watchdog"] = proc_in.signal_watchdog
+        db_proc.config = cfg_copy
+        try:
+            flag_modified(db_proc, "config")
+        except Exception:
+            pass
+
+    sw_to_validate = (db_proc.config or {}).get("signal_watchdog")
+    if proc_in.signal_watchdog is not None or proc_in.config is not None:
+        _validate_signal_watchdog_config(db, process_id, sw_to_validate)
 
     # Handle config sanitization on update for ffmpeg streams
     if db_proc.service_type == "ffmpeg_stream":
@@ -5679,6 +6149,8 @@ def update_process(process_id: int, proc_in: ProcessUpdate, request: Request, db
     if proc_in.watchdog_circuit_breaker is not None: db_proc.watchdog_circuit_breaker = proc_in.watchdog_circuit_breaker
     if proc_in.watchdog_min_speed is not None: db_proc.watchdog_min_speed = proc_in.watchdog_min_speed
     if proc_in.watchdog_min_speed_duration is not None: db_proc.watchdog_min_speed_duration = proc_in.watchdog_min_speed_duration
+    if proc_in.watchdog_max_memory_mb is not None: db_proc.watchdog_max_memory_mb = proc_in.watchdog_max_memory_mb
+    if proc_in.watchdog_max_memory_duration is not None: db_proc.watchdog_max_memory_duration = proc_in.watchdog_max_memory_duration
     if proc_in.alias is not None: db_proc.alias = proc_in.alias
     if proc_in.network_timeout is not None: db_proc.network_timeout = proc_in.network_timeout
     if proc_in.debug_mode is not None: db_proc.debug_mode = proc_in.debug_mode
@@ -5792,8 +6264,23 @@ async def delete_process(process_id: int, request: Request, db: Session = Depend
         details=f"Service '{proc_name}' ({proc_type}) permanently deleted",
     )
 
+    # Clear any dangling signal_watchdog backup_service_id references to this service
+    from sqlalchemy.orm.attributes import flag_modified
+    for other_svc in db.query(MediaProcess).filter(MediaProcess.id != process_id).all():
+        o_cfg = other_svc.config
+        if isinstance(o_cfg, dict) and isinstance(o_cfg.get("signal_watchdog"), dict):
+            o_sw = o_cfg["signal_watchdog"]
+            if o_sw.get("backup_service_id") == process_id:
+                o_sw["backup_service_id"] = None
+                if o_sw.get("reaction_mode") == "activate_backup":
+                    o_sw["reaction_mode"] = "alert_only"
+                flag_modified(other_svc, "config")
+
     db.delete(db_proc)
     db.commit()
+
+    from core.rrd_store import volatile_rrd_store
+    volatile_rrd_store.remove(process_id)
 
     return {"status": "deleted", "process_id": process_id}
 
@@ -5977,6 +6464,8 @@ def clone_process(process_id: int, db: Session = Depends(get_db)):
         watchdog_circuit_breaker=getattr(db_proc, 'watchdog_circuit_breaker', True),
         watchdog_min_speed=db_proc.watchdog_min_speed,
         watchdog_min_speed_duration=db_proc.watchdog_min_speed_duration,
+        watchdog_max_memory_mb=db_proc.watchdog_max_memory_mb,
+        watchdog_max_memory_duration=db_proc.watchdog_max_memory_duration,
         network_timeout=db_proc.network_timeout,
         debug_mode=db_proc.debug_mode,
         log_storage_id=db_proc.log_storage_id,
@@ -6229,6 +6718,111 @@ def get_icecast_process_status(process_id: int, db: Session = Depends(get_db)):
     return {"icestats": {"listeners": 0, "source": []}}
 
 
+def _rewrite_icecast_paths(text: str, proxy_base: str) -> str:
+    """Rewrite root-relative Icecast HTML/XSL/CSS links so they stay under the internal proxy prefix."""
+    text = re.sub(r'(href|src|action)=(["\'])/(?!/|api/processes/)', rf'\1=\2{proxy_base}/', text, flags=re.IGNORECASE)
+    text = re.sub(r"url\(\s*(['\"]?)/(?!/|api/processes/)", rf"url(\1{proxy_base}/", text, flags=re.IGNORECASE)
+    return text
+
+
+@app.api_route("/processes/{process_id}/icecast-proxy/{subpath:path}", methods=["GET", "POST", "HEAD"])
+@app.api_route("/api/processes/{process_id}/icecast-proxy/{subpath:path}", methods=["GET", "POST", "HEAD"])
+async def proxy_icecast_service(
+    process_id: int,
+    subpath: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Internal reverse proxy to a managed Icecast2 service (status, admin with Basic Auth, and live audio)."""
+    db_proc = db.query(MediaProcess).get(process_id)
+    if not db_proc:
+        raise HTTPException(status_code=404, detail="Service not found")
+    if getattr(db_proc, "service_type", None) != "icecast_server":
+        raise HTTPException(status_code=400, detail="Service is not an Icecast2 server")
+
+    cfg = db_proc.config or {}
+    ice_cfg = cfg.get("icecast_config") or {}
+    http_enabled = ice_cfg.get("http_enabled", True)
+    ssl_enabled = ice_cfg.get("ssl_enabled", False)
+    use_ssl = (not http_enabled) and ssl_enabled
+    port = int(ice_cfg.get("ssl_port", 7443) if use_ssl else ice_cfg.get("port", 7000))
+    scheme = "https" if use_ssl else "http"
+
+    subpath_clean = subpath.lstrip("/")
+    query = request.url.query
+    target_url = f"{scheme}://127.0.0.1:{port}/{subpath_clean}" + (f"?{query}" if query else "")
+
+    fwd_headers: Dict[str, str] = {}
+    for h_name in ("accept", "range", "icy-metadata", "user-agent", "content-type"):
+        if h_name in request.headers:
+            fwd_headers[h_name] = request.headers[h_name]
+
+    admin_user = ice_cfg.get("admin_user", "admin")
+    admin_password = ice_cfg.get("admin_password", "")
+    if subpath_clean.startswith("admin") and admin_password:
+        import base64 as _b64
+        creds = _b64.b64encode(f"{admin_user}:{admin_password}".encode("utf-8")).decode("ascii")
+        fwd_headers["authorization"] = f"Basic {creds}"
+
+    req_body = await request.body() if request.method == "POST" else None
+
+    import httpx
+    client = httpx.AsyncClient(verify=False, timeout=httpx.Timeout(10.0, read=None))
+    try:
+        upstream_req = client.build_request(
+            request.method,
+            target_url,
+            headers=fwd_headers,
+            content=req_body,
+        )
+        upstream_resp = await client.send(upstream_req, stream=True)
+    except Exception as exc:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail=f"Failed to connect to Icecast on port {port}: {exc}")
+
+    ctype = upstream_resp.headers.get("content-type", "")
+    resp_headers: Dict[str, str] = {}
+    for hk, hv in upstream_resp.headers.items():
+        if hk.lower() not in ("content-length", "transfer-encoding", "content-encoding", "connection", "www-authenticate"):
+            resp_headers[hk] = hv
+
+    is_rewritable = any(
+        t in ctype.lower() for t in ("text/html", "application/xhtml+xml", "text/xml", "text/css")
+    )
+
+    if is_rewritable:
+        try:
+            raw_bytes = await upstream_resp.aread()
+        finally:
+            await upstream_resp.aclose()
+            await client.aclose()
+
+        proxy_base = f"/api/processes/{process_id}/icecast-proxy"
+        text_body = _rewrite_icecast_paths(raw_bytes.decode("utf-8", errors="replace"), proxy_base)
+        return Response(
+            content=text_body.encode("utf-8"),
+            status_code=upstream_resp.status_code,
+            headers=resp_headers,
+            media_type=ctype or None,
+        )
+
+    async def _stream_audio():
+        try:
+            async for chunk in upstream_resp.aiter_bytes(16384):
+                if chunk:
+                    yield chunk
+        finally:
+            await upstream_resp.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        _stream_audio(),
+        status_code=upstream_resp.status_code,
+        headers=resp_headers,
+        media_type=ctype or None,
+    )
+
+
 @app.get("/processes/{process_id}/mediamtx/paths")
 @app.get("/api/processes/{process_id}/mediamtx/paths")
 def get_mediamtx_live_paths(process_id: int, db: Session = Depends(get_db)):
@@ -6398,7 +6992,7 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     # 3. Synchronize common properties into cfg
     for key in [
         "auto_start", "startup_order", "startup_delay", "watchdog_enabled", "watchdog_retries",
-        "watchdog_min_speed", "watchdog_min_speed_duration", "network_timeout", "debug_mode",
+        "watchdog_min_speed", "watchdog_min_speed_duration", "watchdog_max_memory_mb", "watchdog_max_memory_duration", "network_timeout", "debug_mode",
         "log_storage_id", "software_type", "software_version", "software_build_id", "ffmpeg_build_id",
         "allow_auto_start_deps", "allow_auto_stop_deps"
     ]:
@@ -6489,6 +7083,21 @@ def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
                                 cfg_dict["icecast_password"] = real_source_pass
                 except Exception:
                     cfg_dict.pop("provider_service_id", None)
+
+    if isinstance(cfg.get("signal_watchdog"), dict):
+        sw_p = cfg["signal_watchdog"]
+        b_id = sw_p.get("backup_service_id")
+        if b_id is not None:
+            try:
+                b_exists = db.query(Service).filter(Service.id == int(b_id)).first()
+                if not b_exists:
+                    sw_p["backup_service_id"] = None
+                    if sw_p.get("reaction_mode") == "activate_backup":
+                        sw_p["reaction_mode"] = "alert_only"
+            except Exception:
+                sw_p["backup_service_id"] = None
+                if sw_p.get("reaction_mode") == "activate_backup":
+                    sw_p["reaction_mode"] = "alert_only"
 
     # 7. PipeWire Hub AoIP Network, Multicast & SAP Sanitization
     if service_type == "pipewire_hub":
@@ -6636,6 +7245,8 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
             "watchdog_circuit_breaker": getattr(proc, 'watchdog_circuit_breaker', True),
             "watchdog_min_speed": proc.watchdog_min_speed,
             "watchdog_min_speed_duration": proc.watchdog_min_speed_duration,
+            "watchdog_max_memory_mb": proc.watchdog_max_memory_mb,
+            "watchdog_max_memory_duration": proc.watchdog_max_memory_duration,
             "network_timeout": getattr(proc, 'network_timeout', 15),
             "debug_mode": getattr(proc, 'debug_mode', False),
             "log_storage_id": getattr(proc, 'log_storage_id', None),
@@ -6645,11 +7256,16 @@ def export_process(process_id: int, db: Session = Depends(get_db)):
     }
 
 @app.post("/processes/import")
-def import_process(payload: dict, db: Session = Depends(get_db)):
+def import_process(payload: dict, request: Request = None, db: Session = Depends(get_db)):
     try:
         profile = migrate_and_validate_profile(payload, db)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid configuration format: {str(e)}")
+    svc_type = profile.get('service_type', 'ffmpeg_stream') or 'ffmpeg_stream'
+    if request is not None:
+        ctx = AuthzContext.from_request(request)
+        if not ctx.can_create_service(svc_type):
+            raise HTTPException(status_code=403, detail=f"Insufficient permissions to import '{svc_type}' services")
         
     db_proc = MediaProcess(
         name=f"Imported: {profile.get('name', 'Untitled')}",
@@ -6675,6 +7291,8 @@ def import_process(payload: dict, db: Session = Depends(get_db)):
         watchdog_circuit_breaker=profile.get('watchdog_circuit_breaker', True),
         watchdog_min_speed=profile.get('watchdog_min_speed'),
         watchdog_min_speed_duration=profile.get('watchdog_min_speed_duration', 30),
+        watchdog_max_memory_mb=profile.get('watchdog_max_memory_mb'),
+        watchdog_max_memory_duration=profile.get('watchdog_max_memory_duration', 30),
         network_timeout=profile.get('network_timeout', 15),
         debug_mode=profile.get('debug_mode', False),
         log_storage_id=profile.get('log_storage_id'),
@@ -6807,12 +7425,24 @@ def import_build_recipe(payload: dict, db: Session = Depends(get_db)):
 
 
 @app.get("/processes/{process_id}/preview")
-async def get_preview(process_id: int, db: Session = Depends(get_db)):
+async def get_preview(process_id: int, request: Request, db: Session = Depends(get_db)):
     media_proc = db.query(MediaProcess).get(process_id)
     if not media_proc:
         raise HTTPException(status_code=404, detail="Process not found")
 
     is_running = media_proc.status == 'running'
+
+    # Single snapshot fallback for legacy CloudHub proxies (without http_stream) or explicit snapshot queries
+    is_legacy_cloudhub = (
+        request.headers.get("x-authenticated-channel") == "cloudhub"
+        and request.headers.get("x-cloudhub-stream") != "1"
+    )
+    if is_legacy_cloudhub or request.query_params.get("snapshot"):
+        img = preview_manager.get_snapshot(media_proc.id, is_task=False)
+        if img:
+            return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return Response(status_code=204)
+
     return StreamingResponse(
         preview_manager.get_mjpeg_stream(media_proc.id, media_proc.input_config, is_running),
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"
@@ -6902,11 +7532,17 @@ def get_process_hls(process_id: int, filename: str, db: Session = Depends(get_db
 # ══════════════════════════════════════════════════════════════════
 
 @app.get("/api/services")
-def list_services(db: Session = Depends(get_db)):
+def list_services(request: Request = None, db: Session = Depends(get_db)):
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
+    svc_levels = ctx.resolve_all_service_levels(db)
     services = db.query(MediaProcess).all()
     hls_storages = get_routed_hls_storages(db)
-    return [
-        {
+    items = []
+    for s in services:
+        lvl = svc_levels.get(s.id, "admin" if ctx.is_owner else "none")
+        if not ctx.is_owner and not has_min_level(lvl, "monitor"):
+            continue
+        item = {
             "id": s.id,
             "name": s.name,
             "service_type": s.service_type,
@@ -6927,11 +7563,15 @@ def list_services(db: Session = Depends(get_db)):
             "is_shared_with_peers": bool(s.is_shared_with_peers),
             "allow_peer_lease": bool(s.allow_peer_lease),
             "public_hls_path": resolve_service_public_hls_path(s, hls_storages),
-        } for s in services
-    ]
+        }
+        items.append(redact_service_dict(item, lvl) if not ctx.is_owner else {**item, "effective_level": "admin"})
+    return items
 
 @app.post("/api/services")
 def create_service(svc_in: ServiceCreate, request: Request, db: Session = Depends(get_db)):
+    ctx = AuthzContext.from_request(request)
+    if not ctx.can_create_service(svc_in.service_type):
+        raise HTTPException(status_code=403, detail=f"Insufficient permissions to create '{svc_in.service_type}' services")
     svc = MediaProcess(
         name=svc_in.name,
         service_type=svc_in.service_type,
@@ -6963,10 +7603,26 @@ def create_service(svc_in: ServiceCreate, request: Request, db: Session = Depend
     return svc
 
 @app.get("/api/services/{service_id}")
-def get_service(service_id: int, db: Session = Depends(get_db)):
+def get_service(service_id: int, request: Request = None, db: Session = Depends(get_db)):
     svc = db.query(MediaProcess).get(service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
+    if not ctx.is_owner:
+        lvl = ctx.service_level(db, svc)
+        if not has_min_level(lvl, "monitor"):
+            raise HTTPException(status_code=403, detail=f"Service #{service_id} requires 'monitor'")
+        if not has_min_level(lvl, "manage"):
+            return redact_service_dict({
+                "id": svc.id,
+                "name": svc.name,
+                "alias": svc.alias,
+                "service_type": svc.service_type,
+                "config": svc.config or {},
+                "is_active": svc.is_active,
+                "status": svc.status,
+                "pid": svc.pid,
+            }, lvl)
     return svc
 
 @app.put("/api/services/{service_id}")
@@ -7072,9 +7728,93 @@ def get_service_logs(service_id: int, limit: int = 100, db: Session = Depends(ge
     svc = db.query(MediaProcess).get(service_id)
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
+
+    # 1. If actively running and in memory buffer, return it
+    if service_id in process_manager.log_buffers and len(process_manager.log_buffers[service_id]) > 0:
+        valid_buffered = [
+            entry for entry in process_manager.log_buffers[service_id]
+            if "missing timeout" not in entry.get("message", "").lower()
+        ]
+        return valid_buffered[-limit:]
+
+    # 2. Read physical log file from disk (process_{service_id}.log) if present
+    log_file = process_manager.get_process_log_path(service_id, svc.log_storage_id, session=db)
+    lines = []
+    if os.path.exists(log_file):
+        try:
+            f_size = os.path.getsize(log_file)
+            with open(log_file, "rb") as f:
+                if f_size > 65536:
+                    f.seek(f_size - 65536)
+                chunk = f.read().decode("utf-8", errors="replace")
+            lines.extend(chunk.splitlines())
+        except Exception as e:
+            logger.error(f"Error reading log file {log_file} for service {service_id}: {e}")
+
+    if lines:
+        parsed = []
+        for line in lines[-(limit * 2):]:
+            line_str = line.strip()
+            if not line_str or "missing timeout" in line_str.lower():
+                continue
+            lower = line_str.lower()
+            level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else "INFO"
+            parsed.append({
+                "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                "level": level,
+                "message": line_str
+            })
+            if len(parsed) >= limit:
+                break
+        return parsed
+
+    # 3. Fallback to ServiceLog table in database
     from database.models import ServiceLog
     logs = db.query(ServiceLog).filter(ServiceLog.service_id == service_id).order_by(ServiceLog.id.desc()).limit(limit).all()
     return [{"timestamp": l.timestamp.isoformat() + "Z", "level": l.level, "message": l.message} for l in reversed(logs)]
+
+
+@app.get("/api/services/{service_id}/sidecar-logs/{sidecar_name}")
+def get_service_sidecar_logs(service_id: int, sidecar_name: str, limit: int = 100, db: Session = Depends(get_db)):
+    if sidecar_name not in ("ptp4l", "phc2sys"):
+        raise HTTPException(status_code=400, detail="Invalid sidecar name. Allowed: ptp4l, phc2sys")
+    svc = db.query(MediaProcess).get(service_id)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    key = f"{service_id}:{sidecar_name}"
+    if key in process_manager.sidecar_log_buffers and len(process_manager.sidecar_log_buffers[key]) > 0:
+        return list(process_manager.sidecar_log_buffers[key])
+
+    log_storage_id = (svc.config or {}).get("log_storage_id")
+    logs_dir = process_manager.get_process_log_storage_path(process_id=service_id, log_storage_id=log_storage_id, session=db)
+    sidecar_log_file = os.path.join(logs_dir, f"{sidecar_name}_{service_id}.log")
+
+    lines = []
+    if os.path.exists(sidecar_log_file):
+        try:
+            f_size = os.path.getsize(sidecar_log_file)
+            with open(sidecar_log_file, "rb") as f:
+                if f_size > 65536:
+                    f.seek(f_size - 65536)
+                chunk = f.read().decode("utf-8", errors="replace")
+            lines.extend(chunk.splitlines())
+        except Exception as e:
+            logger.error(f"Error reading sidecar log file {sidecar_log_file}: {e}")
+
+    parsed_logs = []
+    for line in lines[-limit:]:
+        line_str = line.strip()
+        if not line_str:
+            continue
+        lower = line_str.lower()
+        level = "ERROR" if any(kw in lower for kw in ["error", "failed", "invalid", "could not", "cannot", "fatal"]) else ("WARN" if "warn" in lower else "INFO")
+        parsed_logs.append({
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "level": level,
+            "message": line_str
+        })
+    return parsed_logs
 
 
 @app.get("/api/audit-logs")
@@ -7143,12 +7883,24 @@ def download_audit_logs():
 
 
 @app.get("/api/services/{service_id}/preview")
-async def get_service_preview(service_id: int, db: Session = Depends(get_db)):
+async def get_service_preview(service_id: int, request: Request, db: Session = Depends(get_db)):
     media_proc = db.query(MediaProcess).get(service_id)
     if not media_proc:
         raise HTTPException(status_code=404, detail="Service not found")
     is_running = media_proc.status == 'running'
     input_config = media_proc.config.get("input_config", {}) if media_proc.config else {}
+
+    # Single snapshot fallback for legacy CloudHub proxies (without http_stream) or explicit snapshot queries
+    is_legacy_cloudhub = (
+        request.headers.get("x-authenticated-channel") == "cloudhub"
+        and request.headers.get("x-cloudhub-stream") != "1"
+    )
+    if is_legacy_cloudhub or request.query_params.get("snapshot"):
+        img = preview_manager.get_snapshot(media_proc.id, is_task=False)
+        if img:
+            return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return Response(status_code=204)
+
     return StreamingResponse(
         preview_manager.get_mjpeg_stream(media_proc.id, input_config, is_running),
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"
@@ -7318,13 +8070,25 @@ def list_available_dependency_providers(db: Session = Depends(get_db)):
 
 
 @app.get("/tasks/executions/{execution_id}/preview")
-async def get_task_preview(execution_id: int, db: Session = Depends(get_db)):
+async def get_task_preview(execution_id: int, request: Request, db: Session = Depends(get_db)):
     execution = db.query(TaskExecution).get(execution_id)
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
 
     is_running = execution.status == 'running'
     input_config = execution.task.input_config if execution.task else {}
+
+    # Single snapshot fallback for legacy CloudHub proxies (without http_stream) or explicit snapshot queries
+    is_legacy_cloudhub = (
+        request.headers.get("x-authenticated-channel") == "cloudhub"
+        and request.headers.get("x-cloudhub-stream") != "1"
+    )
+    if is_legacy_cloudhub or request.query_params.get("snapshot"):
+        img = preview_manager.get_snapshot(execution.id, is_task=True)
+        if img:
+            return Response(content=img, media_type="image/jpeg", headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return Response(status_code=204)
+
     return StreamingResponse(
         preview_manager.get_mjpeg_stream(execution.id, input_config, is_running, is_task=True),
         media_type="multipart/x-mixed-replace; boundary=ffmpeg"
@@ -7394,9 +8158,10 @@ def _serialize_build(build: FfmpegBuild) -> dict:
 class ScheduledTaskCreate(BaseModel):
     name: str
     is_active: Optional[bool] = True
+    command: Optional[str] = None
     input_config: dict
-    output_config: dict
-    codec_config: dict
+    output_config: Optional[dict] = {}
+    codec_config: Optional[dict] = {}
     filter_config: Optional[dict] = None
     ffmpeg_build_id: Optional[int] = None
     schedule_type: str
@@ -7425,6 +8190,7 @@ class ScheduledTaskCreate(BaseModel):
 class ScheduledTaskUpdate(BaseModel):
     name: Optional[str] = None
     is_active: Optional[bool] = None
+    command: Optional[str] = None
     input_config: Optional[dict] = None
     output_config: Optional[dict] = None
     codec_config: Optional[dict] = None
@@ -7479,6 +8245,7 @@ def serialize_task_item(t: ScheduledTask, db: Session, deps_list: Optional[list]
     return {
         "id": t.id,
         "name": t.name,
+        "command": t.command,
         "is_active": t.is_active,
         "input_config": t.input_config,
         "output_config": t.output_config,
@@ -7518,10 +8285,11 @@ def serialize_task_item(t: ScheduledTask, db: Session, deps_list: Optional[list]
     }
 
 @app.get("/tasks")
-def list_tasks(db: Session = Depends(get_db)):
+def list_tasks(request: Request = None, db: Session = Depends(get_db)):
     from database.models import ServiceDependency
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
     tasks = db.query(ScheduledTask).all()
-    
+
     all_deps = db.query(ServiceDependency).filter(ServiceDependency.consumer_type == 'task').all()
     deps_by_task = {}
     for d in all_deps:
@@ -7533,7 +8301,14 @@ def list_tasks(db: Session = Depends(get_db)):
             "is_auto_managed": d.is_auto_managed
         })
 
-    return [serialize_task_item(t, db, deps_by_task.get(t.id, [])) for t in tasks]
+    items = []
+    for t in tasks:
+        t_lvl = ctx.task_level(t.id)
+        if not ctx.is_owner and not has_min_level(t_lvl, "monitor"):
+            continue
+        item = serialize_task_item(t, db, deps_by_task.get(t.id, []))
+        items.append(redact_task_dict(item, t_lvl) if not ctx.is_owner else {**item, "effective_level": "admin"})
+    return items
 
 @app.post("/tasks")
 def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = Depends(get_db)):
@@ -7554,12 +8329,29 @@ def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = De
 
     is_active_val = True if payload.schedule_type == 'manual' else (payload.is_active if payload.is_active is not None else True)
 
+    cmd_val = payload.command
+    in_cfg = payload.input_config or {}
+    if cmd_val == "system://service_restart" or in_cfg.get("type") == "service_restart":
+        cmd_val = "system://service_restart"
+        sids = in_cfg.get("service_ids")
+        if not sids or not isinstance(sids, list):
+            raise HTTPException(status_code=400, detail="service_ids must be a non-empty list of service IDs")
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner:
+            for raw_sid in sids:
+                if not str(raw_sid).isdigit() or not has_min_level(ctx.service_level(db, int(raw_sid)), "operate"):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Insufficient permissions to target service #{raw_sid} in restart task",
+                    )
+
     db_task = ScheduledTask(
         name=payload.name,
+        command=cmd_val,
         is_active=is_active_val,
         input_config=payload.input_config,
         output_config=output_cfg,
-        codec_config=payload.codec_config,
+        codec_config=payload.codec_config or {},
         filter_config=payload.filter_config,
         ffmpeg_build_id=payload.ffmpeg_build_id,
         schedule_type=payload.schedule_type,
@@ -7577,8 +8369,9 @@ def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = De
     db.add(db_task)
     db.commit()
 
-    from core.dependency_manager import dependency_manager
-    dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
+    if not db_task.command:
+        from core.dependency_manager import dependency_manager
+        dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
     db.refresh(db_task)
     actor_info = audit_logger.extract_actor_info(request)
     audit_logger.log(
@@ -7601,6 +8394,7 @@ def export_tasks(db: Session = Depends(get_db)):
     for t in tasks:
         exported.append({
             "name": t.name,
+            "command": t.command,
             "is_active": t.is_active,
             "input_config": t.input_config,
             "output_config": t.output_config,
@@ -7635,6 +8429,7 @@ def export_single_task(task_id: int, db: Session = Depends(get_db)):
         "exported_at": datetime.datetime.utcnow().isoformat(),
         "task": {
             "name": t.name,
+            "command": t.command,
             "is_active": t.is_active,
             "input_config": t.input_config,
             "output_config": t.output_config,
@@ -7682,6 +8477,8 @@ def _serialize_service(p) -> dict:
         "watchdog_circuit_breaker": getattr(p, 'watchdog_circuit_breaker', True),
         "watchdog_min_speed": p.watchdog_min_speed,
         "watchdog_min_speed_duration": p.watchdog_min_speed_duration,
+        "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
+        "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
         "pending_changes": p.pending_changes,
         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
         "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
@@ -7691,6 +8488,8 @@ def _serialize_service(p) -> dict:
         "log_storage_id": p.log_storage_id,
         "is_shared_with_peers": getattr(p, 'is_shared_with_peers', False),
         "allow_peer_lease": getattr(p, 'allow_peer_lease', False),
+        "signal_watchdog": (p.config or {}).get("signal_watchdog") or {},
+        "signal_watchdog_state": process_manager.get_signal_watchdog_state(p.id) if hasattr(process_manager, "get_signal_watchdog_state") else {"state": "normal"},
         "log_file_path": process_manager.get_process_log_path(p.id),
     }
 
@@ -7699,6 +8498,8 @@ def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
     db_task = db.query(ScheduledTask).get(task_id)
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if db_task.command == "system://service_restart" or (db_task.input_config and db_task.input_config.get("type") == "service_restart"):
+        raise HTTPException(status_code=400, detail="Service maintenance tasks cannot be cloned as an FFmpeg service")
 
     new_proc_name = f"Copy of {db_task.name}"
     
@@ -7726,7 +8527,9 @@ def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
         watchdog_enabled=True,
         watchdog_retries=3,
         watchdog_min_speed=0.85,
-        watchdog_min_speed_duration=30
+        watchdog_min_speed_duration=30,
+        watchdog_max_memory_mb=None,
+        watchdog_max_memory_duration=30
     )
     db.add(new_proc)
     db.commit()
@@ -7790,18 +8593,26 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
                 def_b = db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready", SoftwareBuild.is_default == True).first() or db.query(SoftwareBuild).filter(SoftwareBuild.software_type == "ffmpeg", SoftwareBuild.status == "ready").first()
                 build_id = def_b.id if def_b else None
 
-        sanitized_cfg = migrate_and_validate_profile({
-            "input_config": td.get("input_config", {}),
-            "output_config": td.get("output_config", {})
-        }, db)
+        cmd = td.get("command")
+        if cmd == "system://service_restart" or (td.get("input_config") and td.get("input_config").get("type") == "service_restart"):
+            cmd = "system://service_restart"
+            sanitized_input = td.get("input_config", {})
+            sanitized_output = td.get("output_config", {})
+        else:
+            sanitized_cfg = migrate_and_validate_profile({
+                "input_config": td.get("input_config", {}),
+                "output_config": td.get("output_config", {})
+            }, db)
+            sanitized_input = sanitized_cfg.get("input_config", {})
+            sanitized_output = sanitized_cfg.get("output_config", {})
 
         db_task = ScheduledTask(
             name=f"Imported: {td.get('name', 'Untitled')}",
             is_system=False,
-            command=None,
+            command=cmd,
             is_active=td.get("is_active", False),
-            input_config=sanitized_cfg.get("input_config", {}),
-            output_config=sanitized_cfg.get("output_config", {}),
+            input_config=sanitized_input,
+            output_config=sanitized_output,
             codec_config=td.get("codec_config", {}),
             filter_config=td.get("filter_config"),
             ffmpeg_build_id=build_id,
@@ -7824,41 +8635,51 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
 
     from core.dependency_manager import dependency_manager
     for db_task in imported:
-        try:
-            dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
-        except Exception as e:
-            logger.warning(f"Error syncing auto dependencies for imported task {db_task.id}: {e}")
+        if not db_task.command:
+            try:
+                dependency_manager.sync_auto_dependencies('task', db_task.id, db_task.input_config, db_task.output_config, db)
+            except Exception as e:
+                logger.warning(f"Error syncing auto dependencies for imported task {db_task.id}: {e}")
 
     return {"status": "success", "count": len(imported)}
 
 @app.get("/tasks/{task_id}")
-def get_task(task_id: int, db: Session = Depends(get_db)):
+def get_task(task_id: int, request: Request = None, db: Session = Depends(get_db)):
     task = db.query(ScheduledTask).get(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+    ctx = AuthzContext.from_request(request) if request is not None else AuthzContext.owner()
+    t_lvl = ctx.task_level(task_id)
+
     executions = db.query(TaskExecution).filter(TaskExecution.task_id == task_id).order_by(TaskExecution.id.desc()).all()
-    
+
+    task_payload = {
+        "id": task.id,
+        "name": task.name,
+        "command": task.command,
+        "is_active": task.is_active,
+        "input_config": task.input_config,
+        "output_config": task.output_config,
+        "codec_config": task.codec_config,
+        "filter_config": task.filter_config,
+        "ffmpeg_build_id": task.ffmpeg_build_id,
+        "schedule_type": task.schedule_type,
+        "schedule_cron": task.schedule_cron,
+        "schedule_datetime": task.schedule_datetime.isoformat() if task.schedule_datetime else None,
+        "next_run": task.next_run.isoformat() if task.next_run else None,
+        "duration_type": task.duration_type,
+        "duration_seconds": task.duration_seconds,
+        "duration_end_time": task.duration_end_time.isoformat() if task.duration_end_time else None,
+        "retry_policy": task.retry_policy,
+        "alias": task.alias,
+    }
+    if not ctx.is_owner:
+        task_payload = redact_task_dict(task_payload, t_lvl)
+    else:
+        task_payload["effective_level"] = "admin"
+
     return {
-        "task": {
-            "id": task.id,
-            "name": task.name,
-            "is_active": task.is_active,
-            "input_config": task.input_config,
-            "output_config": task.output_config,
-            "codec_config": task.codec_config,
-            "filter_config": task.filter_config,
-            "ffmpeg_build_id": task.ffmpeg_build_id,
-            "schedule_type": task.schedule_type,
-            "schedule_cron": task.schedule_cron,
-            "schedule_datetime": task.schedule_datetime.isoformat() if task.schedule_datetime else None,
-            "next_run": task.next_run.isoformat() if task.next_run else None,
-            "duration_type": task.duration_type,
-            "duration_seconds": task.duration_seconds,
-            "duration_end_time": task.duration_end_time.isoformat() if task.duration_end_time else None,
-            "retry_policy": task.retry_policy,
-            "alias": task.alias,
-        },
+        "task": task_payload,
         "executions": [
             {
                 "id": ex.id,
@@ -7889,6 +8710,25 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db
     update_data = payload.dict(exclude_unset=True)
     if 'output_config' in update_data and update_data['output_config']:
         sanitize_output_config_data(update_data['output_config'])
+
+    # Validate service maintenance restart inputs if applicable
+    effective_cmd = update_data.get('command', task.command)
+    in_cfg = update_data.get('input_config', task.input_config or {})
+    if effective_cmd == "system://service_restart" or in_cfg.get("type") == "service_restart":
+        sids = in_cfg.get("service_ids")
+        if 'input_config' in update_data:
+            if not sids or not isinstance(sids, list):
+                raise HTTPException(status_code=400, detail="service_ids must be a non-empty list of service IDs")
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner and isinstance(sids, list):
+            for raw_sid in sids:
+                if not str(raw_sid).isdigit() or not has_min_level(ctx.service_level(db, int(raw_sid)), "operate"):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Insufficient permissions to target service #{raw_sid} in restart task",
+                    )
+        if not task.command:
+            task.command = "system://service_restart"
     
     sched_changed = ('schedule_type' in update_data or 
                      'schedule_cron' in update_data or 
@@ -7918,8 +8758,9 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db
 
     db.commit()
 
-    from core.dependency_manager import dependency_manager
-    dependency_manager.sync_auto_dependencies('task', task.id, task.input_config, task.output_config, db)
+    if not task.command:
+        from core.dependency_manager import dependency_manager
+        dependency_manager.sync_auto_dependencies('task', task.id, task.input_config, task.output_config, db)
     db.refresh(task)
 
     actor_info = audit_logger.extract_actor_info(request)
@@ -8750,6 +9591,10 @@ def get_alsa_diagnostics():
 
 @app.websocket("/ws/alsa/meters/{card_index}")
 async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
+    ctx = AuthzContext.from_websocket(websocket)
+    if not ctx.has_domain("hardware", "monitor"):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
     await websocket.accept()
     alsa_manager.active_mixer_ws_count += 1
     # Check if this card is an AudioScience adapter to throttle interval and protect the DSP mailbox
@@ -8768,8 +9613,10 @@ async def websocket_alsa_meters(websocket: WebSocket, card_index: int):
         alsa_manager.active_mixer_ws_count = max(0, alsa_manager.active_mixer_ws_count - 1)
 
 
+
 @app.websocket("/ws/desktop/{service_id}/vnc")
 async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
+    ctx = AuthzContext.from_websocket(websocket)
     # 1. Authenticate WebSocket connection
     token = websocket.cookies.get(auth_manager.COOKIE_NAME) or websocket.query_params.get("token")
     if not token:
@@ -8777,6 +9624,7 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
         if auth_hdr:
             token = auth_hdr.replace("Bearer ", "").strip()
 
+    view_only = False
     with SessionLocal() as db:
         from database.models import SystemSettings, Service
         settings = db.query(SystemSettings).first()
@@ -8789,9 +9637,37 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
                 return
 
         svc = db.get(Service, service_id) if hasattr(db, "get") else db.query(Service).get(service_id)
+        if not svc:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        if not ctx.is_owner:
+            requested_lvl = ctx.service_level(db, svc.id)
+            if not has_min_level(requested_lvl, "monitor"):
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+
+        # If a kiosk_browser service is referenced, transparently resolve its parent virtual desktop
+        if svc.service_type == "kiosk_browser":
+            k_cfg = (svc.config or {}).get("kiosk_config", svc.config or {})
+            parent_desk_id = k_cfg.get("desktop_service_id") or k_cfg.get("target_desktop_service_id")
+            if parent_desk_id:
+                svc = db.get(Service, int(parent_desk_id)) if hasattr(db, "get") else db.query(Service).get(int(parent_desk_id))
+
         if not svc or svc.service_type != "desktop":
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
+
+        if not ctx.is_owner:
+            # Explicit desktop operate permission is required for keyboard/mouse injection;
+            # downward cascade from kiosk_browser grants at most monitor (view-only).
+            desktop_explicit = ctx.explicit_service_level(svc.id, "desktop")
+            desktop_eff = ctx.service_level(db, svc.id)
+            effective_for_input = desktop_explicit if has_min_level(desktop_explicit, "monitor") else desktop_eff
+            if not has_min_level(desktop_eff, "monitor"):
+                await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                return
+            view_only = not has_min_level(effective_for_input, "operate")
 
         cfg = svc.config or {}
         desk_cfg = cfg.get("desktop_config", cfg)
@@ -8809,7 +9685,7 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
     subprotocol = "binary" if "binary" in websocket.headers.get("sec-websocket-protocol", "") else None
     await websocket.accept(subprotocol=subprotocol)
 
-    # 4. Bidirectional bridging
+    # 4. Bidirectional bridging (server-side input drop in view-only mode)
     async def ws_to_tcp():
         try:
             while True:
@@ -8820,6 +9696,8 @@ async def websocket_desktop_vnc_proxy(websocket: WebSocket, service_id: int):
                 if not raw_bytes and msg.get("text"):
                     raw_bytes = msg["text"].encode("utf-8")
                 if raw_bytes:
+                    if view_only and raw_bytes[0] in (4, 5, 6):
+                        continue
                     writer.write(raw_bytes)
                     await writer.drain()
         except Exception:
@@ -8983,6 +9861,12 @@ def update_software_config(payload: Dict[str, Any], db: Session = Depends(get_db
 
     for k, v in payload.items():
         c_parser.set("software_engines", str(k), str(v).lower())
+
+    hard_mem = payload.get("ffmpeg_hard_memory_limit_mb") or payload.get("watchdog_hard_memory_limit_mb")
+    if hard_mem is not None:
+        if not c_parser.has_section("watchdog"):
+            c_parser.add_section("watchdog")
+        c_parser.set("watchdog", "watchdog_hard_memory_limit_mb", str(hard_mem))
 
     try:
         with open(config_path, "w", encoding="utf-8") as f:

@@ -19,6 +19,7 @@ class TaskManager:
         self.last_activity = {}
         self._last_status_commit = {}
         self._notified_failed_executions = set()
+        self._aborted_executions = set()
 
     def notify_task_failure(self, execution_id: int, task_name: str, error_msg: Optional[str] = None):
         if execution_id in self._notified_failed_executions:
@@ -339,6 +340,7 @@ class TaskManager:
         )
 
     async def stop_execution(self, execution_id: int, status="stopped", error_msg=None):
+        self._aborted_executions.add(execution_id)
         proc = self.running_processes.get(execution_id)
         if proc:
             if proc.stdin:
@@ -559,23 +561,48 @@ class TaskManager:
     async def _run_system_task(self, execution_id: int, command: str):
         self.logger.info(f"Running system task {command} for execution {execution_id}")
         
-        logs = []
         status = 'finished'
         error_msg = None
         
+        def _append_live_log(level: str, msg: str):
+            log_level = logging.ERROR if level == 'ERROR' else logging.WARNING if level == 'WARN' else logging.INFO
+            self.logger.log(log_level, f"[Execution {execution_id}] {msg}")
+            try:
+                with self.db_session_factory() as session:
+                    log_record = TaskExecutionLog(
+                        execution_id=execution_id,
+                        level=level,
+                        message=msg
+                    )
+                    session.add(log_record)
+                    session.commit()
+            except Exception as e:
+                self.logger.error(f"Failed to append live task log: {e}")
+
         def log_info(msg: str):
-            self.logger.info(f"[Execution {execution_id}] {msg}")
-            logs.append(("INFO", msg))
-            
+            _append_live_log("INFO", msg)
+
+        def log_warn(msg: str):
+            _append_live_log("WARN", msg)
+
         def log_error(msg: str):
-            self.logger.error(f"[Execution {execution_id}] {msg}")
-            logs.append(("ERROR", msg))
+            _append_live_log("ERROR", msg)
             
         try:
             if command == "system://log_rotate":
                 await self._execute_log_rotate(log_info, log_error)
             elif command == "system://ssl_renew":
                 await self._execute_ssl_renew(log_info, log_error)
+            elif command == "system://service_restart":
+                input_cfg = {}
+                with self.db_session_factory() as session:
+                    ex = session.query(TaskExecution).get(execution_id)
+                    if ex and ex.task and ex.task.input_config:
+                        input_cfg = ex.task.input_config
+                ok = await self._execute_service_restart(execution_id, input_cfg, log_info, log_warn, log_error)
+                if not ok:
+                    status = 'error'
+                    error_msg = "One or more services failed to restart"
             else:
                 raise ValueError(f"Unknown system command: {command}")
         except Exception as e:
@@ -584,29 +611,112 @@ class TaskManager:
             status = 'error'
             error_msg = str(e)
             
-        # Write logs and update execution status in DB
+        # Update execution status in DB (respecting cancellation)
+        is_aborted = execution_id in self._aborted_executions
+        self._aborted_executions.discard(execution_id)
+
         try:
             with self.db_session_factory() as session:
                 execution = session.query(TaskExecution).get(execution_id)
                 if execution:
-                    execution.status = status
-                    if error_msg:
-                        execution.error_message = error_msg
+                    if is_aborted:
+                        execution.status = 'stopped'
+                    else:
+                        execution.status = status
+                        if error_msg:
+                            execution.error_message = error_msg
                     execution.stopped_at = datetime.utcnow()
-                    
-                    for level, msg in logs:
-                        log_record = TaskExecutionLog(
-                            execution_id=execution_id,
-                            level=level,
-                            message=msg
-                        )
-                        session.add(log_record)
                     session.commit()
-                    if status == 'error':
+                    if execution.status == 'error':
                         task_name = execution.task.name if execution.task else command
                         self.notify_task_failure(execution_id, task_name, error_msg)
         except Exception as db_err:
             self.logger.error(f"Failed to save system task execution results: {db_err}")
+
+    async def _execute_service_restart(self, execution_id: int, input_config: dict, log_info, log_warn, log_error) -> bool:
+        from database.models import Service
+        from core.audit_logger import audit_logger
+
+        if not self.process_manager:
+            log_error("ProcessManager is not available on TaskManager.")
+            return False
+
+        service_ids = input_config.get("service_ids", [])
+        if not service_ids or not isinstance(service_ids, list):
+            log_warn("No services specified in service restart sequence.")
+            return True
+
+        only_if_running = bool(input_config.get("only_if_running", True))
+        stagger_delay = max(0, int(input_config.get("stagger_delay_seconds", 5) or 0))
+
+        log_info(f"Starting service maintenance restart sequence for {len(service_ids)} service(s) (stagger delay: {stagger_delay}s, only_if_running: {only_if_running}).")
+
+        all_success = True
+        for idx, sid in enumerate(service_ids):
+            # Cancellation check
+            if execution_id in self._aborted_executions:
+                log_warn("Service maintenance restart sequence aborted by user.")
+                return False
+
+            try:
+                target_id = int(sid)
+            except (ValueError, TypeError):
+                log_warn(f"Invalid service ID '{sid}' in sequence (skipped).")
+                continue
+
+            with self.db_session_factory() as session:
+                svc = session.query(Service).get(target_id)
+                if not svc:
+                    log_warn(f"Service #{target_id} not found in database (skipped).")
+                    continue
+                svc_name = svc.name
+                svc_status = svc.status
+
+            # Check if running
+            is_active = (svc_status in ("running", "starting", "restarting")) or (target_id in getattr(self.process_manager, "processes", {}))
+            if only_if_running and not is_active:
+                log_info(f"[{idx + 1}/{len(service_ids)}] Service '{svc_name}' (#{target_id}) is currently {svc_status} (skipped).")
+                continue
+
+            log_info(f"[{idx + 1}/{len(service_ids)}] Restarting service '{svc_name}' (#{target_id})...")
+            try:
+                await self.process_manager.stop_process(target_id, is_restart=True)
+                await asyncio.sleep(0.5)
+                start_res = await self.process_manager.start_process(target_id, is_restart=True)
+                if start_res is False:
+                    all_success = False
+                    log_error(f"Failed to restart service '{svc_name}' (#{target_id}): start_process returned failure.")
+                else:
+                    log_info(f"Service '{svc_name}' (#{target_id}) restarted successfully.")
+                    try:
+                        audit_logger.log(
+                            action="SERVICE_RESTART",
+                            target_type="service",
+                            target_id=target_id,
+                            target_name=svc_name,
+                            channel="SYSTEM_TASK",
+                            username="scheduler",
+                            details=f"Preventive maintenance restart via task execution #{execution_id}"
+                        )
+                    except Exception as audit_err:
+                        self.logger.debug(f"Audit log failed for service restart: {audit_err}")
+            except Exception as restart_err:
+                all_success = False
+                log_error(f"Exception restarting service '{svc_name}' (#{target_id}): {restart_err}")
+
+            # If more services remain and not aborted, apply stagger delay
+            if idx < len(service_ids) - 1:
+                elapsed = 0.0
+                while elapsed < stagger_delay:
+                    if execution_id in self._aborted_executions:
+                        log_warn("Service maintenance restart sequence aborted by user during stagger delay.")
+                        return False
+                    step = min(0.25, stagger_delay - elapsed)
+                    await asyncio.sleep(step)
+                    elapsed += step
+
+        log_info(f"Service maintenance restart sequence finished {'with errors' if not all_success else 'successfully'}.")
+        return all_success
 
     async def _execute_log_rotate(self, log_info, log_error):
         import time

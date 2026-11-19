@@ -265,6 +265,22 @@ class Service(Base):
         self._set_config_key('watchdog_min_speed_duration', val)
 
     @property
+    def watchdog_max_memory_mb(self):
+        return self.config.get('watchdog_max_memory_mb') if self.config else None
+
+    @watchdog_max_memory_mb.setter
+    def watchdog_max_memory_mb(self, val):
+        self._set_config_key('watchdog_max_memory_mb', val)
+
+    @property
+    def watchdog_max_memory_duration(self):
+        return self.config.get('watchdog_max_memory_duration', 30) if self.config else 30
+
+    @watchdog_max_memory_duration.setter
+    def watchdog_max_memory_duration(self, val):
+        self._set_config_key('watchdog_max_memory_duration', val)
+
+    @property
     def log_storage_id(self):
         return self.config.get('log_storage_id') if self.config else None
 
@@ -319,6 +335,14 @@ class Service(Base):
     @watchdog_circuit_breaker.setter
     def watchdog_circuit_breaker(self, val):
         self._set_config_key('watchdog_circuit_breaker', bool(val))
+
+    @property
+    def signal_watchdog(self):
+        return self.config.get('signal_watchdog', {}) if self.config else {}
+
+    @signal_watchdog.setter
+    def signal_watchdog(self, val):
+        self._set_config_key('signal_watchdog', val or {})
 
     @property
     def mediamtx_config(self):
@@ -509,6 +533,11 @@ class SystemSettings(Base):
     cloudhub_sso_enabled = Column(Boolean, default=True)
     cloudhub_org_name = Column(String, nullable=True)
     cloudhub_group_name = Column(String, nullable=True)
+
+    # Metrics Exporter (Prometheus / OpenMetrics) Settings
+    metrics_exporter_enabled = Column(Boolean, default=False)
+    metrics_exporter_token = Column(String, nullable=True)
+    metrics_exporter_allowed_ips = Column(Text, nullable=True)
 
     last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

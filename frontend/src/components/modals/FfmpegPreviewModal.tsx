@@ -5,6 +5,9 @@ import { EngineLogo } from '../common/EngineLogo';
 import { HlsPlayer } from '../common/HlsPlayer';
 import { copyToClipboard } from '../../utils/clipboard';
 import { PlayIcon, PowerIcon } from '../Icons';
+import { useTelemetry } from '../../context/TelemetryContext';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { canCreateTask, getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 interface FfmpegPreviewModalProps {
   selectedProcess: any;
@@ -18,6 +21,9 @@ interface FfmpegPreviewModalProps {
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
   API: string;
+  settings?: any;
+  isCloudHubSession?: boolean;
+  permissions?: EdgePermissionsSummary | null;
 }
 
 export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
@@ -32,11 +38,18 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   onStopService,
   onRestartService,
   API,
+  settings,
+  isCloudHubSession = false,
+  permissions,
 }) => {
   const { t } = useTranslation();
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
+  const svcLevel = getServiceLevel(permissions, currentProcess);
+  const canOperate = hasMinLevel(svcLevel, 'operate');
+  const canManage = hasMinLevel(svcLevel, 'manage');
+  const canCloneAsTask = canManage && canCreateTask(permissions);
   const isVideoProcess = hasVideoHelper(currentProcess);
   const isRunning = currentProcess.status === 'running';
 
@@ -60,12 +73,20 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   } else if (outputConfig.path && outputConfig.path.endsWith('.m3u8')) {
     hlsPlaylistName = outputConfig.path.split('/').pop() || 'stream.m3u8';
   }
+  const isCloudHub = Boolean(
+    isCloudHubSession || (typeof window !== 'undefined' && window.location.pathname.includes('/proxy/'))
+  );
   const host = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
   const port = typeof window !== 'undefined' && window.location.port ? `:${window.location.port}` : '';
   const protocol = typeof window !== 'undefined' && window.location.protocol ? window.location.protocol : 'http:';
+  const externalHost = isCloudHub ? (settings?.primary_ip || host) : host;
+  const externalPort = isCloudHub
+    ? (settings?.gui_port ? `:${settings.gui_port}` : '')
+    : port;
+  const externalProtocol = isCloudHub ? (settings?.ssl_enabled ? 'https:' : 'http:') : protocol;
 
   const publicHlsPath = currentProcess?.public_hls_path || selectedProcess?.public_hls_path || null;
-  const publicHlsUrl = publicHlsPath ? `${protocol}//${host}${port}${publicHlsPath}` : null;
+  const publicHlsUrl = publicHlsPath ? `${externalProtocol}//${externalHost}${externalPort}${publicHlsPath}` : null;
 
   const internalHlsUrl = `${API}/processes/${currentProcess.id}/hls/${hlsPlaylistName}`;
   const activePlayerHlsSrc = publicHlsPath || internalHlsUrl;
@@ -92,52 +113,48 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const showDups = progressData?.dup_frames !== undefined && progressData?.dup_frames !== null && progressData?.dup_frames !== '0' && progressData?.dup_frames !== 0;
   const showDrops = progressData?.drop_frames !== undefined && progressData?.drop_frames !== null && progressData?.drop_frames !== '0' && progressData?.drop_frames !== 0;
 
-  // Poll progress data for FFmpeg services (only when not in debug mode)
+  const { subscribe } = useTelemetry();
+
+  // Read progress metrics reactively from currentProcess updated by WebSocket (Zero HTTP polling)
   useEffect(() => {
     if (!isRunning || currentProcess.debug_mode) {
       setProgressData(null);
       return;
     }
+    setProgressData({
+      fps: currentProcess.fps,
+      bitrate: currentProcess.bitrate,
+      speed: currentProcess.speed,
+      cpu: currentProcess.cpu,
+      ram: currentProcess.ram,
+    });
+  }, [
+    isRunning,
+    currentProcess.debug_mode,
+    currentProcess.fps,
+    currentProcess.bitrate,
+    currentProcess.speed,
+    currentProcess.cpu,
+    currentProcess.ram
+  ]);
 
-    const fetchProgress = async () => {
-      try {
-        const res = await fetch(`${API}/api/processes/${currentProcess.id}/progress`);
-        if (res.ok) {
-          const data = await res.json();
-          setProgressData(data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch process progress telemetry', err);
-      }
-    };
-
-    fetchProgress();
-    const interval = setInterval(fetchProgress, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, isRunning, currentProcess.debug_mode, API]);
-
-  // Poll logs for FFmpeg process when in debug mode OR when diagnostic log view is enabled
+  // Subscribe to logs via WebSocket when in debug mode OR when diagnostic log view is enabled (Zero HTTP polling)
   useEffect(() => {
-    if (!currentProcess.debug_mode && !showDiagnosticLogs) return;
+    if (!currentProcess.debug_mode && !showDiagnosticLogs) {
+      setDaemonLogs([]);
+      return;
+    }
 
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            setDaemonLogs(data);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch ffmpeg logs', err);
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
       }
-    };
+    });
 
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2500);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, currentProcess.debug_mode, showDiagnosticLogs, API]);
+    return () => unsub();
+  }, [currentProcess.id, currentProcess.debug_mode, showDiagnosticLogs, subscribe]);
 
   const activeLogs = daemonLogs.length > 0 ? daemonLogs : externalLogs;
 
@@ -192,6 +209,7 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 <span className="text-[9px] uppercase font-mono px-2 py-0.5 rounded border font-bold bg-brand-orange/10 text-brand-orange border-brand-orange/30">
                   FFmpeg Stream
                 </span>
+                <PermissionLevelBadge level={svcLevel} />
               </div>
               <p className="text-[var(--text-secondary)] text-xs uppercase tracking-wider mt-0.5">
                 {isHlsLocal
@@ -238,26 +256,28 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => onStartService(currentProcess.id)}
-                  disabled={actionPending[currentProcess.id] === 'starting' || actionPending[currentProcess.id] === 'stopping'}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 disabled:opacity-50"
-                >
-                  <PlayIcon size={14} />
-                  <span>{t('modals.crashLoop.retryNow', 'Reintentar ahora')}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onStopService(currentProcess.id, currentProcess.name)}
-                  disabled={actionPending[currentProcess.id] === 'stopping'}
-                  className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-lg shadow-red-950/50 disabled:opacity-50"
-                >
-                  <PowerIcon size={14} />
-                  <span>{t('modals.crashLoop.deactivateAndCancel', 'Desactivar servicio y cancelar reintentos')}</span>
-                </button>
-              </div>
+              {canOperate && (
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onStartService(currentProcess.id)}
+                    disabled={actionPending[currentProcess.id] === 'starting' || actionPending[currentProcess.id] === 'stopping'}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 disabled:opacity-50"
+                  >
+                    <PlayIcon size={14} />
+                    <span>{t('modals.crashLoop.retryNow', 'Reintentar ahora')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onStopService(currentProcess.id, currentProcess.name)}
+                    disabled={actionPending[currentProcess.id] === 'stopping'}
+                    className="px-3.5 py-1.5 bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-bold text-xs rounded-lg uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 shadow-lg shadow-red-950/50 disabled:opacity-50"
+                  >
+                    <PowerIcon size={14} />
+                    <span>{t('modals.crashLoop.deactivateAndCancel', 'Desactivar servicio y cancelar reintentos')}</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -598,65 +618,73 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
         {/* Footer */}
         <div className="p-4 border-t border-[var(--glass-border)] flex-shrink-0 bg-white/2 flex justify-between items-center flex-wrap gap-3">
           <div>
-            <button
-              onClick={() => {
-                fetch(`${API}/processes/${currentProcess.id}/export`)
-                  .then((r) => r.json())
-                  .then((data) => {
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(blob);
-                    a.download = `${currentProcess.name}_profile.json`;
-                    a.click();
-                  });
-              }}
-              className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 cursor-pointer"
-            >
-              EXPORT PROFILE
-            </button>
+            {canManage && (
+              <button
+                onClick={() => {
+                  fetch(`${API}/processes/${currentProcess.id}/export`)
+                    .then((r) => r.json())
+                    .then((data) => {
+                      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `${currentProcess.name}_profile.json`;
+                      a.click();
+                    });
+                }}
+                className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 cursor-pointer"
+              >
+                EXPORT PROFILE
+              </button>
+            )}
           </div>
 
           <div className="flex gap-2">
-            <button
-              disabled={!!actionPending[currentProcess.id]}
-              onClick={() => {
-                onEditProcess(currentProcess);
-                onClose();
-              }}
-              className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-1.5 px-4 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-            >
-              EDIT CONFIG
-            </button>
+            {canManage && (
+              <>
+                <button
+                  disabled={!!actionPending[currentProcess.id]}
+                  onClick={() => {
+                    onEditProcess(currentProcess);
+                    onClose();
+                  }}
+                  className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-1.5 px-4 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                >
+                  EDIT CONFIG
+                </button>
 
-            <button
-              disabled={!!actionPending[currentProcess.id]}
-              onClick={() => {
-                onCloneProcess(currentProcess);
-                onClose();
-              }}
-              className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-            >
-              CLONE SERVICE
-            </button>
+                <button
+                  disabled={!!actionPending[currentProcess.id]}
+                  onClick={() => {
+                    onCloneProcess(currentProcess);
+                    onClose();
+                  }}
+                  className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                >
+                  CLONE SERVICE
+                </button>
 
-            <button
-              disabled={!!actionPending[currentProcess.id]}
-              onClick={async () => {
-                try {
-                  const res = await fetch(`${API}/processes/${currentProcess.id}/clone-as-task`, { method: 'POST' });
-                  if (!res.ok) throw new Error('Failed to clone service as task');
-                  alert(t('common.clonedSuccess', 'Cloned successfully!'));
-                  onClose();
-                } catch (err: any) {
-                  alert(err.message || 'Error cloning service as task');
-                }
-              }}
-              className="pill-button bg-brand-lime/10 hover:bg-brand-lime/20 text-brand-lime border border-brand-lime/20 text-xs font-bold py-1.5 px-3 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-            >
-              COPY AS TASK
-            </button>
+                {canCloneAsTask && (
+                  <button
+                    disabled={!!actionPending[currentProcess.id]}
+                    onClick={async () => {
+                      try {
+                        const res = await fetch(`${API}/processes/${currentProcess.id}/clone-as-task`, { method: 'POST' });
+                        if (!res.ok) throw new Error('Failed to clone service as task');
+                        alert(t('common.clonedSuccess', 'Cloned successfully!'));
+                        onClose();
+                      } catch (err: any) {
+                        alert(err.message || 'Error cloning service as task');
+                      }
+                    }}
+                    className="pill-button bg-brand-lime/10 hover:bg-brand-lime/20 text-brand-lime border border-brand-lime/20 text-xs font-bold py-1.5 px-3 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                  >
+                    COPY AS TASK
+                  </button>
+                )}
+              </>
+            )}
 
-            {currentProcess.status === 'running' ? (
+            {canOperate && (currentProcess.status === 'running' ? (
               <>
                 <button
                   disabled={!!actionPending[currentProcess.id]}
@@ -694,7 +722,7 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
                 )}
                 {actionPending[currentProcess.id] === 'starting' ? 'STARTING...' : 'START SERVICE'}
               </button>
-            )}
+            ))}
 
             <button
               onClick={onClose}

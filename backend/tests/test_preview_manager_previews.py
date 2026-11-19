@@ -20,3 +20,17 @@ class TestPreviewManagerPreviews(unittest.IsolatedAsyncioTestCase):
             mock_exists.assert_called_with(expected_path)
             mock_file.assert_called_with(expected_path, 'rb')
             self.assertIn(b"fakeimage", item)
+
+    def test_get_snapshot_reads_from_previews_dir(self):
+        pm = PreviewManager()
+        expected_path = os.path.join(PREVIEWS_DIR, "preview_42.jpg")
+
+        with patch("os.path.exists", return_value=True) as mock_exists, \
+             patch("builtins.open", mock_open(read_data=b"snapshot_data")) as mock_file:
+            res = pm.get_snapshot(42, is_task=False)
+            mock_exists.assert_called_with(expected_path)
+            mock_file.assert_called_with(expected_path, 'rb')
+            self.assertEqual(res, b"snapshot_data")
+
+        with patch("os.path.exists", return_value=False):
+            self.assertIsNone(pm.get_snapshot(99, is_task=False))

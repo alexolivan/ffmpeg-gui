@@ -12,6 +12,7 @@ import {
   BroomIcon
 } from './Icons'
 import { EngineLogo } from './common/EngineLogo'
+import { hasMinLevel, type CapabilityLevel } from '../utils/permissions'
 
 export interface BuildProfile {
   id: number
@@ -54,6 +55,7 @@ interface BuildProfileCardProps {
   onEdit: (build: BuildProfile) => void
   onViewLogs: (id: number) => void
   onExport: (id: number) => void
+  forgeLevel?: CapabilityLevel
   API?: string
 }
 
@@ -98,9 +100,11 @@ function matchesVersion(sdkVersion: string | null | undefined, reqVersion: strin
 }
 
 export default function BuildProfileCard({
-  build, installedSdks: installedSdksProp, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport, API = '',
+  build, installedSdks: installedSdksProp, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport, forgeLevel = 'admin', API = '',
 }: BuildProfileCardProps) {
   const { t } = useTranslation()
+  const canOperate = hasMinLevel(forgeLevel, 'operate')
+  const canManage = hasMinLevel(forgeLevel, 'manage')
   const [fetchedSdks, setFetchedSdks] = useState<any[]>([])
 
   useEffect(() => {
@@ -261,7 +265,7 @@ export default function BuildProfileCard({
         {/* Right Area: Compact Iconic Control Button Bar */}
         <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0">
           {/* Compile / Abort Button */}
-          {build.status === 'building' ? (
+          {canOperate && (build.status === 'building' ? (
             <button
               onClick={() => onStop(build.id)}
               title={t('forge.abort', 'ABORT')}
@@ -292,9 +296,9 @@ export default function BuildProfileCard({
             >
               <PlayIcon size={16} />
             </button>
-          )}
+          ))}
 
-          {build.status === 'ready' && (
+          {canManage && build.status === 'ready' && (
             <>
               {/* Validate Button */}
               <button 
@@ -341,30 +345,34 @@ export default function BuildProfileCard({
           )}
 
           {/* Export Recipe Button */}
-          <button 
-            onClick={() => onExport(build.id)}
-            title={t('forge.exportRecipe', 'EXPORT RECIPE')}
-            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
-          >
-            <ExportIcon size={16} />
-          </button>
+          {canManage && (
+            <button 
+              onClick={() => onExport(build.id)}
+              title={t('forge.exportRecipe', 'EXPORT RECIPE')}
+              className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
+            >
+              <ExportIcon size={16} />
+            </button>
+          )}
 
           {/* Edit Button */}
-          <button
-            onClick={() => onEdit(build)}
-            disabled={build.status === 'building'}
-            title={t('common.edit', 'EDIT')}
-            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
-              build.status === 'building' 
-                ? 'opacity-30 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]' 
-                : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 hover:border-brand-lime/40'
-            }`}
-          >
-            <PencilIcon size={16} />
-          </button>
+          {canManage && (
+            <button
+              onClick={() => onEdit(build)}
+              disabled={build.status === 'building'}
+              title={t('common.edit', 'EDIT')}
+              className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 ${
+                build.status === 'building' 
+                  ? 'opacity-30 cursor-not-allowed bg-[var(--input-bg)] text-text-secondary border-[var(--glass-border)]' 
+                  : 'bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-white/10 hover:border-brand-lime/40'
+              }`}
+            >
+              <PencilIcon size={16} />
+            </button>
+          )}
 
           {/* Delete Button */}
-          {build.status !== 'building' && (
+          {canManage && build.status !== 'building' && (
             <button 
               onClick={() => onDelete(build.id)}
               title={t('common.delete', 'DELETE')}

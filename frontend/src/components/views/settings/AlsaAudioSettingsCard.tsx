@@ -770,7 +770,10 @@ const AlsaMatrixRoutingModal: React.FC<{
   );
 });
 
-export const AlsaAudioSettingsCard: React.FC = () => {
+export const AlsaAudioSettingsCard: React.FC<{ canOperate?: boolean; canManage?: boolean }> = ({
+  canOperate = true,
+  canManage = true,
+}) => {
   const { t } = useTranslation();
   const [cards, setCards] = useState<AlsaCard[]>([]);
   const [selectedCardIdx, setSelectedCardIdx] = useState<number>(0);
@@ -1030,6 +1033,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
   };
 
   const handleControlChange = useCallback(async (numid: number, values: any[]) => {
+    if (!canOperate) return;
     // Update local state optimistically
     setTopology((prevTopology) => {
       if (!prevTopology) return prevTopology;
@@ -1068,7 +1072,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     } catch (err) {
       console.error('Failed to write control:', err);
     }
-  }, [selectedCardIdx]);
+  }, [selectedCardIdx, canOperate]);
 
   const toggleChannelLink = (numid: number) => {
     setLinkedChannels((prev) => ({ ...prev, [numid]: !prev[numid] }));
@@ -1123,9 +1127,16 @@ export const AlsaAudioSettingsCard: React.FC = () => {
     <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl p-6 space-y-6">
       {/* Compact Card Header & Selector */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[var(--glass-border)] pb-3 min-w-0">
-        <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
-          {t('settings.alsa.title', 'ALSA MIXER')}
-        </h3>
+        <div className="flex items-center gap-2 shrink-0">
+          <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wider shrink-0">
+            {t('settings.alsa.title', 'ALSA MIXER')}
+          </h3>
+          {!canOperate && (
+            <span className="px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-bold uppercase tracking-wider">
+              {t('authz.readOnlyBadge', 'MONITOR ONLY')}
+            </span>
+          )}
+        </div>
 
         {/* Sound Card Dropdown Selector */}
         <div className="flex items-center gap-2 max-w-full min-w-0">
@@ -1147,7 +1158,7 @@ export const AlsaAudioSettingsCard: React.FC = () => {
       </div>
 
       {/* ALSA Kernel & Hardware Diagnostics Advisor Banner */}
-      {showAdvisor && (
+      {canManage && showAdvisor && (
         <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-3 space-y-2.5 shadow-sm text-xs">
           <div className="flex items-center justify-between">
             <span className="font-bold text-[11px] uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">

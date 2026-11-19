@@ -117,7 +117,7 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
 
         # 1. SAP Announcement module loaded with restricted announce-stream rule (suppresses duplicate create-stream)
         self.assertIn('name = "libpipewire-module-rtp-sap"', res)
-        self.assertIn('sap.ip = "224.0.0.56"', res)
+        self.assertIn('sap.ip = "239.255.255.255"', res)
         self.assertIn('sap.port = 9875', res)
         self.assertIn('local.ifname = "eth0"', res)
         self.assertIn('net.loop = false', res)
@@ -132,9 +132,15 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn('PGM Stream"', res)
         self.assertIn('sess.min-ptime = 2', res)
         self.assertIn('sess.max-ptime = 20', res)
-        self.assertIn('sess.latency.msec = 86', res)
+        self.assertIn('sess.latency.msec = 3', res)
+        self.assertIn('net.dscp = 46', res)
+        self.assertIn('sess.ts-offset = 0', res)
+        self.assertNotIn('sess.mediaclk', res)
+        self.assertIn('sess.ts-refclk = "ptp=IEEE1588-2008:', res)
         self.assertIn('node.name = "rtp_tx_aes67_pgm"', res)
         self.assertIn('target.object = "aes67_pgm"', res)
+        self.assertIn('device.api = "aes67"', res)
+        self.assertIn('rtp.ntp = 0', res)
         self.assertIn('sess.sap.announce = true', res)
         self.assertIn('node.always-process = true', res)
         self.assertNotIn('node.passive = true', res)
@@ -331,6 +337,11 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
         self.assertIn("dscp_event              46", conf)
         self.assertIn("dscp_general            34", conf)
         self.assertIn("time_stamping           software", conf)
+        self.assertIn("summary_interval        3", conf)
+        self.assertIn("step_threshold          0.0", conf)
+        self.assertIn("first_step_threshold    0.00002", conf)
+        self.assertIn("sanity_freq_limit       0", conf)
+        self.assertIn("announceReceiptTimeout  6", conf)
         self.assertIn("[enp9s0]", conf)
         self.assertIn("network_transport       UDPv4", conf)
 
@@ -462,6 +473,307 @@ class TestPipeWireConfigGenerator(unittest.TestCase):
 
         res_debug = PipeWireConfigGenerator.generate_config(2, {"debug_mode": True}, "/tmp/run")
         self.assertIn("log.level = 2", res_debug)
+
+    def test_get_canonical_eui64(self):
+        """Verifies EUI-64 generation from MAC addresses and fallbacks."""
+        # Standard MAC with colons
+        eui1 = PipeWireConfigGenerator.get_canonical_eui64("00:15:5d:11:22:33")
+        self.assertEqual(eui1, "00-15-5D-FF-FE-11-22-33")
+
+        # MAC with hyphens
+        eui2 = PipeWireConfigGenerator.get_canonical_eui64("00-15-5d-11-22-33")
+        self.assertEqual(eui2, "00-15-5D-FF-FE-11-22-33")
+
+        # Already 64-bit
+        eui3 = PipeWireConfigGenerator.get_canonical_eui64("00155dfffe112233")
+        self.assertEqual(eui3, "00-15-5D-FF-FE-11-22-33")
+
+        # Fallback to host MAC when None or invalid (never mangle IPv4 decimals into fake MAC)
+        eui_fallback = PipeWireConfigGenerator.get_canonical_eui64(None)
+        self.assertEqual(len(eui_fallback.split("-")), 8)
+        self.assertIn("FF-FE", eui_fallback)
+
+        eui_ip_rejected = PipeWireConfigGenerator.get_canonical_eui64("192.168.100.154")
+        self.assertNotEqual(eui_ip_rejected, "19-21-68-FF-FE-10-01-54")
+        self.assertEqual(eui_ip_rejected, eui_fallback)
+
+    def test_sap_ip_custom_override(self):
+        """Verifies sap_ip can be explicitly configured if needed."""
+        cfg = {
+            "sap_ip": "239.255.0.1",
+            "virtual_sinks": [{"id": "s1", "aes67_enabled": True}]
+        }
+        res = PipeWireConfigGenerator.generate_config(10, cfg, "/tmp/run")
+        self.assertIn('sap.ip = "239.255.0.1"', res)
+
+    def test_dante_profile_pipewire_config_generation(self):
+        """Verifies Dante profile locks 48000 Hz, 1ms ptime, S24BE format, and adds RFC 7273 SDP attributes."""
+        cfg = {
+            "aoip_profile": "dante",
+            "sample_rate": 96000,  # Should be overridden to 48000 for Dante
+            "virtual_sinks": [
+                {
+                    "id": "dante_out",
+                    "name": "Dante Bus",
+                    "channels": 2,
+                    "aes67_enabled": True
+                }
+            ]
+        }
+        res = PipeWireConfigGenerator.generate_config(33, cfg, "/tmp/run")
+        self.assertIn("default.clock.rate = 48000", res)
+        self.assertIn('sap.ip = "239.255.255.255"', res)
+        self.assertIn('sess.min-ptime = 1', res)
+        self.assertIn('sess.max-ptime = 1', res)
+        self.assertIn('audio.format = "S24BE"', res)
+        self.assertIn('sess.ts-offset = 0', res)
+        self.assertIn('device.api = "aes67"', res)
+        self.assertIn('rtp.ntp = 0', res)
+        self.assertIn('rtp.payload = 96', res)
+        self.assertIn('sess.ts-refclk = "ptp=IEEE1588-2008:', res)
+
+    def test_aes67_ptp_management_socket_and_hw_driver(self):
+        """Verifies ptp.management-socket / rtp.fetch-ts-refclk in SAP+RTP, and PTP0-Driver only in hardware mode."""
+        cfg = {
+            "aoip_profile": "dante",
+            "aes67_network": {
+                "enabled": True,
+                "interface": "enp9s0",
+                "ip": "192.168.100.154",
+                "ptp": {"enabled": True}
+            },
+            "virtual_sinks": [{"id": "bus0", "channels": 2, "aes67_enabled": True}]
+        }
+        sw_res = PipeWireConfigGenerator.generate_config(42, cfg, "/tmp/run", ptp_support="software")
+        self.assertIn('ptp.management-socket = "', sw_res)
+        self.assertIn('ptp4lro_42.uds"', sw_res)
+        self.assertIn('rtp.fetch-ts-refclk = true', sw_res)
+        self.assertNotIn("19-21-68-FF-FE-10-01-54", sw_res)
+        self.assertNotIn("PTP0-Driver", sw_res)
+        self.assertNotIn("aes67.driver-group", sw_res)
+
+        hw_res = PipeWireConfigGenerator.generate_config(42, cfg, "/tmp/run", ptp_support="hardware")
+        self.assertIn('node.name       = PTP0-Driver', hw_res)
+        self.assertIn('clock.interface = "enp9s0"', hw_res)
+        self.assertIn('aes67.driver-group = "pipewire.ptp0"', hw_res)
+
+    def test_dante_profile_ptp4l_slave_mode(self):
+        """Verifies Dante profile ptp4l configuration defaults to clientOnly=1, serverOnly=0, priority1=254, domain=0 and free_running=1 in software mode."""
+        ptp_cfg = {
+            "enabled": True,
+            "aoip_profile": "dante",
+            "priority1": 128,  # Should be forced to 254 for Dante slave
+            "domain": 1        # Should be forced to 0 for Dante
+        }
+        conf = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=40,
+            ptp_cfg=ptp_cfg,
+            iface="eth0",
+            ptp_support="software"
+        )
+        self.assertIn("domainNumber            0", conf)
+        self.assertIn("priority1               254", conf)
+        self.assertIn("priority2               254", conf)
+        self.assertIn("clientOnly              1", conf)
+        self.assertIn("serverOnly              0", conf)
+        self.assertIn("free_running            1", conf)
+
+        # Hardware mode should keep free_running 0 to discipline PHC
+        conf_hw = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=40,
+            ptp_cfg=ptp_cfg,
+            iface="eth0",
+            ptp_support="hardware"
+        )
+        self.assertIn("free_running            0", conf_hw)
+
+    def test_dante_profile_ptp4l_lab_force_master(self):
+        """Verifies Dante profile with force_local_master acts as BMCA backup master (serverOnly=0, priority1 default 253)."""
+        ptp_cfg = {
+            "enabled": True,
+            "aoip_profile": "dante",
+            "force_local_master": True
+        }
+        conf = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=41,
+            ptp_cfg=ptp_cfg,
+            iface="eth0",
+            ptp_support="software"
+        )
+        self.assertIn("domainNumber            0", conf)
+        self.assertIn("priority1               253", conf)
+        self.assertIn("clientOnly              0", conf)
+        self.assertIn("serverOnly              0", conf)
+        self.assertIn("free_running            1", conf)
+
+        # Explicitly null priority1 also falls back to 253 safely
+        conf_null = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=41,
+            ptp_cfg={**ptp_cfg, "priority1": None},
+            iface="eth0",
+            ptp_support="software"
+        )
+        self.assertIn("priority1               253", conf_null)
+
+        # Custom priority1 when configured
+        ptp_cfg_custom = {
+            "enabled": True,
+            "aoip_profile": "dante",
+            "force_local_master": True,
+            "priority1": 200
+        }
+        conf_custom = PipeWireConfigGenerator.generate_ptp4l_config(
+            service_id=41,
+            ptp_cfg=ptp_cfg_custom,
+            iface="eth0",
+            ptp_support="software"
+        )
+        self.assertIn("priority1               200", conf_custom)
+
+    def test_rt_module_headless_rlimits_no_rtkit(self):
+        """Verifies headless config disables core D-Bus plugin and RTKit/Portal probing."""
+        conf = PipeWireConfigGenerator.generate_config(50, {}, "/tmp/run")
+        self.assertIn("support.dbus = false", conf)
+        self.assertIn("rtkit.enabled = false", conf)
+        self.assertIn("rtportal.enabled = false", conf)
+        self.assertIn("rlimits.enabled = true", conf)
+
+    def test_rtp_sink_stream_props_sdp_metadata(self):
+        """Verifies libpipewire-module-rtp-sink populates stream.props with SDP fields for rtp-sap."""
+        cfg = {
+            "virtual_sinks": [
+                {
+                    "id": "pgm",
+                    "name": "PGM Audio",
+                    "aes67_enabled": True,
+                    "multicast_ip": "239.69.1.1",
+                    "rtp_port": 5004,
+                    "channels": 2
+                }
+            ]
+        }
+        conf = PipeWireConfigGenerator.generate_config(51, cfg, "/tmp/run")
+        self.assertIn('rtp.destination.ip = "239.69.1.1"', conf)
+        self.assertIn('rtp.destination.port = 5004', conf)
+        self.assertIn('rtp.media = "audio"', conf)
+        self.assertIn('rtp.mime = "L24"', conf)
+        self.assertIn('rtp.channels = 2', conf)
+
+    def test_rtp_source_min_max_ptime_and_quantization(self):
+        """Verifies libpipewire-module-rtp-source includes sess.min-ptime and sess.max-ptime."""
+        cfg = {
+            "aoip_profile": "dante",
+            "remote_sinks": [
+                {
+                    "id": "rx_dante",
+                    "name": "Dante Rx Stream",
+                    "multicast_ip": "239.69.2.2",
+                    "rtp_port": 5004,
+                    "channels": 2
+                }
+            ]
+        }
+        conf = PipeWireConfigGenerator.generate_config(52, cfg, "/tmp/run")
+        self.assertIn("sess.min-ptime = 1", conf)
+        self.assertIn("sess.max-ptime = 1", conf)
+        self.assertIn("sess.latency.msec = 86", conf)
+
+        # 4ms quantization test
+        lat_4ms = PipeWireConfigGenerator.resolve_safe_jitter_latency_ms(86, quantum=1024, sample_rate=48000, ptime_mode="4ms")
+        self.assertEqual(lat_4ms, 88)
+
+    def test_dante_profile_forces_port_5004(self):
+        """Verifies that Dante profile strictly enforces port 5004 even if custom port is in config."""
+        dante_cfg = {
+            "aoip_profile": "dante",
+            "virtual_sinks": [
+                {
+                    "id": "sink_dante",
+                    "name": "Dante Tx",
+                    "aes67_enabled": True,
+                    "multicast_ip": "239.69.1.5",
+                    "rtp_port": 5010,
+                    "channels": 2
+                }
+            ]
+        }
+        conf = PipeWireConfigGenerator.generate_config(60, dante_cfg, "/tmp/run")
+        self.assertIn("destination.port = 5004", conf)
+        self.assertIn("rtp.destination.port = 5004", conf)
+        self.assertNotIn("5010", conf)
+
+        # In contrast, ravenna and standalone preserve custom port
+        ravenna_cfg = {
+            "aoip_profile": "ravenna",
+            "virtual_sinks": [
+                {
+                    "id": "sink_ravenna",
+                    "name": "Ravenna Tx",
+                    "aes67_enabled": True,
+                    "multicast_ip": "239.69.1.6",
+                    "rtp_port": 5010,
+                    "channels": 2
+                }
+            ]
+        }
+        conf_rav = PipeWireConfigGenerator.generate_config(61, ravenna_cfg, "/tmp/run")
+        self.assertIn("destination.port = 5010", conf_rav)
+        self.assertIn("rtp.destination.port = 5010", conf_rav)
+
+    def test_multi_sink_and_multi_host_unique_sess_ids(self):
+        """Verifies every AES67 Tx sink gets a unique positive 31-bit sess.id across streams and across hosts."""
+        import re
+
+        base_sinks = [
+            {"id": "aes_bus0", "name": "Aes Mix Bus 0", "sap_name": "bus_0", "channels": 2, "aes67_enabled": True},
+            {"id": "aes_bus1", "name": "Aes Mix Bus 1", "sap_name": "bus_1", "channels": 2, "aes67_enabled": True},
+        ]
+        host_a_cfg = {
+            "aoip_profile": "dante",
+            "aes67_network": {"enabled": True, "ip": "192.168.100.154", "mac": "aa:bb:cc:dd:ee:01"},
+            "virtual_sinks": base_sinks,
+        }
+        host_b_cfg = {
+            "aoip_profile": "dante",
+            "aes67_network": {"enabled": True, "ip": "192.168.100.157", "mac": "aa:bb:cc:dd:ee:02"},
+            "virtual_sinks": base_sinks,
+        }
+        conf_a = PipeWireConfigGenerator.generate_config(7, host_a_cfg, "/tmp/run")
+        conf_b = PipeWireConfigGenerator.generate_config(7, host_b_cfg, "/tmp/run")
+
+        # Each sink emits sess.id and sess.version in args and stream.props (2 occurrences each)
+        ids_a = [int(x) for x in re.findall(r"^\s*sess\.id = (\d+)$", conf_a, re.MULTILINE)]
+        ids_b = [int(x) for x in re.findall(r"^\s*sess\.id = (\d+)$", conf_b, re.MULTILINE)]
+        vers_a = [int(x) for x in re.findall(r"^\s*sess\.version = (\d+)$", conf_a, re.MULTILINE)]
+
+        self.assertEqual(len(ids_a), 4)
+        self.assertEqual(len(ids_b), 4)
+        # args and stream.props match per sink, and bus0 != bus1
+        self.assertEqual(ids_a[0], ids_a[1])
+        self.assertEqual(ids_a[2], ids_a[3])
+        self.assertNotEqual(ids_a[0], ids_a[2])
+        self.assertEqual(ids_b[0], ids_b[1])
+        self.assertEqual(ids_b[2], ids_b[3])
+        self.assertNotEqual(ids_b[0], ids_b[2])
+        # Distinct across hosts even with identical service_id and sink IDs
+        self.assertEqual(len({ids_a[0], ids_a[2], ids_b[0], ids_b[2]}), 4)
+        # All IDs and versions fit strictly within PipeWire signed positive int32 bounds (1..2147483647)
+        for val in ids_a + ids_b + vers_a:
+            self.assertGreaterEqual(val, 1)
+            self.assertLessEqual(val, 2147483647)
+
+        # Verify explicit collision guard in get_rtp_session_id
+        used = set()
+        first_id = PipeWireConfigGenerator.get_rtp_session_id(
+            "70-85-C2-FF-FE-A8-E6-A6", "192.168.100.157", 7, "bus0", 1, "239.69.140.3", 5004, used
+        )
+        collided_id = PipeWireConfigGenerator.get_rtp_session_id(
+            "70-85-C2-FF-FE-A8-E6-A6", "192.168.100.157", 7, "bus0", 1, "239.69.140.3", 5004, used
+        )
+        self.assertNotEqual(first_id, collided_id)
+        self.assertGreaterEqual(collided_id, 1)
+        self.assertLessEqual(collided_id, 2147483647)
+
 
 
 if __name__ == "__main__":

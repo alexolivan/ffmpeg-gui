@@ -14,7 +14,9 @@ from core.discovery_beacon import (
     DiscoveryBeaconService,
     get_node_id,
     get_primary_ip,
-    get_network_info
+    get_network_info,
+    get_advertisable_interfaces,
+    _is_virtual_or_ignored_iface,
 )
 from core.network_inspector import get_active_port_matrix, generate_firewall_rules
 
@@ -161,6 +163,86 @@ class TestDiscoveryBeacon(unittest.TestCase):
         matrix_disabled = get_active_port_matrix(mock_db, settings=settings_disabled)
         beacon_entries_disabled = [e for e in matrix_disabled if e["port"] == 59990 and e["proto"] == "udp"]
         self.assertEqual(len(beacon_entries_disabled), 0)
+
+    def test_virtual_interface_filtering(self):
+        for ignored in ("lo", "docker0", "veth9a8b7c", "virbr0", "br-a1b2c3d4", "tun0", "wg0", "tailscale0", "vmnet1"):
+            self.assertTrue(_is_virtual_or_ignored_iface(ignored), f"Expected {ignored} to be ignored")
+        for valid in ("eth0", "enp3s0", "eth0.100", "br0", "bond0", "wlan0", "lan0"):
+            self.assertFalse(_is_virtual_or_ignored_iface(valid), f"Expected {valid} to be kept")
+
+    def test_get_advertisable_interfaces_multi_nic(self):
+        import socket as _socket
+        from types import SimpleNamespace
+
+        af_link = getattr(__import__("psutil"), "AF_LINK", getattr(_socket, "AF_PACKET", 17))
+        mock_addrs = {
+            "lo": [SimpleNamespace(family=_socket.AF_INET, address="127.0.0.1", netmask="255.0.0.0", broadcast=None)],
+            "docker0": [SimpleNamespace(family=_socket.AF_INET, address="172.17.0.1", netmask="255.255.0.0", broadcast="172.17.255.255")],
+            "eth0": [
+                SimpleNamespace(family=af_link, address="aa:bb:cc:dd:ee:01", netmask=None, broadcast=None),
+                SimpleNamespace(family=_socket.AF_INET, address="192.168.5.217", netmask="255.255.255.0", broadcast="192.168.5.255"),
+            ],
+            "eth1": [
+                SimpleNamespace(family=af_link, address="aa:bb:cc:dd:ee:02", netmask=None, broadcast=None),
+                SimpleNamespace(family=_socket.AF_INET, address="192.168.100.221", netmask="255.255.255.0", broadcast="192.168.100.255"),
+            ],
+            "eth2": [
+                SimpleNamespace(family=_socket.AF_INET, address="10.0.0.5", netmask="255.255.255.0", broadcast="10.0.0.255"),
+            ],
+            "eth3": [
+                SimpleNamespace(family=_socket.AF_INET, address="169.254.10.5", netmask="255.255.0.0", broadcast="169.254.255.255"),
+            ],
+        }
+        mock_stats = {
+            "lo": SimpleNamespace(isup=True),
+            "docker0": SimpleNamespace(isup=True),
+            "eth0": SimpleNamespace(isup=True),
+            "eth1": SimpleNamespace(isup=True),
+            "eth2": SimpleNamespace(isup=False),
+            "eth3": SimpleNamespace(isup=True),
+        }
+
+        with patch("psutil.net_if_addrs", return_value=mock_addrs), \
+             patch("psutil.net_if_stats", return_value=mock_stats), \
+             patch("core.network_inspector._get_default_gateway_interface", return_value="eth0"):
+            ifaces = get_advertisable_interfaces()
+
+        ips = [i["ip"] for i in ifaces]
+        self.assertEqual(ips, ["192.168.5.217", "192.168.100.221", "169.254.10.5"])
+        self.assertTrue(ifaces[0]["default"])
+        self.assertEqual(ifaces[0]["mac"], "aa:bb:cc:dd:ee:01")
+        self.assertFalse(ifaces[1]["default"])
+        self.assertEqual(ifaces[1]["broadcast"], "192.168.100.255")
+
+    def test_send_beacon_directed_subnet_broadcasts_and_unicast(self):
+        service = DiscoveryBeaconService(port=59994)
+        service._running = True
+        service._sock = MagicMock()
+
+        fake_ifaces = [
+            {"ip": "192.168.5.217", "netmask": "255.255.255.0", "broadcast": "192.168.5.255", "iface": "eth0", "mac": "aa:bb:cc:dd:ee:01", "default": True},
+            {"ip": "192.168.100.221", "netmask": "255.255.255.0", "broadcast": "192.168.100.255", "iface": "eth1", "mac": "aa:bb:cc:dd:ee:02", "default": False},
+        ]
+
+        with patch("core.discovery_beacon.get_advertisable_interfaces", return_value=fake_ifaces), \
+             patch("core.discovery_beacon.get_primary_ip", return_value="192.168.5.217"):
+            payload = service.build_payload()
+            self.assertEqual(len(payload["ips"]), 2)
+            self.assertEqual(payload["ips"][1]["ip"], "192.168.100.221")
+
+            # Passive broadcast sends to each directed subnet broadcast + 255.255.255.255
+            service.send_beacon()
+            dests = [call.args[1] for call in service._sock.sendto.call_args_list]
+            self.assertEqual(
+                dests,
+                [("192.168.5.255", 59994), ("192.168.100.255", 59994), ("255.255.255.255", 59994)],
+            )
+
+            # Unicast reply sends only to target_addr
+            service._sock.sendto.reset_mock()
+            service.send_beacon(target_addr=("192.168.100.224", 54321))
+            service._sock.sendto.assert_called_once()
+            self.assertEqual(service._sock.sendto.call_args.args[1], ("192.168.100.224", 54321))
 
 
 if __name__ == "__main__":

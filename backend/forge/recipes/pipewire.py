@@ -20,7 +20,8 @@ class PipeWireRecipe(BaseRecipe):
             "gcc",
             "libasound2-dev",
             "libdbus-1-dev",
-            "libudev-dev"
+            "libudev-dev",
+            "libsndfile1-dev"
         ]
 
     async def compile(self, build_id: int, version_tag: str, options: dict,
@@ -100,6 +101,8 @@ class PipeWireRecipe(BaseRecipe):
             *opt("session-managers", "[]"),
             *opt("pipewire-pulse", "enabled"),
             *opt("pipewire-alsa", "enabled"),
+            *opt("pw-cat", "enabled"),
+            *opt("sndfile", "enabled"),
             *opt("udev", "enabled"),
             *opt("udevrulesdir", os.path.join(install_path, "lib", "udev", "rules.d")),
             *opt("systemd-system-unit-dir", os.path.join(install_path, "lib", "systemd", "system")),

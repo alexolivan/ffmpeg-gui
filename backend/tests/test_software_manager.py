@@ -36,6 +36,16 @@ class TestSoftwareManager(unittest.TestCase):
         self.assertFalse(curr["mediamtx_enabled"])
         self.assertTrue(curr["icecast2_enabled"])
 
+    def test_hard_memory_limit_numeric_persistence(self):
+        cfg = {
+            "ffmpeg_hard_memory_limit_mb": 4096,
+            "watchdog_hard_memory_limit_mb": "6144"
+        }
+        software_manager.load_config(cfg)
+        self.assertEqual(software_manager.get_hard_memory_limit(), 4096)
+        status = software_manager.get_engines_status(self.db)
+        self.assertEqual(status["ffmpeg"]["hard_memory_limit_mb"], 4096)
+
     @patch("shutil.which")
     @patch("subprocess.run")
     def test_audit_system_binary(self, mock_run, mock_which):

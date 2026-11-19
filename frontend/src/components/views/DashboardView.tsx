@@ -4,6 +4,7 @@ import type { BuildProfile } from '../../components/BuildProfileCard';
 import { PeerStatusCard } from '../cards/PeerStatusCard';
 import { ServicesDashboardCard } from '../cards/ServicesDashboardCard';
 import { TasksDashboardCard } from '../cards/TasksDashboardCard';
+import { canAccessDomain, type EdgePermissionsSummary } from '../../utils/permissions';
 
 interface DashboardViewProps {
   telemetry: any[];
@@ -12,6 +13,7 @@ interface DashboardViewProps {
   upcomingTasks?: any[];
   builds: BuildProfile[];
   settings: any;
+  permissions?: EdgePermissionsSummary | null;
 }
 
 const formatUptime = (seconds?: number): string => {
@@ -35,8 +37,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   upcomingTasks = [],
   builds,
   settings,
+  permissions,
 }) => {
   const { t } = useTranslation();
+  const canViewSettings = canAccessDomain(permissions, 'settings', 'monitor');
+  const canManageSettings = canAccessDomain(permissions, 'settings', 'manage');
+  const canViewHealth = canAccessDomain(permissions, 'hardware', 'monitor') || canAccessDomain(permissions, 'dashboard', 'monitor');
+  const canOperateLcd = canAccessDomain(permissions, 'dashboard', 'operate') || canAccessDomain(permissions, 'settings', 'operate');
   const [locatorActive, setLocatorActive] = useState(false);
   const [sslStatus, setSslStatus] = useState<any>(null);
   const [initialPeers, setInitialPeers] = useState<any[]>([]);
@@ -62,8 +69,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   const fetchPeers = () => {
+    if (!canViewSettings) return;
     fetch('/api/peers/remote-nodes')
-      .then(res => res.json())
+      .then(res => (res.ok ? res.json() : []))
       .then(data => {
         if (Array.isArray(data)) {
           setInitialPeers(data.map((p: any) => ({
@@ -82,16 +90,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   useEffect(() => {
-    fetch('/api/settings/ssl/status')
-      .then(res => res.json())
-      .then(data => setSslStatus(data))
-      .catch(err => console.error(err));
-    fetchPeers();
-    fetch('/api/hardware/health')
-      .then(res => res.json())
-      .then(data => setHardwareHealth(data))
-      .catch(err => console.error("Error fetching hardware health:", err));
-  }, []);
+    if (canViewSettings) {
+      fetch('/api/settings/ssl/status')
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data) setSslStatus(data); })
+        .catch(err => console.error(err));
+      fetchPeers();
+    }
+    if (canViewHealth) {
+      fetch('/api/hardware/health')
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => { if (data) setHardwareHealth(data); })
+        .catch(err => console.error("Error fetching hardware health:", err));
+    }
+  }, [canViewSettings, canViewHealth]);
 
   const peers = (systemTelemetry?.peers && systemTelemetry.peers.length > 0)
     ? systemTelemetry.peers
@@ -100,21 +112,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const activeHardwareHealth = systemTelemetry?.hardware_health || hardwareHealth;
 
   useEffect(() => {
-    let interval: any;
-    if (systemTelemetry.lcd && systemTelemetry.lcd.connected) {
-      const checkStatus = () => {
-        fetch('/api/lcd/locator')
-          .then(res => res.json())
-          .then(data => setLocatorActive(!!data.active))
-          .catch(err => console.error(err));
-      };
-      checkStatus();
-      interval = setInterval(checkStatus, 2000);
+    if (systemTelemetry?.lcd?.locator_active !== undefined) {
+      setLocatorActive(Boolean(systemTelemetry.lcd.locator_active));
     }
-    return () => clearInterval(interval);
-  }, [systemTelemetry.lcd?.connected]);
+  }, [systemTelemetry?.lcd?.locator_active]);
 
   const toggleLocator = async () => {
+    if (!canOperateLcd) return;
     try {
       const targetState = !locatorActive;
       const res = await fetch('/api/lcd/locator', {
@@ -174,11 +178,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           {systemTelemetry.lcd && systemTelemetry.lcd.connected && (
             <button
               onClick={toggleLocator}
+              disabled={!canOperateLcd}
               className={`pill-button flex items-center gap-2 transition-all ${
                 locatorActive 
                   ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/25 border border-red-500' 
                   : 'bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40'
-              }`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
               <span className={`w-2 h-2 rounded-full ${locatorActive ? 'bg-white' : 'bg-red-500'}`}></span>
               {locatorActive ? t('dashboard.locatorActive') : t('dashboard.findMe')}
@@ -818,15 +823,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <div className="flex items-center justify-between py-1.5 border-b border-[var(--glass-border)]">
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] text-text-secondary">{t('dashboard.backendApiVersion')}</span>
-                  <button
-                    type="button"
-                    onClick={handleCheckUpdates}
-                    disabled={checkingUpdates}
-                    title={checkingUpdates ? t('dashboard.checkingUpdates', 'Checking...') : t('dashboard.checkUpdates', 'Check for updates')}
-                    className="text-[11px] text-text-secondary hover:text-brand-lime transition-colors disabled:opacity-50 p-0.5 cursor-pointer"
-                  >
-                    <span className={`inline-block ${checkingUpdates ? 'animate-spin' : ''}`}>↻</span>
-                  </button>
+                  {canManageSettings && (
+                    <button
+                      type="button"
+                      onClick={handleCheckUpdates}
+                      disabled={checkingUpdates}
+                      title={checkingUpdates ? t('dashboard.checkingUpdates', 'Checking...') : t('dashboard.checkUpdates', 'Check for updates')}
+                      className="text-[11px] text-text-secondary hover:text-brand-lime transition-colors disabled:opacity-50 p-0.5 cursor-pointer"
+                    >
+                      <span className={`inline-block ${checkingUpdates ? 'animate-spin' : ''}`}>↻</span>
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {updateAvailable && latestRelease ? (

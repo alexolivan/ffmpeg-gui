@@ -48,3 +48,24 @@ def test_ws_telemetry_auth_barrier(db_session):
     finally:
         settings.gui_password = None
         db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_connection_manager_broadcast_prunes_dead_connections():
+    from unittest.mock import AsyncMock
+    from main import ConnectionManager
+
+    cm = ConnectionManager()
+    healthy_ws = AsyncMock()
+    dead_ws = AsyncMock()
+    dead_ws.send_json.side_effect = Exception("ConnectionClosedError 1012")
+
+    cm.active_connections = [healthy_ws, dead_ws]
+
+    await cm.broadcast({"type": "test"})
+
+    healthy_ws.send_json.assert_called_once_with({"type": "test"})
+    dead_ws.send_json.assert_called_once_with({"type": "test"})
+    assert healthy_ws in cm.active_connections
+    assert dead_ws not in cm.active_connections
+

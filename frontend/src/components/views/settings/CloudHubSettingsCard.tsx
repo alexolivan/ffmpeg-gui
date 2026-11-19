@@ -45,8 +45,6 @@ export const CloudHubSettingsCard: React.FC<CloudHubSettingsCardProps> = ({ API 
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 4000);
-    return () => clearInterval(interval);
   }, [fetchStatus]);
 
   const isEnrolled = Boolean(status?.node_id);

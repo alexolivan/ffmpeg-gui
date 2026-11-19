@@ -160,6 +160,57 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Bearer ", body_json["auth"])
         self.assertIn("gui_session=", body_json["cookie"])
 
+    async def test_in_memory_asgi_streaming_disconnect_handling(self):
+        """Verify ASGI streaming responses terminate gracefully without raising unexpected http.request errors."""
+        async def streaming_asgi_app(scope, receive, send):
+            if scope["type"] == "http":
+                await send({
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"content-type", b"multipart/x-mixed-replace; boundary=ffmpeg")],
+                })
+                # Application first consumes request body
+                req_msg = await receive()
+                self.assertEqual(req_msg["type"], "http.request")
+                self.assertFalse(req_msg["more_body"])
+
+                # Simulate Starlette listening for disconnect while streaming
+                await send({
+                    "type": "http.response.body",
+                    "body": b"--ffmpeg\r\nContent-Type: image/jpeg\r\n\r\nfakejpg\r\n",
+                    "more_body": True,
+                })
+                # Check receive() behavior: should wait or get disconnect, NOT crash
+                msg = await receive()
+                self.assertEqual(msg["type"], "http.disconnect")
+                await send({
+                    "type": "http.response.body",
+                    "body": b"",
+                    "more_body": False,
+                })
+
+        client = CloudTunnelClient(asgi_app=streaming_asgi_app, db_session_factory=self.Session)
+        sent_messages = []
+        class MockWS:
+            async def send(self, msg_str):
+                sent_messages.append(json.loads(msg_str))
+
+        http_req = {
+            "type": "http_request",
+            "stream_id": "stream-1",
+            "method": "GET",
+            "path": "/processes/1/preview",
+            "query": "",
+            "headers": {},
+            "body": None,
+        }
+
+        await client._handle_asgi_http(MockWS(), http_req, "secret", sso_enabled=False)
+        self.assertEqual(len(sent_messages), 1)
+        resp = sent_messages[0]
+        self.assertEqual(resp["status_code"], 200)
+        self.assertIn(b"fakejpg", decode_body(resp["body"]))
+
     def test_disconnect_hub(self):
         """Verify disconnect_hub clears node credentials in DB."""
         self.client.disconnect_hub()
@@ -224,6 +275,173 @@ class TestCloudTunnelClient(unittest.IsolatedAsyncioTestCase):
         mock_ws.send.assert_called_once()
         sent_data = json.loads(mock_ws.send.call_args[0][0])
         self.assertEqual(sent_data["type"], "unlink_notify")
+
+    async def test_heartbeat_worker_includes_lcd_telemetry(self):
+        """Verify _heartbeat_worker constructs and sends lcd capability details."""
+        with self.Session() as session:
+            settings = session.query(SystemSettings).first()
+            settings.lcd_enabled = True
+            settings.lcd_alias = "RACK-ENC-01"
+            settings.lcd_model = "cfa635"
+            session.commit()
+
+        mock_ws = MagicMock()
+        sent_frames = []
+
+        async def fake_send(data):
+            sent_frames.append(json.loads(data))
+            raise asyncio.CancelledError()
+
+        mock_ws.send = fake_send
+
+        with patch("asyncio.sleep", return_value=None):
+            await self.client._heartbeat_worker(mock_ws, "node_edge_test", "test_super_secret_key_12345")
+
+        self.assertEqual(len(sent_frames), 1)
+        payload = sent_frames[0]
+        self.assertIn("capabilities", payload)
+        self.assertTrue(payload["capabilities"]["http_stream"])
+        self.assertIn("lcd", payload)
+        self.assertTrue(payload["lcd"]["enabled"])
+        self.assertEqual(payload["lcd"]["alias"], "RACK-ENC-01")
+        self.assertEqual(payload["lcd"]["model"], "cfa635")
+        self.assertIn("locator_active", payload["lcd"])
+        self.assertIn("leds", payload["lcd"])
+        self.assertEqual(len(payload["lcd"]["leds"]), 4)
+        self.assertEqual(payload["lcd"]["leds"][0], "blink_green")
+        self.assertEqual(payload["lcd"]["leds"][3], "green")
+
+    async def test_handle_asgi_http_returns_413_when_exceeding_max_frame_bytes(self):
+        """Verify _handle_asgi_http guards against >MAX_TUNNEL_FRAME_BYTES frames to prevent 1009 disconnects."""
+        import sys
+        async def big_app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": [[b"content-type", b"application/json"]]})
+            await send({"type": "http.response.body", "body": b"x" * 2048, "more_body": False})
+
+        self.client.app = big_app
+        sent_frames = []
+
+        class FakeWS:
+            async def send(self, data):
+                sent_frames.append(json.loads(data))
+
+        with patch.object(sys.modules[self.client.__class__.__module__], "MAX_TUNNEL_FRAME_BYTES", 512):
+            await self.client._handle_asgi_http(FakeWS(), {
+                "stream_id": "s_big_http",
+                "method": "GET",
+                "path": "/api/services/7/pipewire/nodes",
+                "headers": {},
+            }, "secret", False)
+
+        self.assertEqual(len(sent_frames), 1)
+        frame = sent_frames[0]
+        self.assertEqual(frame["type"], "http_resp")
+        self.assertEqual(frame["stream_id"], "s_big_http")
+        self.assertEqual(frame["status_code"], 413)
+
+    async def test_handle_asgi_ws_open_closes_stream_when_exceeding_max_frame_bytes(self):
+        """Verify _handle_asgi_ws_open sends ws_close(1009) instead of an oversized ws_frame."""
+        import sys
+        async def big_ws_app(scope, receive, send):
+            await receive()
+            await send({"type": "websocket.accept"})
+            await send({"type": "websocket.send", "text": "y" * 2048})
+
+        self.client.app = big_ws_app
+        sent_frames = []
+
+        class FakeWS:
+            async def send(self, data):
+                sent_frames.append(json.loads(data))
+
+        with patch.object(sys.modules[self.client.__class__.__module__], "MAX_TUNNEL_FRAME_BYTES", 512):
+            await self.client._handle_asgi_ws_open(FakeWS(), {
+                "stream_id": "s_big_ws",
+                "path": "/ws/logs",
+                "headers": {},
+            }, "secret", False)
+
+        self.assertEqual(len(sent_frames), 1)
+        self.assertEqual(sent_frames[0]["type"], "ws_close")
+        self.assertEqual(sent_frames[0]["stream_id"], "s_big_ws")
+        self.assertEqual(sent_frames[0]["code"], 1009)
+
+    async def test_handle_asgi_http_streaming_chunks_when_supported(self):
+        """Verify streaming ASGI responses emit http_resp_start, chunks, and http_resp_end."""
+        async def audio_stream_app(scope, receive, send):
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"audio/mpeg"]],
+            })
+            await send({"type": "http.response.body", "body": b"part1-", "more_body": True})
+            await send({"type": "http.response.body", "body": b"part2", "more_body": False})
+
+        self.client.app = audio_stream_app
+        sent_frames = []
+
+        class FakeWS:
+            async def send(self, data):
+                sent_frames.append(json.loads(data))
+
+        await self.client._handle_asgi_http(FakeWS(), {
+            "stream_id": "s_audio",
+            "method": "GET",
+            "path": "/api/processes/1/icecast-proxy/live.mp3",
+            "headers": {},
+            "supports_stream": True,
+        }, "secret", False)
+
+        types = [f["type"] for f in sent_frames]
+        self.assertEqual(types, ["http_resp_start", "http_resp_chunk", "http_resp_chunk", "http_resp_end"])
+        self.assertEqual(sent_frames[0]["status_code"], 200)
+        assembled = decode_body(sent_frames[1]["data_b64"]) + decode_body(sent_frames[2]["data_b64"])
+        self.assertEqual(assembled, b"part1-part2")
+
+    async def test_http_req_cancel_aborts_active_stream(self):
+        """Verify http_req_cancel triggers ASGI http.disconnect and terminates stream cleanly."""
+        disconnected = asyncio.Event()
+
+        async def infinite_stream_app(scope, receive, send):
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"audio/mpeg"]],
+            })
+            await send({"type": "http.response.body", "body": b"frame0", "more_body": True})
+            msg = await receive()  # initial http.request
+            self.assertEqual(msg["type"], "http.request")
+            disc = await receive()  # waits for http.disconnect
+            if disc["type"] == "http.disconnect":
+                disconnected.set()
+
+        self.client.app = infinite_stream_app
+        sent_frames = []
+
+        class FakeWS:
+            async def send(self, data):
+                sent_frames.append(json.loads(data))
+
+        task = asyncio.create_task(self.client._handle_asgi_http(FakeWS(), {
+            "stream_id": "s_cancel",
+            "method": "GET",
+            "path": "/api/processes/1/icecast-proxy/live.mp3",
+            "headers": {},
+            "supports_stream": True,
+        }, "secret", False))
+
+        await asyncio.sleep(0.05)
+        await self.client._dispatch_tunnel_frame(
+            FakeWS(),
+            json.dumps({"type": "http_req_cancel", "stream_id": "s_cancel"}),
+            "secret",
+            False,
+        )
+        await asyncio.wait_for(task, timeout=2.0)
+
+        self.assertTrue(disconnected.is_set())
+        self.assertEqual(sent_frames[0]["type"], "http_resp_start")
+        self.assertEqual(sent_frames[-1]["type"], "http_resp_end")
 
 
 if __name__ == "__main__":

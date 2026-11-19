@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import ProcessConfigForm from './ProcessConfigForm';
+import { ServiceRestartTaskForm } from './modals/ServiceRestartTaskForm';
 import { formatInputDesc, formatOutputDesc } from '../utils/formatters';
 import { 
   ImportIcon, 
@@ -15,20 +16,32 @@ import {
   ServerIcon
 } from './Icons';
 import { EngineLogo } from './common/EngineLogo';
+import { PermissionLevelBadge } from './common/PermissionLevelBadge';
+import { useTelemetry } from '../context/TelemetryContext';
+import {
+  canCreateService,
+  canCreateTask,
+  getTaskLevel,
+  hasMinLevel,
+  type EdgePermissionsSummary,
+} from '../utils/permissions';
 
 interface ScheduledTasksProps {
   API: string;
   taskExecutions: any[]; // Active executions from websocket telemetry
+  permissions?: EdgePermissionsSummary | null;
 }
 
-export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecutions }) => {
+export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecutions, permissions }) => {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState<any[]>([]);
+  const [allServices, setAllServices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
+  const [newTaskCategory, setNewTaskCategory] = useState<'ffmpeg' | 'service_restart'>('ffmpeg');
   const [editingTask, setEditingTask] = useState<any | null>(null);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<any | null>(null);
   const [viewingLogsExecutionId, setViewingLogsExecutionId] = useState<number | null>(null);
@@ -43,6 +56,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const hasVideoTask = (task: any) => {
+    if (task.command?.startsWith('system://') || task.input_config?.type === 'service_restart') {
+      return false;
+    }
     const isAudioOnlyCodec = task.codec_config?.vcodec === 'none';
     const hasVideoInput = task.input_config?.has_video !== false;
     return hasVideoInput && !isAudioOnlyCodec;
@@ -62,29 +78,39 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     }
   };
 
+  const { subscribe } = useTelemetry();
+
+  const fetchAllServices = async () => {
+    try {
+      const res = await fetch(`${API}/processes`);
+      if (res.ok) {
+        setAllServices(await res.json());
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     fetchTasks();
-    const interval = setInterval(() => {
-      fetchTasks(true);
-    }, 3000);
-    return () => clearInterval(interval);
+    fetchAllServices();
   }, []);
 
-  // Poll logs when viewing logs modal
+  // Subscribe to task logs via WebSocket on-demand (Zero HTTP polling)
   useEffect(() => {
-    if (viewingLogsExecutionId === null) return;
-    const fetchLogs = async () => {
-      try {
-        const r = await fetch(`${API}/tasks/executions/${viewingLogsExecutionId}/logs`);
-        if (r.ok) {
-          setLogs(await r.json());
-        }
-      } catch {}
-    };
-    fetchLogs();
-    const timer = setInterval(fetchLogs, 2000);
-    return () => clearInterval(timer);
-  }, [viewingLogsExecutionId]);
+    if (viewingLogsExecutionId === null) {
+      setLogs([]);
+      return;
+    }
+
+    const unsub = subscribe('task_logs', viewingLogsExecutionId, (msg: any) => {
+      if (msg.reset) {
+        setLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [viewingLogsExecutionId, subscribe]);
 
   // Autoscroll logs
   useEffect(() => {
@@ -96,6 +122,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   // Load task details when selected
   const viewTaskDetails = async (taskId: number) => {
     try {
+      fetchAllServices();
       const r = await fetch(`${API}/tasks/${taskId}`);
       if (r.ok) {
         setSelectedTaskDetails(await r.json());
@@ -115,15 +142,6 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       }
     } catch {}
   };
-
-  // Poll task details if open (to get updated execution list)
-  useEffect(() => {
-    if (!selectedTaskDetails) return;
-    const timer = setInterval(() => {
-      viewTaskDetails(selectedTaskDetails.task.id);
-    }, 3000);
-    return () => clearInterval(timer);
-  }, [selectedTaskDetails]);
 
   // Handle Save (Create / Update)
   const handleSaveTask = async (payload: any) => {
@@ -151,11 +169,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       fetchTasks();
     } catch (e: any) {
       alert(e.message);
+      throw e;
     }
   };
 
   const handleEditClick = (task: any) => {
     setEditingTask(task);
+    const isRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
+    setNewTaskCategory(isRestart ? 'service_restart' : 'ffmpeg');
     setShowAddModal(true);
   };
 
@@ -229,6 +250,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
   const handleCloneTask = async (task: any) => {
     try {
+      const isServiceRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
       const res = await fetch(`${API}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -236,9 +258,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           name: `${task.name} (Copy)`,
           alias: task.alias ? `${task.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
           is_active: task.schedule_type === 'manual' ? true : false,
+          command: task.command || (isServiceRestart ? 'system://service_restart' : null),
           input_config: task.input_config,
-          output_config: task.output_config,
-          codec_config: task.codec_config,
+          output_config: task.output_config || {},
+          codec_config: task.codec_config || {},
           filter_config: task.filter_config,
           ffmpeg_build_id: task.ffmpeg_build_id,
           schedule_type: task.schedule_type,
@@ -318,10 +341,14 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     }
   };
 
+  const canCreateAnyTask = canCreateTask(permissions);
+  const canConvertService = canCreateService(permissions, 'ffmpeg_stream');
+  const visibleTasks = tasks.filter(task => hasMinLevel(getTaskLevel(permissions, task), 'monitor'));
+
   // Metrics
-  const totalTasks = tasks.length;
-  const activeTasks = tasks.filter(t => t.schedule_type === 'manual' || t.is_active).length;
-  const recurringTasks = tasks.filter(t => t.schedule_type === 'recurring').length;
+  const totalTasks = visibleTasks.length;
+  const activeTasks = visibleTasks.filter(t => t.schedule_type === 'manual' || t.is_active).length;
+  const recurringTasks = visibleTasks.filter(t => t.schedule_type === 'recurring').length;
   const runningExecutions = taskExecutions.length;
 
   return (
@@ -335,30 +362,33 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           </h1>
           <p className="text-xs text-text-secondary">{t('tasks.subtitle', 'Automate batch jobs, recurring feeds and cron conversions.')}</p>
         </div>
-        <div className="flex gap-4">
-          <button 
-            onClick={() => importFileRef.current?.click()} 
-            className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 text-sm py-2.5 px-6 flex items-center gap-1.5"
-          >
-            <ImportIcon size={14} /> {t('tasks.importTask', 'IMPORT TASK')}
-          </button>
-          <input 
-            type="file" 
-            ref={importFileRef} 
-            className="hidden" 
-            accept=".json" 
-            onChange={handleImportFileChange} 
-          />
-          <button 
-            onClick={() => {
-              setEditingTask(null);
-              setShowAddModal(true);
-            }}
-            className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20 flex items-center gap-1.5"
-          >
-            <PlusIcon size={14} /> {t('tasks.newTask', 'CREATE TASK')}
-          </button>
-        </div>
+        {canCreateAnyTask && (
+          <div className="flex gap-4">
+            <button 
+              onClick={() => importFileRef.current?.click()} 
+              className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] hover:border-brand-lime/40 text-sm py-2.5 px-6 flex items-center gap-1.5"
+            >
+              <ImportIcon size={14} /> {t('tasks.importTask', 'IMPORT TASK')}
+            </button>
+            <input 
+              type="file" 
+              ref={importFileRef} 
+              className="hidden" 
+              accept=".json" 
+              onChange={handleImportFileChange} 
+            />
+            <button 
+              onClick={() => {
+                setEditingTask(null);
+                setNewTaskCategory('ffmpeg');
+                setShowAddModal(true);
+              }}
+              className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20 flex items-center gap-1.5"
+            >
+              <PlusIcon size={14} /> {t('tasks.newTask', 'CREATE TASK')}
+            </button>
+          </div>
+        )}
       </header>
 
       {/* METRIC CARDS */}
@@ -394,16 +424,20 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
             <div className="py-12 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
           ) : error ? (
             <div className="py-8 text-center text-red-400 font-bold border border-red-500/20 rounded-2xl bg-red-500/5">{error}</div>
-          ) : tasks.filter(t => t.schedule_type === 'manual' || t.is_active).length === 0 ? (
+          ) : visibleTasks.filter(t => t.schedule_type === 'manual' || t.is_active).length === 0 ? (
             <div className="py-12 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
               {t('tasks.noActiveTasks', 'No active or on-demand tasks.')}
             </div>
           ) : (
             <div className="divide-y divide-white/5">
-              {tasks.filter(t => t.schedule_type === 'manual' || t.is_active).map(task => {
+              {visibleTasks.filter(t => t.schedule_type === 'manual' || t.is_active).map(task => {
                 const liveExec = taskExecutions.find((e: any) => e.task_id === task.id && (e.status === 'running' || e.status === 'retrying'));
                 const exec = liveExec || task.last_execution;
                 const isRunning = exec && (exec.status === 'running' || exec.status === 'retrying');
+                const isServiceRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
+                const taskLvl = getTaskLevel(permissions, task);
+                const canOperateTask = hasMinLevel(taskLvl, 'operate');
+                const canManageTask = hasMinLevel(taskLvl, 'manage');
                 return (
                   <div 
                     key={task.id} 
@@ -419,13 +453,15 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         ? 'border border-brand-lime/30 rounded-xl bg-brand-lime/[0.02] px-3 my-1 shadow-sm shadow-brand-lime/5 hover:bg-brand-lime/[0.05]'
                         : task.is_system 
                           ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1 shadow-sm shadow-brand-orange/5 hover:bg-brand-orange/[0.05]' 
-                          : 'hover:bg-white/[0.02] rounded-xl'
+                          : isServiceRestart
+                            ? 'border border-cyan-500/30 rounded-xl bg-cyan-500/[0.02] px-3 my-1 shadow-sm shadow-cyan-500/5 hover:bg-cyan-500/[0.05]'
+                            : 'hover:bg-white/[0.02] rounded-xl'
                     }`}
                   >
                     <div className="flex-1 space-y-0.5 min-w-0">
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2 min-w-0">
-                          {!task.is_system && (
+                          {!task.is_system && !isServiceRestart && (
                             <EngineLogo softwareType="ffmpeg" size={16} API={API} />
                           )}
                           <h3 className="font-bold text-lg truncate text-[var(--text-primary)]">
@@ -446,6 +482,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             {t('tasks.systemBadge', 'SYSTEM')}
                           </span>
                         )}
+                        {isServiceRestart && (
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                            {t('tasks.serviceRestart.badge', 'MAINTENANCE RESTART')}
+                          </span>
+                        )}
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
                           task.schedule_type === 'recurring' ? 'bg-brand-blue/10 text-brand-blue border border-brand-blue/20' :
                           task.schedule_type === 'one_shot' ? 'bg-brand-orange/10 text-brand-orange border border-brand-orange/20' :
@@ -455,6 +496,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                            task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
                            task.schedule_type}
                         </span>
+                        <PermissionLevelBadge level={taskLvl} />
                         {exec?.retry_count > 0 && (
                           isRunning || exec?.status === 'retrying' ? (
                             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
@@ -498,10 +540,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
                             {t('tasks.onDemand', 'On-Demand')}
                           </span>
-                        ) : task.is_system ? (
+                        ) : task.is_system || !canManageTask ? (
                           <span 
-                            title="Managed via Settings > General > Logging"
-                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-green-500/10 text-green-400 border-green-500/20 select-none"
+                            title={task.is_system ? "Managed via Settings > General > Logging" : t('tasks.pauseSchedule', 'Automated schedule')}
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 bg-green-500/10 text-green-400 border-green-500/20 select-none"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-green-400"></span>
                             {t('common.enabled', 'Active')}
@@ -525,6 +567,25 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         {task.is_system ? (
                           <p className="truncate">
                             {t('tasks.systemActionLabel', 'System Action:')} <strong className="text-brand-orange font-medium">{t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')}</strong>
+                          </p>
+                        ) : isServiceRestart ? (
+                          <p className="truncate text-xs">
+                            <span className="text-text-secondary font-medium">
+                              {t('tasks.serviceRestart.cardTargetServicesLabel', 'Target Services:')}{' '}
+                            </span>
+                            <strong className="text-cyan-400 font-bold font-mono">
+                              {(task.input_config?.service_ids || []).length === 1
+                                ? t('tasks.serviceRestart.cardServicesCount_one', '1 service')
+                                : t('tasks.serviceRestart.cardServicesCount', '{{count}} services', { count: (task.input_config?.service_ids || []).length })}
+                            </strong>
+                            <span className="text-text-secondary text-[11px] ml-1.5 font-medium">
+                              ({task.input_config?.stagger_delay_seconds ? t('tasks.serviceRestart.cardStaggerDelay', '{{delay}}s delay', { delay: task.input_config.stagger_delay_seconds }) : t('tasks.serviceRestart.cardConcurrent', 'concurrent')})
+                            </span>
+                            {task.input_config?.only_if_running && (
+                              <span className="text-text-secondary text-[11px] ml-1.5 opacity-80">
+                                · {t('tasks.serviceRestart.onlyRunningFilter', 'only active')}
+                              </span>
+                            )}
                           </p>
                         ) : (
                           <>
@@ -603,7 +664,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         📜
                       </button>
                       
-                      {isRunning ? (
+                      {canOperateTask && (isRunning ? (
                         <button 
                           disabled={execStopPending[exec.id]}
                           onClick={() => handleStopExecution(exec.id)}
@@ -629,9 +690,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <PlayIcon size={16} />
                           )}
                         </button>
-                      )}
+                      ))}
 
-                      {!task.is_system && (
+                      {!task.is_system && canManageTask && (
                         <>
                           <button 
                             disabled={taskTriggerPending[task.id]}
@@ -642,23 +703,25 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <ClipboardIcon size={16} />
                           </button>
 
-                          <button 
-                            disabled={taskTriggerPending[task.id]}
-                            onClick={async () => {
-                              try {
-                                const res = await fetch(`${API}/tasks/${task.id}/clone-as-service`, { method: 'POST' });
-                                if (!res.ok) throw new Error('Failed to clone task as service');
-                                alert(t('common.clonedSuccess', 'Cloned successfully!'));
-                                fetchTasks();
-                              } catch (err: any) {
-                                alert(err.message || 'Error cloning task as service');
-                              }
-                            }}
-                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-orange disabled:opacity-50 disabled:pointer-events-none"
-                            title={t('tasks.cloneAsService', 'Copy as Service')}
-                          >
-                            <ServerIcon size={16} />
-                          </button>
+                          {!isServiceRestart && canConvertService && (
+                            <button 
+                              disabled={taskTriggerPending[task.id]}
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`${API}/tasks/${task.id}/clone-as-service`, { method: 'POST' });
+                                  if (!res.ok) throw new Error('Failed to clone task as service');
+                                  alert(t('common.clonedSuccess', 'Cloned successfully!'));
+                                  fetchTasks();
+                                } catch (err: any) {
+                                  alert(err.message || 'Error cloning task as service');
+                                }
+                              }}
+                              className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-orange disabled:opacity-50 disabled:pointer-events-none"
+                              title={t('tasks.cloneAsService', 'Copy as Service')}
+                            >
+                              <ServerIcon size={16} />
+                            </button>
+                          )}
 
                           <button 
                             disabled={taskTriggerPending[task.id]}
@@ -702,15 +765,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           
           {loading ? (
             <div className="py-12 text-center text-text-secondary animate-pulse">{t('common.loading', 'Loading task configurations...')}</div>
-          ) : tasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).length === 0 ? (
+          ) : visibleTasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).length === 0 ? (
             <div className="py-12 text-center text-white/20 italic border border-dashed border-white/5 rounded-2xl">
               {t('tasks.noDisabledTasks', 'No paused scheduled tasks.')}
             </div>
           ) : (
             <div className="divide-y divide-white/5">
-              {tasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).map(task => {
+              {visibleTasks.filter(t => t.schedule_type !== 'manual' && !t.is_active).map(task => {
                 const isRunning = task.last_execution && (task.last_execution.status === 'running' || task.last_execution.status === 'retrying');
                 const exec = task.last_execution;
+                const isServiceRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
+                const taskLvl = getTaskLevel(permissions, task);
+                const canOperateTask = hasMinLevel(taskLvl, 'operate');
+                const canManageTask = hasMinLevel(taskLvl, 'manage');
                 return (
                   <div 
                     key={task.id} 
@@ -726,26 +793,35 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         ? 'border border-brand-lime/30 rounded-xl bg-brand-lime/[0.02] px-3 my-1 shadow-sm shadow-brand-lime/5 hover:bg-brand-lime/[0.05]'
                         : task.is_system 
                           ? 'border border-white/10 rounded-xl bg-white/[0.01] px-3 my-1 hover:bg-white/[0.03]'
-                          : 'hover:bg-white/[0.02] rounded-xl'
+                          : isServiceRestart
+                            ? 'border border-cyan-500/20 rounded-xl bg-cyan-500/[0.01] px-3 my-1 hover:bg-cyan-500/[0.03]'
+                            : 'hover:bg-white/[0.02] rounded-xl'
                     }`}
                   >
                     <div className="flex-1 space-y-0.5 min-w-0">
                       <div className="flex items-center gap-3 flex-wrap">
-                        <h3 className="font-bold text-lg truncate text-text-secondary">
-                          {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
-                            ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
-                            : task.is_system && (task.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || task.command === 'system://ssl_renew')
-                            ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
-                            : task.name}
-                          {task.alias && (
-                            <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
-                              [{task.alias}]
-                            </span>
-                          )}
-                        </h3>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <h3 className="font-bold text-lg truncate text-text-secondary">
+                            {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
+                              ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
+                              : task.is_system && (task.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || task.command === 'system://ssl_renew')
+                              ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
+                              : task.name}
+                            {task.alias && (
+                              <span className="text-xs font-semibold text-text-secondary ml-1.5 opacity-80" title={`LCD Alias: ${task.alias}`}>
+                                [{task.alias}]
+                              </span>
+                            )}
+                          </h3>
+                        </div>
                         {task.is_system && (
                           <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
                             {t('tasks.systemBadge', 'SYSTEM')}
+                          </span>
+                        )}
+                        {isServiceRestart && (
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                            {t('tasks.serviceRestart.badge', 'MAINTENANCE RESTART')}
                           </span>
                         )}
                         <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
@@ -753,6 +829,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                            task.schedule_type === 'one_shot' ? t('tasks.scheduleTypes.oneShot', 'one-shot') :
                            task.schedule_type}
                         </span>
+                        <PermissionLevelBadge level={taskLvl} />
                         {exec?.retry_count > 0 && (
                           isRunning || exec?.status === 'retrying' ? (
                             <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1">
@@ -788,10 +865,10 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             🛡️ WATCHDOG ({task.retry_policy.max_retries})
                           </span>
                         )}
-                        {task.is_system ? (
+                        {task.is_system || !canManageTask ? (
                           <span 
-                            title="Managed via Settings > General > Logging"
-                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 cursor-help bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
+                            title={task.is_system ? "Managed via Settings > General > Logging" : t('tasks.resumeSchedule', 'Scheduled')}
+                            className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider border flex items-center gap-1.5 opacity-80 bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white/20"></span>
                             {t('common.disabled', 'Disabled')}
@@ -815,6 +892,25 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         {task.is_system ? (
                           <p className="truncate">
                             {t('tasks.systemActionLabel', 'System Action:')} <strong className="text-text-secondary font-medium">{t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')}</strong>
+                          </p>
+                        ) : isServiceRestart ? (
+                          <p className="truncate text-xs">
+                            <span className="text-text-secondary font-medium">
+                              {t('tasks.serviceRestart.cardTargetServicesLabel', 'Target Services:')}{' '}
+                            </span>
+                            <strong className="text-cyan-400 font-bold font-mono">
+                              {(task.input_config?.service_ids || []).length === 1
+                                ? t('tasks.serviceRestart.cardServicesCount_one', '1 service')
+                                : t('tasks.serviceRestart.cardServicesCount', '{{count}} services', { count: (task.input_config?.service_ids || []).length })}
+                            </strong>
+                            <span className="text-text-secondary text-[11px] ml-1.5 font-medium">
+                              ({task.input_config?.stagger_delay_seconds ? t('tasks.serviceRestart.cardStaggerDelay', '{{delay}}s delay', { delay: task.input_config.stagger_delay_seconds }) : t('tasks.serviceRestart.cardConcurrent', 'concurrent')})
+                            </span>
+                            {task.input_config?.only_if_running && (
+                              <span className="text-text-secondary text-[11px] ml-1.5 opacity-80">
+                                · {t('tasks.serviceRestart.onlyRunningFilter', 'only active')}
+                              </span>
+                            )}
                           </p>
                         ) : (
                           <>
@@ -883,7 +979,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         📜
                       </button>
                       
-                      {isRunning ? (
+                      {canOperateTask && (isRunning ? (
                         <button 
                           disabled={execStopPending[exec.id]}
                           onClick={() => handleStopExecution(exec.id)}
@@ -909,9 +1005,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <PlayIcon size={16} />
                           )}
                         </button>
-                      )}
+                      ))}
 
-                      {!task.is_system && (
+                      {!task.is_system && canManageTask && (
                         <>
                           <button 
                             disabled={taskTriggerPending[task.id]}
@@ -922,23 +1018,25 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <ClipboardIcon size={16} />
                           </button>
 
-                          <button 
-                            disabled={taskTriggerPending[task.id]}
-                            onClick={async () => {
-                              try {
-                                const res = await fetch(`${API}/tasks/${task.id}/clone-as-service`, { method: 'POST' });
-                                if (!res.ok) throw new Error('Failed to clone task as service');
-                                alert(t('common.clonedSuccess', 'Cloned successfully!'));
-                                fetchTasks();
-                              } catch (err: any) {
-                                alert(err.message || 'Error cloning task as service');
-                              }
-                            }}
-                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-orange disabled:opacity-50 disabled:pointer-events-none"
-                            title={t('tasks.cloneAsService', 'Copy as Service')}
-                          >
-                            <ServerIcon size={16} />
-                          </button>
+                          {!isServiceRestart && canConvertService && (
+                            <button 
+                              disabled={taskTriggerPending[task.id]}
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`${API}/tasks/${task.id}/clone-as-service`, { method: 'POST' });
+                                  if (!res.ok) throw new Error('Failed to clone task as service');
+                                  alert(t('common.clonedSuccess', 'Cloned successfully!'));
+                                  fetchTasks();
+                                } catch (err: any) {
+                                  alert(err.message || 'Error cloning task as service');
+                                }
+                              }}
+                              className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 text-brand-orange disabled:opacity-50 disabled:pointer-events-none"
+                              title={t('tasks.cloneAsService', 'Copy as Service')}
+                            >
+                              <ServerIcon size={16} />
+                            </button>
+                          )}
 
                           <button 
                             disabled={taskTriggerPending[task.id]}
@@ -1000,7 +1098,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 <p className="text-text-secondary text-sm">Execution History & Diagnostics</p>
               </div>
 
-              {selectedTaskDetails.executions.length > 0 && (
+              {hasMinLevel(getTaskLevel(permissions, selectedTaskDetails.task), 'manage') && selectedTaskDetails.executions.length > 0 && (
                 <button
                   onClick={() => handleClearTaskHistory(selectedTaskDetails.task.id)}
                   className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/20 flex items-center gap-2 transition-all self-start sm:self-auto"
@@ -1013,6 +1111,44 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
             </div>
 
             <div className="space-y-4">
+              {(() => {
+                const isDetailsRestart = selectedTaskDetails.task.command === 'system://service_restart' || selectedTaskDetails.task.input_config?.type === 'service_restart';
+                if (!isDetailsRestart) return null;
+                const inputCfg = selectedTaskDetails.task.input_config || {};
+                return (
+                  <div className="p-4 rounded-xl bg-cyan-500/5 border border-cyan-500/20 text-xs space-y-2">
+                    <div className="flex items-center gap-2 text-cyan-400 font-bold uppercase tracking-wider text-[11px]">
+                      <span>↻</span> {t('tasks.serviceRestart.badge', 'MAINTENANCE RESTART')}
+                    </div>
+                    <div>
+                      <span className="text-text-secondary">{t('tasks.serviceRestart.sequenceTitle', 'Ordered Restart Sequence')}: </span>
+                      <span className="font-mono text-cyan-400 font-bold">
+                        {Array.isArray(inputCfg.service_ids) && inputCfg.service_ids.length > 0
+                          ? inputCfg.service_ids.map((id: number) => {
+                              const s = allServices.find((svc: any) => svc.id === id);
+                              return s ? `${s.name} (#${id})` : `Svc #${id}`;
+                            }).join(' → ')
+                          : '—'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-6 flex-wrap">
+                      <div>
+                        <span className="text-text-secondary">{t('tasks.serviceRestart.staggerDelay', 'Stagger Delay Between Restarts')}: </span>
+                        <strong className="font-mono text-[var(--text-primary)]">
+                          {inputCfg.stagger_delay_seconds ?? 5}s
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-text-secondary">{t('tasks.serviceRestart.onlyIfRunning', 'Only restart if currently running')}: </span>
+                        <strong className="text-[var(--text-primary)]">
+                          {inputCfg.only_if_running ? t('common.enabled', 'Active') : t('common.disabled', 'Disabled')}
+                        </strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {selectedTaskDetails.executions.length === 0 ? (
                 <div className="py-12 text-center text-text-secondary italic">This task has not been executed yet.</div>
               ) : (
@@ -1074,13 +1210,25 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           >
             {(() => {
               const activeExec = taskExecutions.find(e => e.id === viewingLogsExecutionId);
-              const taskConfig = tasks.find(t => t.id === activeExec?.task_id);
-              const hasVideo = taskConfig ? taskConfig.input_config?.has_video !== false : true;
-              const isRunning = activeExec?.status === 'running';
+              const lastExecTask = tasks.find(t => t.last_execution?.id === viewingLogsExecutionId);
+              const historyExec = selectedTaskDetails?.executions?.find((e: any) => e.id === viewingLogsExecutionId);
+              const taskConfig = (activeExec ? tasks.find(t => t.id === activeExec.task_id) : null) || lastExecTask || selectedTaskDetails?.task;
+              const exec = activeExec || lastExecTask?.last_execution || historyExec;
+
+              const isRunning = exec?.status === 'running' || exec?.status === 'retrying';
+              const isServiceRestart = taskConfig?.command === 'system://service_restart' || taskConfig?.input_config?.type === 'service_restart';
+              const isSystemTask = Boolean(taskConfig?.is_system || taskConfig?.command?.startsWith('system://') || isServiceRestart);
+              const hasVideo = !isSystemTask && hasVideoTask(taskConfig);
               const showPreview = isRunning && hasVideo;
               
-              const title = taskConfig ? taskConfig.name : `Task Execution #${viewingLogsExecutionId}`;
-              const status = activeExec ? activeExec.status : 'finished';
+              const title = taskConfig ? (
+                taskConfig.is_system && (taskConfig.name === 'System Log Rotation and Retention Cleanup' || taskConfig.command === 'system://log_rotate')
+                  ? t('tasks.systemLogTaskName', 'System Log Rotation and Retention Cleanup')
+                  : taskConfig.is_system && (taskConfig.name === 'System SSL/TLS Certificate Auto-Renewal Routine' || taskConfig.command === 'system://ssl_renew')
+                  ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
+                  : taskConfig.name
+              ) : `Task Execution #${viewingLogsExecutionId}`;
+              const status = exec ? exec.status : (activeExec ? activeExec.status : 'finished');
 
               return (
                 <>
@@ -1089,7 +1237,13 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                     <div>
                       <h3 className="text-2xl font-black uppercase tracking-tight">{title}</h3>
                       <p className="text-text-secondary text-xs uppercase tracking-wider mt-0.5">
-                        {showPreview ? 'Live Task Preview (MJPEG)' : 'Task Execution Status & Logs'}
+                        {showPreview
+                          ? t('tasks.livePreviewVideo', 'Live Task Preview (MJPEG)')
+                          : isServiceRestart
+                          ? t('tasks.serviceRestart.modalSubtitle', 'Service Maintenance Restart Orchestrator')
+                          : isSystemTask
+                          ? t('tasks.systemTaskModalSubtitle', 'System Maintenance Routine & Logs')
+                          : t('tasks.taskLogsSubtitle', 'Task Execution Status & Logs')}
                       </p>
                     </div>
                     <button 
@@ -1150,73 +1304,291 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                               src={`${API}/tasks/executions/${viewingLogsExecutionId}/preview`} 
                               alt="Live Preview" 
                               className="max-h-full max-w-full object-contain" 
-                            />
+                              />
                             <div className="absolute top-3 left-3 px-2.5 py-1 bg-brand-lime text-black text-[9px] font-black rounded-md tracking-wider uppercase animate-pulse">
                               LIVE
                             </div>
                           </div>
                         </div>
                       </div>
-                    ) : (
-                      <div className="max-w-3xl mx-auto space-y-4">
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    ) : isServiceRestart ? (
+                      /* Service Maintenance Restart Orchestrator Panel */
+                      <div className="max-w-4xl mx-auto space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
-                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Status</div>
-                            <div className={`font-black text-sm tracking-tight ${status === 'finished' ? 'text-blue-400' : status === 'error' ? 'text-red-400' : 'text-white/60'}`}>
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">
+                              {t('common.status', 'Status')}
+                            </div>
+                            <div className={`font-black text-sm tracking-tight ${
+                              status === 'running' || status === 'retrying'
+                                ? 'text-brand-lime animate-pulse'
+                                : status === 'finished' || status === 'completed'
+                                ? 'text-green-400'
+                                : status === 'error'
+                                ? 'text-red-400'
+                                : 'text-white/60'
+                            }`}>
                               {status.toUpperCase()}
                             </div>
                           </div>
                           <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
-                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
-                            <div className="font-bold font-mono text-sm">{activeExec?.bitrate || '0 kb/s'}</div>
-                          </div>
-                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
-                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">FPS</div>
-                            <div className="font-bold font-mono text-sm">{activeExec?.fps || '0'}</div>
-                          </div>
-                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
-                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Speed</div>
-                            <div className="font-bold font-mono text-sm">{activeExec?.speed || '0x'}</div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                            <span className="text-[10px] uppercase font-black text-text-secondary">PID</span>
-                            <span className="font-mono font-bold text-[var(--text-primary)]">{activeExec?.pid || 'N/A'}</span>
-                          </div>
-                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                            <span className="text-[10px] uppercase font-black text-text-secondary">CPU</span>
-                            <span className="font-mono font-bold text-brand-lime">{activeExec?.cpu || 0}%</span>
-                          </div>
-                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                            <span className="text-[10px] uppercase font-black text-text-secondary">RAM</span>
-                            <span className="font-mono font-bold text-brand-orange">{activeExec?.ram || 0} MB</span>
-                          </div>
-                        </div>
-
-                        {!hasVideo && isRunning && (
-                          <div className="p-5 bg-brand-blue/10 border border-brand-blue/20 rounded-2xl flex items-center gap-4 animate-in fade-in duration-300">
-                            <span className="text-brand-blue flex-shrink-0">
-                              <SourceIcon size={24} />
-                            </span>
-                            <div>
-                              <div className="font-bold text-brand-blue uppercase text-xs tracking-wider">Audio-Only Task Active</div>
-                              <div className="text-xs text-text-secondary mt-0.5">This execution does not produce video outputs. Audio signals are processing normally.</div>
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">
+                              {t('common.services', 'Services')}
                             </div>
+                            <div className="font-bold font-mono text-sm text-cyan-400">
+                              {(taskConfig?.input_config?.service_ids || []).length}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">
+                              {t('tasks.serviceRestart.staggerDelayShort', 'Delay')}
+                            </div>
+                            <div className="font-bold font-mono text-sm text-[var(--text-primary)]">
+                              {taskConfig?.input_config?.stagger_delay_seconds ?? 5}s
+                            </div>
+                          </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">
+                              {t('tasks.serviceRestart.onlyIfRunning', 'Only Running')}
+                            </div>
+                            <div className={`font-bold text-xs ${taskConfig?.input_config?.only_if_running ? 'text-brand-lime' : 'text-text-secondary'}`}>
+                              {taskConfig?.input_config?.only_if_running
+                                ? t('tasks.serviceRestart.onlyRunningSafeguardOn', 'Running Only')
+                                : t('tasks.serviceRestart.onlyRunningSafeguardOff', 'All Targets')}
+                            </div>
+                          </div>
+                        </div>
+
+                        {exec && (exec.started_at || exec.exit_code !== null) && (
+                          <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-between text-xs text-text-secondary flex-wrap gap-2 font-mono">
+                            {exec.started_at && (
+                              <span>
+                                {t('tasks.startedAtLabel', 'Started At')}: <strong className="text-[var(--text-primary)]">{new Date(exec.started_at).toLocaleString()}</strong>
+                              </span>
+                            )}
+                            {exec.stopped_at && (
+                              <span>
+                                {t('tasks.stoppedAtLabel', 'Stopped At')}: <strong className="text-[var(--text-primary)]">{new Date(exec.stopped_at).toLocaleString()}</strong>
+                              </span>
+                            )}
+                            {exec.exit_code !== null && (
+                              <span>
+                                {t('tasks.exitCodeLabel', 'Exit Code')}: <strong className={exec.exit_code === 0 ? 'text-green-400' : 'text-red-400'}>{exec.exit_code}</strong>
+                              </span>
+                            )}
                           </div>
                         )}
- 
-                        {!isRunning && (
-                          <div className="p-5 bg-white/2 border border-white/5 rounded-2xl flex items-center gap-4 text-text-secondary">
-                            <span className="text-text-secondary flex-shrink-0">
-                              <StopIcon size={24} />
+
+                        {/* Wide Ordered Service Restart Sequence */}
+                        <div className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-2xl p-4 space-y-3">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                              <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                                {t('tasks.serviceRestart.sequenceTitle', 'Ordered Restart Sequence')}
+                              </h4>
+                            </div>
+                            <span className="text-[11px] text-text-secondary font-mono">
+                              {(taskConfig?.input_config?.service_ids || []).length} {t('common.services', 'services')} · {taskConfig?.input_config?.stagger_delay_seconds ?? 5}s {t('tasks.serviceRestart.staggerDelayShort', 'delay')}
                             </span>
-                            <div>
-                              <div className="font-bold uppercase text-xs tracking-wider">Execution Inactive</div>
-                              <div className="text-xs mt-0.5">This task execution has finished running or has been stopped.</div>
+                          </div>
+
+                          {(taskConfig?.input_config?.service_ids || []).length === 0 ? (
+                            <div className="py-6 text-center text-xs text-text-secondary italic">
+                              {t('tasks.serviceRestart.emptySequence', 'No services added yet.')}
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                              {(taskConfig?.input_config?.service_ids || []).map((sid: number, idx: number) => {
+                                const svc = allServices.find((s: any) => s.id === sid);
+                                const svcName = svc ? svc.name : `Service #${sid}`;
+                                const svcType = svc?.service_type || 'ffmpeg_stream';
+                                const isSvcRunning = svc?.status === 'running';
+
+                                return (
+                                  <div
+                                    key={`${sid}-${idx}`}
+                                    className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/5 hover:border-cyan-500/30 transition-all text-xs"
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 text-[10px] font-mono font-bold flex items-center justify-center flex-shrink-0">
+                                        {idx + 1}
+                                      </span>
+                                      <EngineLogo softwareType={svcType} size={16} API={API} />
+                                      <div className="min-w-0">
+                                        <strong className="block truncate text-[var(--text-primary)]" title={svcName}>
+                                          {svcName}
+                                        </strong>
+                                        <span className="text-[10px] text-text-secondary font-mono">
+                                          #{sid} · {svcType}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    <span
+                                      className={`text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider flex-shrink-0 ${
+                                        isSvcRunning
+                                          ? 'bg-brand-lime/10 text-brand-lime border border-brand-lime/20'
+                                          : 'bg-white/5 text-text-secondary border border-white/5'
+                                      }`}
+                                    >
+                                      {svc?.status || 'unknown'}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : isSystemTask ? (
+                      /* General System Maintenance Task Panel (Log Rotator, SSL Renew, etc.) */
+                      <div className="max-w-3xl mx-auto space-y-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">
+                              {t('common.status', 'Status')}
+                            </div>
+                            <div className={`font-black text-sm tracking-tight ${
+                              status === 'running' || status === 'retrying'
+                                ? 'text-brand-lime animate-pulse'
+                                : status === 'finished' || status === 'completed'
+                                ? 'text-green-400'
+                                : status === 'error'
+                                ? 'text-red-400'
+                                : 'text-white/60'
+                            }`}>
+                              {status.toUpperCase()}
                             </div>
                           </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">
+                              {t('tasks.exitCodeLabel', 'Exit Code')}
+                            </div>
+                            <div className="font-bold font-mono text-sm text-[var(--text-primary)]">
+                              {exec?.exit_code !== null && exec?.exit_code !== undefined ? exec.exit_code : (isRunning ? '...' : '0')}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">
+                              {t('tasks.startedAtLabel', 'Started At')}
+                            </div>
+                            <div className="font-mono text-xs text-[var(--text-primary)]">
+                              {exec?.started_at ? new Date(exec.started_at).toLocaleTimeString() : 'N/A'}
+                            </div>
+                          </div>
+                          <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                            <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">
+                              {t('tasks.stoppedAtLabel', 'Stopped At')}
+                            </div>
+                            <div className="font-mono text-xs text-[var(--text-primary)]">
+                              {exec?.stopped_at ? new Date(exec.stopped_at).toLocaleTimeString() : (isRunning ? t('common.running', 'Running...') : 'N/A')}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-brand-orange/5 border border-brand-orange/20 rounded-2xl flex items-center gap-3">
+                          <span className="text-brand-orange text-lg flex-shrink-0">⚙️</span>
+                          <div className="text-xs">
+                            <strong className="text-brand-orange block uppercase tracking-wider font-bold">
+                              {title}
+                            </strong>
+                            <span className="text-text-secondary">
+                              {taskConfig?.command === 'system://log_rotate'
+                                ? t('tasks.systemLogTaskRoutine', 'Log Retention & Cleanup Routine')
+                                : taskConfig?.command === 'system://ssl_renew'
+                                ? t('tasks.systemSslTaskName', 'System SSL/TLS Certificate Auto-Renewal Routine')
+                                : t('tasks.systemBadge', 'System Maintenance Task')}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Standard FFmpeg Media Task (Audio-only or finished task) */
+                      <div className="max-w-3xl mx-auto space-y-4">
+                        {isRunning ? (
+                          <>
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                                <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Status</div>
+                                <div className="font-black text-sm tracking-tight text-brand-lime animate-pulse">
+                                  RUNNING
+                                </div>
+                              </div>
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                                <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Bitrate</div>
+                                <div className="font-bold font-mono text-sm">{activeExec?.bitrate || '0 kb/s'}</div>
+                              </div>
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                                <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Speed</div>
+                                <div className="font-bold font-mono text-sm">{activeExec?.speed || '0x'}</div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                                <span className="text-[10px] uppercase font-black text-text-secondary">PID</span>
+                                <span className="font-mono font-bold text-[var(--text-primary)]">{activeExec?.pid || 'N/A'}</span>
+                              </div>
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                                <span className="text-[10px] uppercase font-black text-text-secondary">CPU</span>
+                                <span className="font-mono font-bold text-brand-lime">{activeExec?.cpu || 0}%</span>
+                              </div>
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 flex justify-between items-center">
+                                <span className="text-[10px] uppercase font-black text-text-secondary">RAM</span>
+                                <span className="font-mono font-bold text-brand-orange">{activeExec?.ram || 0} MB</span>
+                              </div>
+                            </div>
+
+                            <div className="p-5 bg-brand-blue/10 border border-brand-blue/20 rounded-2xl flex items-center gap-4 animate-in fade-in duration-300">
+                              <span className="text-brand-blue flex-shrink-0">
+                                <SourceIcon size={24} />
+                              </span>
+                              <div>
+                                <div className="font-bold text-brand-blue uppercase text-xs tracking-wider">Audio-Only Task Active</div>
+                                <div className="text-xs text-text-secondary mt-0.5">This execution does not produce video outputs. Audio signals are processing normally.</div>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                                <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Status</div>
+                                <div className={`font-black text-sm tracking-tight ${status === 'finished' || status === 'completed' ? 'text-green-400' : status === 'error' ? 'text-red-400' : 'text-white/60'}`}>
+                                  {status.toUpperCase()}
+                                </div>
+                              </div>
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                                <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Exit Code</div>
+                                <div className="font-bold font-mono text-sm text-[var(--text-primary)]">
+                                  {exec?.exit_code !== null && exec?.exit_code !== undefined ? exec.exit_code : '—'}
+                                </div>
+                              </div>
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                                <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Started At</div>
+                                <div className="font-mono text-xs text-[var(--text-primary)]">
+                                  {exec?.started_at ? new Date(exec.started_at).toLocaleTimeString() : 'N/A'}
+                                </div>
+                              </div>
+                              <div className="bg-white/5 border border-white/5 rounded-2xl p-4 text-center">
+                                <div className="text-[10px] uppercase font-bold text-text-secondary mb-1">Stopped At</div>
+                                <div className="font-mono text-xs text-[var(--text-primary)]">
+                                  {exec?.stopped_at ? new Date(exec.stopped_at).toLocaleTimeString() : 'N/A'}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="p-5 bg-white/2 border border-white/5 rounded-2xl flex items-center gap-4 text-text-secondary">
+                              <span className="text-text-secondary flex-shrink-0">
+                                <StopIcon size={24} />
+                              </span>
+                              <div>
+                                <div className="font-bold uppercase text-xs tracking-wider">Execution Inactive</div>
+                                <div className="text-xs mt-0.5">This task execution has finished running or has been stopped.</div>
+                              </div>
+                            </div>
+                          </>
                         )}
                       </div>
                     )}
@@ -1249,7 +1621,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
                   {/* Footer */}
                   <div className="p-6 border-t border-white/5 flex-shrink-0 bg-white/2 flex justify-end items-center gap-3">
-                    {isRunning && (
+                    {isRunning && hasMinLevel(getTaskLevel(permissions, taskConfig || selectedTaskDetails?.task || { id: exec?.task_id }), 'operate') && (
                       <button 
                         onClick={() => handleStopExecution(viewingLogsExecutionId)}
                         className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-2 px-6 border border-red-500/25"
@@ -1272,35 +1644,90 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       )}
 
       {/* CREATE / EDIT TASK MODAL */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
-          <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
-            <button 
-              onClick={() => {
-                setShowAddModal(false);
-                setEditingTask(null);
-              }}
-              className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs"
-            >
-              ✕
-            </button>
-            
-            <h3 className="text-base font-bold mb-3 flex-shrink-0 tracking-wide uppercase text-brand-lime">
-              {editingTask ? 'Edit Scheduled Task' : 'New Scheduled Task'}
-            </h3>
+      {showAddModal && (() => {
+        const isEditingServiceRestart = editingTask && (editingTask.command === 'system://service_restart' || editingTask.input_config?.type === 'service_restart');
+        const showServiceRestartForm = (editingTask && isEditingServiceRestart) || (!editingTask && newTaskCategory === 'service_restart');
 
-            <ProcessConfigForm
-              isTask={true}
-              initialConfig={editingTask}
-              onCancel={() => {
-                setShowAddModal(false);
-                setEditingTask(null);
-              }}
-              onSubmit={handleSaveTask}
-            />
+        return (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
+            <div className="glass-card w-full max-w-4xl p-5 border-brand-orange/20 shadow-2xl relative max-h-[95vh] flex flex-col overflow-hidden">
+              <button 
+                onClick={() => {
+                  setShowAddModal(false);
+                  setEditingTask(null);
+                }}
+                className="absolute top-4 right-4 w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-text-secondary hover:text-white hover:bg-white/20 transition-all z-10 text-xs"
+              >
+                ✕
+              </button>
+              
+              <div className="flex items-center justify-between mb-3 flex-shrink-0">
+                <h3 className={`text-base font-bold tracking-wide uppercase ${showServiceRestartForm ? 'text-cyan-400' : 'text-brand-lime'}`}>
+                  {editingTask
+                    ? (isEditingServiceRestart
+                      ? t('tasks.serviceRestart.titleEdit', 'Edit Service Maintenance Restart Task')
+                      : t('tasks.editTask', 'Edit Scheduled Task'))
+                    : (newTaskCategory === 'service_restart'
+                      ? t('tasks.serviceRestart.titleNew', 'New Service Maintenance Restart Task')
+                      : t('tasks.newTask', 'New Scheduled Task'))}
+                </h3>
+              </div>
+
+              {!editingTask && (
+                <div className="flex items-center gap-2 mb-3 p-1 rounded-xl bg-white/5 border border-white/5 max-w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setNewTaskCategory('ffmpeg')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                      newTaskCategory === 'ffmpeg'
+                        ? 'bg-brand-lime text-black shadow-md'
+                        : 'text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    <EngineLogo softwareType="ffmpeg" size={14} API={API} />
+                    {t('tasks.serviceRestart.taskTypeMedia', 'FFmpeg Media Task')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewTaskCategory('service_restart')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                      newTaskCategory === 'service_restart'
+                        ? 'bg-cyan-500 text-black shadow-md'
+                        : 'text-[var(--text-secondary)] hover:text-white'
+                    }`}
+                  >
+                    <span>↻</span>
+                    {t('tasks.serviceRestart.taskTypeServiceRestart', 'Service Maintenance Restart')}
+                  </button>
+                </div>
+              )}
+
+              {showServiceRestartForm ? (
+                <ServiceRestartTaskForm
+                  API={API}
+                  initialConfig={editingTask}
+                  permissions={permissions}
+                  onCancel={() => {
+                    setShowAddModal(false);
+                    setEditingTask(null);
+                  }}
+                  onSubmit={handleSaveTask}
+                />
+              ) : (
+                <ProcessConfigForm
+                  isTask={true}
+                  initialConfig={editingTask}
+                  onCancel={() => {
+                    setShowAddModal(false);
+                    setEditingTask(null);
+                  }}
+                  onSubmit={handleSaveTask}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );

@@ -61,7 +61,10 @@ export interface MagewellSystemStatus {
   cards: MagewellCard[];
 }
 
-export const MagewellSettingsCard: React.FC<{ API?: string }> = ({ API = '' }) => {
+export const MagewellSettingsCard: React.FC<{ API?: string; canManage?: boolean }> = ({
+  API = '',
+  canManage = true,
+}) => {
   const { t } = useTranslation();
   const [status, setStatus] = useState<MagewellSystemStatus | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -129,18 +132,10 @@ export const MagewellSettingsCard: React.FC<{ API?: string }> = ({ API = '' }) =
     isMountedRef.current = true;
     fetchStatus();
 
-    // Live telemetry polling (every 3 seconds, paused during modal interaction)
-    const interval = setInterval(() => {
-      if (!configuringChannel) {
-        fetchStatus();
-      }
-    }, 3000);
-
     return () => {
       isMountedRef.current = false;
-      clearInterval(interval);
     };
-  }, [fetchStatus, configuringChannel]);
+  }, [fetchStatus]);
 
   const handleCloseConfig = () => {
     setConfiguringChannel(null);
@@ -427,15 +422,17 @@ export const MagewellSettingsCard: React.FC<{ API?: string }> = ({ API = '' }) =
                 </div>
 
                 {/* Configure Button */}
-                <button
-                  type="button"
-                  onClick={() => handleOpenConfig(activeChannel)}
-                  className="px-3 py-1.5 rounded-lg bg-brand-cyan/10 border border-brand-cyan/30 text-brand-cyan hover:bg-brand-cyan/20 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-                  title={t('settings.magewell.configurePort', 'Configure Channel')}
-                >
-                  <span>⚙️</span>
-                  <span>{t('settings.magewell.configurePort', 'Configure Channel')}</span>
-                </button>
+                {canManage && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenConfig(activeChannel)}
+                    className="px-3 py-1.5 rounded-lg bg-brand-cyan/10 border border-brand-cyan/30 text-brand-cyan hover:bg-brand-cyan/20 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                    title={t('settings.magewell.configurePort', 'Configure Channel')}
+                  >
+                    <span>⚙️</span>
+                    <span>{t('settings.magewell.configurePort', 'Configure Channel')}</span>
+                  </button>
+                )}
               </div>
 
               {/* Main Telemetry & Signal Grid */}

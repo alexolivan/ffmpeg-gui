@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatInputDesc, formatOutputDesc } from '../../utils/formatters';
 import { 
@@ -15,6 +15,10 @@ import {
   PowerIcon
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
+import { MicroSparkline } from '../common/MicroSparkline';
+import { ServiceRRDDrawer } from './ServiceRRDDrawer';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { hasMinLevel, type CapabilityLevel } from '../../utils/permissions';
 
 export interface ServiceItem {
   id: number;
@@ -29,6 +33,9 @@ export interface ServiceItem {
   bitrate?: string | null;
   fps?: string | null;
   speed?: string | null;
+  sparkline?: number[] | null;
+  sparkline_metric?: string | null;
+  has_rrd_outlier?: boolean;
   ffmpeg_build_id?: number | null;
   input_config?: any;
   output_config?: any;
@@ -42,6 +49,14 @@ export interface ServiceItem {
   watchdog_retries?: number;
   watchdog_min_speed?: number | null;
   watchdog_min_speed_duration?: number;
+  watchdog_max_memory_mb?: number | null;
+  watchdog_max_memory_duration?: number;
+  signal_watchdog?: any;
+  signal_watchdog_state?: {
+    state?: string;
+    tripped_sensors?: string[];
+    [key: string]: any;
+  };
   pending_changes?: boolean;
   last_start?: string | null;
   last_stop?: string | null;
@@ -59,11 +74,14 @@ export interface ServiceItem {
   is_pinned?: boolean;
   allow_auto_start_deps?: boolean;
   allow_auto_stop_deps?: boolean;
+  ptp_role?: string | null;
+  ptp_time_stamping?: string | null;
 }
 
 interface UnifiedServiceCardProps {
   service: ServiceItem;
   telemetryItem?: any;
+  backupServiceName?: string;
   actionPending?: 'starting' | 'stopping' | 'restarting';
   onStartService: (procId: number) => void;
   onStopService: (procId: number, name?: string) => void;
@@ -74,6 +92,7 @@ interface UnifiedServiceCardProps {
   onSelectedProcess: (service: ServiceItem) => void;
   onExportProcess?: (service: ServiceItem) => void;
   onCloneAsTask?: (service: ServiceItem) => void;
+  serviceLevel?: CapabilityLevel;
   API?: string;
 }
 
@@ -103,21 +122,41 @@ export const hasVideo = (proc: ServiceItem): boolean => {
     const codecCfg = typeof proc.codec_config === 'string' 
       ? JSON.parse(proc.codec_config) 
       : (proc.codec_config || proc.config?.codec_config || {});
+    if (codecCfg.vcodec === 'none') return false;
     if (codecCfg.vcodec && codecCfg.vcodec !== 'none') return true;
+
     const inputCfg = typeof proc.input_config === 'string' 
       ? JSON.parse(proc.input_config) 
       : (proc.input_config || proc.config?.input_config || {});
-    if (inputCfg.has_video === true) return true;
     if (inputCfg.has_video === false) return false;
+    if (inputCfg.has_video === true) return true;
+
+    // Check if input is audio-only device or type
+    const inType = (inputCfg.type || proc.type || '').toLowerCase();
+    if (['alsa', 'pulseaudio', 'jack', 'sndio', 'audio'].includes(inType)) {
+      return false;
+    }
+
+    const outCfg = typeof proc.output_config === 'string'
+      ? JSON.parse(proc.output_config)
+      : (proc.output_config || proc.config?.output_config || {});
+    if (outCfg.has_video === false) return false;
+
+    // If fps is reported and > 0, it is video
+    if (proc.fps && parseFloat(proc.fps) > 0) return true;
+
+    // If audio codec is specified without any video codec
+    if (codecCfg.acodec && !codecCfg.vcodec) return false;
   } catch (e) {
     // Ignore parse errors
   }
-  return true;
+  return false;
 };
 
 export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   service,
   telemetryItem,
+  backupServiceName,
   actionPending,
   onStartService,
   onStopService,
@@ -128,9 +167,13 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   onSelectedProcess,
   onExportProcess,
   onCloneAsTask,
+  serviceLevel = 'admin',
   API = ''
 }) => {
   const { t } = useTranslation();
+  const [isRrdExpanded, setIsRrdExpanded] = useState(false);
+  const canOperate = hasMinLevel(serviceLevel, 'operate');
+  const canManage = hasMinLevel(serviceLevel, 'manage');
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
   const isPending = !!actionPending;
@@ -142,9 +185,14 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   const fps = telemetryItem?.fps || service.fps || '0';
   const speed = telemetryItem?.speed || service.speed || '0x';
   const pid = telemetryItem?.pid || service.pid;
+  const sparkline = telemetryItem?.sparkline || service.sparkline || [];
+  const hasRrdOutlier = telemetryItem?.has_rrd_outlier ?? service.has_rrd_outlier ?? false;
 
   const serviceType = service.service_type || 'ffmpeg_stream';
   const isFfmpegStream = serviceType === 'ffmpeg_stream';
+  const isVideo = hasVideo(service);
+  const hasBitrate = Boolean(bitrate && bitrate !== 'N/A' && bitrate !== '0 kb/s' && bitrate !== '0.0kbits/s' && bitrate !== '0');
+  const hasFps = Boolean(isVideo && fps && fps !== '0' && fps !== 'N/A');
 
   const inputCfg = service.input_config || service.config?.input_config;
   const outputCfg = service.output_config || service.config?.output_config;
@@ -152,7 +200,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   return (
     <div 
       onClick={() => onSelectedProcess(service)}
-      className={`group relative flex flex-col lg:flex-row lg:items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+      className={`group relative flex flex-col p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
         isRunning 
           ? 'bg-brand-lime/5 border-brand-lime/20 hover:bg-brand-lime/10 hover:border-brand-lime/40' 
           : isError
@@ -160,6 +208,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           : 'bg-white/2 hover:bg-white/5 border-[var(--glass-border)] opacity-85 hover:opacity-100'
       }`}
     >
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
       {/* Left Info Column */}
       <div className="flex flex-col gap-1.5 min-w-0 flex-1 pr-4">
         {/* Title & Badges Row */}
@@ -226,6 +275,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               ? 'PipeWire'
               : 'Service'}
           </span>
+          <PermissionLevelBadge level={serviceLevel} />
 
           {/* Badges */}
           {!!(service.debug_mode || service.config?.debug_mode) && (
@@ -249,14 +299,45 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
             </span>
           )}
 
-          {service.watchdog_enabled && (
-            <span 
-              className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" 
-              title={`Monitored by system watchdog${service.restart_count ? ` (${t('services.restartCount', 'Restarts')}: ${service.restart_count})` : ''}`}
-            >
-              <ShieldIcon size={10} /> WATCHDOG{service.restart_count && service.restart_count > 0 ? ` (${service.restart_count})` : ''}
-            </span>
-          )}
+          {(() => {
+            const sw = service.signal_watchdog || service.config?.signal_watchdog || {};
+            const hasSilence = Boolean(sw.silence_enabled);
+            const hasBlack = Boolean(sw.black_enabled);
+            const hasFreeze = Boolean(sw.freeze_enabled);
+            const showWatchdog = Boolean(service.watchdog_enabled || hasSilence || hasBlack || hasFreeze);
+            const activeModes = [
+              service.watchdog_enabled ? 'Process' : null,
+              hasSilence ? 'Silence' : null,
+              hasBlack ? 'Black' : null,
+              hasFreeze ? 'Freeze' : null,
+            ].filter(Boolean);
+            const hasBackup = sw.reaction_mode === 'activate_backup' && Boolean(sw.backup_service_id);
+            return (
+              <>
+                {showWatchdog && (
+                  <span
+                    className="text-[9px] bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1"
+                    title={`Watchdog (${activeModes.join(' + ')})${service.restart_count ? ` — ${t('services.restartCount', 'Restarts')}: ${service.restart_count}` : ''}`}
+                  >
+                    {service.watchdog_enabled && <ShieldIcon size={10} />}
+                    {hasSilence && <span>🔇</span>}
+                    {hasBlack && <span>⬛</span>}
+                    {hasFreeze && <span>❄️</span>}
+                    <span>WATCHDOG{service.restart_count && service.restart_count > 0 ? ` (${service.restart_count})` : ''}</span>
+                  </span>
+                )}
+                {hasBackup && (
+                  <span
+                    className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1 max-w-[140px]"
+                    title={`${t('watchdog.backupService', 'Backup Service')}: ${backupServiceName || `#${sw.backup_service_id}`}`}
+                  >
+                    <span>🔁</span>
+                    <span className="truncate">{backupServiceName || `#${sw.backup_service_id}`}</span>
+                  </span>
+                )}
+              </>
+            );
+          })()}
 
           {service.dependencies && service.dependencies.length > 0 && service.dependencies.map((d: any, idx: number) => (
             <span 
@@ -283,6 +364,18 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
           {service.status === 'error' && !isRetrying && (
             <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1" title="Process exited with error / stopped abnormally">
               ⚠ ABNORMAL END
+            </span>
+          )}
+
+          {service.signal_watchdog_state?.state && service.signal_watchdog_state.state !== 'normal' && (
+            <span
+              className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/40 px-2 py-0.5 rounded font-black animate-pulse flex items-center gap-1"
+              title={`Signal Watchdog: ${service.signal_watchdog_state.state} (${(service.signal_watchdog_state.tripped_sensors || []).join(', ')})`}
+            >
+              🚨 {t('watchdog.signalAlarmBadge', 'SIGNAL ALARM')}
+              {(service.signal_watchdog_state.tripped_sensors?.length ?? 0) > 0
+                ? `: ${(service.signal_watchdog_state.tripped_sensors || []).map((s: string) => s.toUpperCase()).join('+')}`
+                : ''}
             </span>
           )}
         </div>
@@ -315,6 +408,18 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
 
         {/* Compact Telemetry Strip */}
         <div className="flex gap-x-3 gap-y-1 mt-0.5 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
+          {isRunning && (
+            <>
+              <MicroSparkline
+                data={sparkline}
+                label="CPU"
+                hasOutlier={hasRrdOutlier}
+                isExpanded={isRrdExpanded}
+                onToggle={() => setIsRrdExpanded((prev) => !prev)}
+              />
+              <span className="opacity-20">|</span>
+            </>
+          )}
           <span>PID: <strong className={isRunning && pid ? "text-[var(--text-primary)] font-bold" : "text-zinc-500 font-normal"}>{isRunning && pid ? pid : t('common.offline', 'OFFLINE')}</strong></span>
           <span className="opacity-20">|</span>
           <span>Uptime: <strong className="text-[var(--text-primary)]">{formatUptime(service.last_start, isRunning)}</strong></span>
@@ -346,17 +451,19 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
       {/* Right Iconic Action Button Bar */}
       <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0" onClick={e => e.stopPropagation()}>
         {/* Edit Button */}
-        <button
-          disabled={isPending}
-          onClick={() => onEditProcess(service)}
-          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50"
-          title={t('common.edit', 'Edit Service Settings')}
-        >
-          <PencilIcon size={16} />
-        </button>
+        {canManage && (
+          <button
+            disabled={isPending}
+            onClick={() => onEditProcess(service)}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50"
+            title={t('common.edit', 'Edit Service Settings')}
+          >
+            <PencilIcon size={16} />
+          </button>
+        )}
 
         {/* Clone Service Button */}
-        {onCloneProcess && (
+        {canManage && onCloneProcess && (
           <button
             disabled={isPending}
             onClick={() => onCloneProcess(service)}
@@ -368,7 +475,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         )}
 
         {/* Clone as Task Button (Conditional for FFmpeg Streams Only) */}
-        {isFfmpegStream && onCloneAsTask && (
+        {canManage && isFfmpegStream && onCloneAsTask && (
           <button
             disabled={isPending}
             onClick={() => onCloneAsTask(service)}
@@ -380,7 +487,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         )}
 
         {/* Export Button */}
-        {onExportProcess && (
+        {canManage && onExportProcess && (
           <button
             disabled={isPending}
             onClick={() => onExportProcess(service)}
@@ -392,7 +499,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         )}
 
         {/* Restart Button (only when running) */}
-        {isRunning && (
+        {canOperate && isRunning && (
           <button
             disabled={isPending}
             onClick={() => onRestartService(service.id, service.name)}
@@ -410,7 +517,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         )}
 
         {/* Action Controls: Retrying (Dual: Retry Now / Deactivate) vs Running (Stop) vs Inactive (Start) */}
-        {isRetrying ? (
+        {canOperate && (isRetrying ? (
           <>
             {/* Retry Now / Force Start */}
             <button
@@ -465,17 +572,34 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
               <PlayIcon size={16} />
             )}
           </button>
-        )}
+        ))}
 
         {/* Delete Button */}
-        <button
-          disabled={isRunning || isRetrying || isPending}
-          onClick={() => onDeleteProcess(service)}
-          className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-30 disabled:pointer-events-none"
-          title={t('common.delete', 'Delete Service')}
-        >
-          <TrashIcon size={16} />
-        </button>
+        {canManage && (
+          <button
+            disabled={isRunning || isRetrying || isPending}
+            onClick={() => onDeleteProcess(service)}
+            className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/20 flex items-center justify-center border border-red-500/20 text-red-400 transition-all hover:scale-105 disabled:opacity-30 disabled:pointer-events-none"
+            title={t('common.delete', 'Delete Service')}
+          >
+            <TrashIcon size={16} />
+          </button>
+        )}
+      </div>
+      </div>
+
+      {/* Expandable Volatile RRD Metrics Drawer */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <ServiceRRDDrawer
+          serviceId={service.id}
+          isOpen={isRrdExpanded}
+          hasVideo={isVideo}
+          hasBitrate={hasBitrate}
+          hasFps={hasFps}
+          serviceType={service.service_type || 'ffmpeg_stream'}
+          initialMetric="cpu"
+          onClose={() => setIsRrdExpanded(false)}
+        />
       </div>
     </div>
   );

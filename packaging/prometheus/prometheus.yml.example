@@ -1,0 +1,19 @@
+# Example Prometheus Scrape Configuration for ffmpeg-gui
+# Place this snippet inside your prometheus.yml under `scrape_configs:`
+
+scrape_configs:
+  - job_name: 'ffmpeg-gui'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+    metrics_path: '/api/metrics'
+    scheme: 'http'
+
+    # Authentication bearer token configured in ffmpeg-gui (Settings -> Network -> Prometheus Exporter)
+    bearer_token: 'YOUR_SECRET_EXPORTER_TOKEN'
+
+    static_configs:
+      - targets: ['192.168.100.154:8011']
+        labels:
+          environment: 'production'
+          node_role: 'broadcast-encoder'
+          appliance: 'ffmpeg-gui-node-01'

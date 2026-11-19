@@ -8,7 +8,15 @@ class FilterGraphBuilder:
         return val.replace('\\', '\\\\').replace(':', '\\:').replace("'", "'\\\\''")
 
     @classmethod
-    def build_video_filters(cls, input_cfg: dict, filter_cfg: dict, is_vram: bool, hwaccel: str) -> tuple[str, bool]:
+    def build_video_filters(
+        cls,
+        input_cfg: dict,
+        filter_cfg: dict,
+        is_vram: bool,
+        hwaccel: str,
+        signal_watchdog: dict = None,
+        vcodec: str = None,
+    ) -> tuple[str, bool]:
         """
         Compiles the video filters into a single FFmpeg filter graph string.
         Returns a tuple: (filter_graph_string, remains_in_vram)
@@ -65,9 +73,28 @@ class FilterGraphBuilder:
         sorted_overlays = sorted(overlays, key=lambda x: x.get('order', 0))
         
         has_overlays = len(sorted_overlays) > 0
+
+        sw = signal_watchdog if isinstance(signal_watchdog, dict) else {}
+        allow_video_detectors = (vcodec != 'copy')
+        has_black = allow_video_detectors and bool(sw.get('black_enabled'))
+        has_freeze = allow_video_detectors and bool(sw.get('freeze_enabled'))
+        has_video_detectors = has_black or has_freeze
+
+        detector_filters = []
+        if has_black:
+            b_dur = sw.get('black_duration', 5)
+            b_pic = sw.get('black_pic_th', 0.98)
+            b_pix = sw.get('black_pix_th', 0.10)
+            detector_filters.append(
+                f"blackdetect=d={b_dur}:pic_th={b_pic}:pix_th={b_pix},metadata=mode=print:key=lavfi.black_start,metadata=mode=print:key=lavfi.black_end"
+            )
+        if has_freeze:
+            f_dur = sw.get('freeze_duration', 5)
+            f_noise = sw.get('freeze_noise_db', -60)
+            detector_filters.append(f"freezedetect=n={f_noise}dB:d={f_dur}")
         
-        # If overlays are present, they are CPU-bound, so we must download from VRAM if active
-        if has_overlays and is_vram:
+        # If overlays or CPU-bound signal detectors are present, download from VRAM if active
+        if (has_overlays or has_video_detectors) and is_vram:
             linear_filters.append("hwdownload")
             linear_filters.append("format=nv12")
             is_vram = False
@@ -113,11 +140,11 @@ class FilterGraphBuilder:
         # Merge deinterlace, scale and text overlays
         all_linear = linear_filters + text_and_simple
         
-        if not all_linear and not image_overlays:
+        if not all_linear and not image_overlays and not detector_filters:
             return "", is_vram
             
         if not image_overlays:
-            return ",".join(all_linear), is_vram
+            return ",".join(all_linear + detector_filters), is_vram
             
         # If we have image overlays, we need to construct a labeled filter graph
         # Format: [in]linear1,linear2[vmain]; movie=logo.png[logo0]; [vmain][logo0]overlay=x:y[vmain]; ...
@@ -148,11 +175,13 @@ class FilterGraphBuilder:
         match = re.search(r'\[vmain\d+\]$', last_item)
         if match:
             graph[-1] = last_item[:match.start()]
+        if detector_filters:
+            graph[-1] = f"{graph[-1]},{','.join(detector_filters)}"
             
         return ";".join(graph), is_vram
 
     @staticmethod
-    def build_audio_filters(filter_cfg: dict) -> str:
+    def build_audio_filters(filter_cfg: dict, signal_watchdog: dict = None, acodec: str = None) -> str:
         """
         Compiles the audio filters into a single FFmpeg filter chain string,
         following the professional audio signal chain order.
@@ -249,5 +278,11 @@ class FilterGraphBuilder:
                     af.append(f"aresample={':'.join(params)}")
             elif aresample is True:
                 af.append("aresample=async=1")
+
+        # 7. In-Band Signal Watchdog (silencedetect pass-through)
+        if acodec != 'copy' and isinstance(signal_watchdog, dict) and signal_watchdog.get('silence_enabled'):
+            s_thr = signal_watchdog.get('silence_threshold_db', -50)
+            s_dur = signal_watchdog.get('silence_duration', 15)
+            af.append(f"silencedetect=n={s_thr}dB:d={s_dur}")
                 
         return ",".join(af) if af else ""

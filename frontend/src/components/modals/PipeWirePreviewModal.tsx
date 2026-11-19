@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
 import { RefreshIcon, ClipboardIcon, CheckIcon } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
+import { useTelemetry } from '../../context/TelemetryContext';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 interface PipeWirePreviewModalProps {
   selectedProcess: any;
@@ -15,6 +18,7 @@ interface PipeWirePreviewModalProps {
   onStartService: (id: number) => void;
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
+  permissions?: EdgePermissionsSummary | null;
   API: string;
 }
 
@@ -92,6 +96,19 @@ interface AoIpStream {
   ptp_clock_id?: string | null;
   last_seen?: number;
   is_local?: boolean;
+  status?: 'online' | 'waiting' | string;
+}
+
+interface RemoteSinkStatusItem {
+  id: string;
+  name: string;
+  multicast_ip: string;
+  rtp_port: number;
+  channels: number;
+  format: string;
+  status: 'online' | 'waiting' | string;
+  last_seen?: number | null;
+  origin_ip?: string | null;
 }
 
 interface AoIpTelemetry {
@@ -99,14 +116,20 @@ interface AoIpTelemetry {
   interface?: string | null;
   streams_count: number;
   ptp_status?: {
-    running: boolean;
+    running?: boolean;
+    detected?: boolean;
     grandmaster_ip?: string | null;
+    source_ip?: string | null;
     clock_identity?: string | null;
     state?: string | null;
+    local_ptp4l_role?: string | null;
+    time_stamping?: 'software' | 'hardware' | string;
+    free_running?: boolean;
     priority1?: number;
     domain?: number;
   };
   discovered_streams: AoIpStream[];
+  remote_sinks_status?: RemoteSinkStatusItem[];
 }
 
 interface GraphTelemetryData {
@@ -116,6 +139,10 @@ interface GraphTelemetryData {
   links: TelemetryLink[];
   matrix?: MatrixTelemetry | null;
   aoip_discovery?: AoIpTelemetry | null;
+  sidecars?: {
+    ptp4l_active?: boolean;
+    phc2sys_active?: boolean;
+  } | null;
   remote_sinks?: any[];
   raw_summary: {
     nodes_count: number;
@@ -129,26 +156,35 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   selectedProcess,
   telemetry,
   actionPending,
+  logs: externalLogs = [],
   onClose,
   onEditProcess,
   onStartService,
   onStopService,
   onRestartService,
+  permissions,
   API,
 }) => {
   const { t } = useTranslation();
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isRunning = currentProcess.status === 'running';
   const isPending = !!actionPending[currentProcess.id];
+  const svcLevel = getServiceLevel(permissions, currentProcess);
+  const canOperate = hasMinLevel(svcLevel, 'operate');
+  const canManage = hasMinLevel(svcLevel, 'manage');
 
   const [graphData, setGraphData] = useState<GraphTelemetryData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw' | 'aoip'>('nodes');
+  const [activeTab, setActiveTab] = useState<'nodes' | 'links' | 'console' | 'raw' | 'aoip' | 'ptp4l' | 'phc2sys'>('nodes');
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [ptpLogs, setPtpLogs] = useState<any[]>([]);
+  const [phcLogs, setPhcLogs] = useState<any[]>([]);
+  const activeDaemonLogs = daemonLogs.length > 0 ? daemonLogs : (externalLogs || []);
+  const [copySuccessTab, setCopySuccessTab] = useState<string | null>(null);
   const [isReconciling, setIsReconciling] = useState(false);
   const processLogsContainerRef = useRef<HTMLDivElement | null>(null);
+  const ptpLogsContainerRef = useRef<HTMLDivElement | null>(null);
+  const phcLogsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const handleReconcileMatrix = async () => {
     if (!currentProcess?.id || isReconciling) return;
@@ -173,7 +209,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
     try {
       if (isManual || !graphData) setLoading(true);
       const token = localStorage.getItem('token') || '';
-      const res = await fetch(`${API}/api/services/${currentProcess.id}/pipewire/nodes`, {
+      const res = await fetch(`${API}/api/services/${currentProcess.id}/pipewire/nodes?_t=${Date.now()}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (res.ok) {
@@ -189,48 +225,157 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
   useEffect(() => {
     fetchGraphTelemetry();
-    if (!autoRefresh || !isRunning) return;
-    const interval = setInterval(() => fetchGraphTelemetry(false), 3000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, isRunning, autoRefresh]);
+  }, [currentProcess.id, isRunning]);
 
-  // Poll daemon execution logs only when console tab is active
+  const { subscribe } = useTelemetry();
+
+  // Subscribe to live PipeWire graph updates via WebSocket
   useEffect(() => {
-    if (activeTab !== 'console' || !isRunning) return;
+    if (!isRunning) return;
+
+    const unsub = subscribe('pipewire_graph', currentProcess.id, (graph: any) => {
+      if (graph) {
+        setGraphData(graph);
+        setLoading(false);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, isRunning, subscribe]);
+
+  // Subscribe to daemon execution logs via WebSocket on-demand and fetch history when console tab is active
+  useEffect(() => {
+    if (activeTab !== 'console') {
+      return;
+    }
+
+    // Always fetch existing logs on mount or tab selection so crashed or stopped services display their output
     const fetchLogs = async () => {
       try {
-        const res = await fetch(`${API}/api/processes/${currentProcess.id}/logs`);
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${API}/api/services/${currentProcess.id}/logs?limit=100`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data)) {
+          if (Array.isArray(data) && data.length > 0) {
             setDaemonLogs(data);
           }
         }
       } catch {
-        // ignore polling network errors
+        // ignore network error
       }
     };
-
     fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
-  }, [currentProcess.id, API, activeTab, isRunning]);
 
-  // Auto-scroll virtual terminal
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, activeTab, subscribe, API]);
+
+  // Subscribe to ptp4l sidecar logs via WebSocket on-demand and fetch history when ptp4l tab is active
+  useEffect(() => {
+    if (activeTab !== 'ptp4l') {
+      return;
+    }
+
+    const fetchPtpLogs = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${API}/api/services/${currentProcess.id}/sidecar-logs/ptp4l?limit=100`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setPtpLogs(data);
+          }
+        }
+      } catch {
+        // ignore network error
+      }
+    };
+    fetchPtpLogs();
+
+    const unsub = subscribe('sidecar_logs', `${currentProcess.id}:ptp4l`, (msg: any) => {
+      if (msg.reset) {
+        setPtpLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setPtpLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, activeTab, subscribe, API]);
+
+  // Subscribe to phc2sys sidecar logs via WebSocket on-demand and fetch history when phc2sys tab is active
+  useEffect(() => {
+    if (activeTab !== 'phc2sys') {
+      return;
+    }
+
+    const fetchPhcLogs = async () => {
+      try {
+        const token = localStorage.getItem('token') || '';
+        const res = await fetch(`${API}/api/services/${currentProcess.id}/sidecar-logs/phc2sys?limit=100`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setPhcLogs(data);
+          }
+        }
+      } catch {
+        // ignore network error
+      }
+    };
+    fetchPhcLogs();
+
+    const unsub = subscribe('sidecar_logs', `${currentProcess.id}:phc2sys`, (msg: any) => {
+      if (msg.reset) {
+        setPhcLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setPhcLogs((prev) => [...prev, ...msg.lines]);
+      }
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, activeTab, subscribe, API]);
+
+  // Auto-scroll virtual terminals
   useEffect(() => {
     if (processLogsContainerRef.current && isRunning) {
       processLogsContainerRef.current.scrollTop = processLogsContainerRef.current.scrollHeight;
     }
-  }, [daemonLogs, isRunning, activeTab]);
+  }, [activeDaemonLogs, isRunning, activeTab]);
 
-  const handleCopyLogs = () => {
-    const text = daemonLogs
+  useEffect(() => {
+    if (ptpLogsContainerRef.current && isRunning) {
+      ptpLogsContainerRef.current.scrollTop = ptpLogsContainerRef.current.scrollHeight;
+    }
+  }, [ptpLogs, isRunning, activeTab]);
+
+  useEffect(() => {
+    if (phcLogsContainerRef.current && isRunning) {
+      phcLogsContainerRef.current.scrollTop = phcLogsContainerRef.current.scrollHeight;
+    }
+  }, [phcLogs, isRunning, activeTab]);
+
+  const handleCopyLogs = (tabKey: string, logs: any[]) => {
+    const text = logs
       .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
       .join('\n');
     universalCopy(text).then((success) => {
       if (success) {
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
+        setCopySuccessTab(tabKey);
+        setTimeout(() => setCopySuccessTab(null), 2000);
       }
     });
   };
@@ -240,6 +385,29 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
   const remoteSinks = Array.isArray(pwConfig.remote_sinks) ? pwConfig.remote_sinks : [];
   const isAes67Enabled = Boolean(pwConfig.aes67_network?.enabled);
   const showAoIpTab = isAes67Enabled || remoteSinks.length > 0;
+  const ptpConfig = pwConfig.aes67_network?.ptp || {};
+
+  // PTP and phc2sys tabs:
+  // When running: strictly visible only if the sidecar process is active in backend telemetry.
+  // When stopped: visible if configured or if historical logs were captured before stop.
+  const showPtpTab = isRunning
+    ? Boolean(graphData?.sidecars?.ptp4l_active)
+    : Boolean(isAes67Enabled && (Boolean(ptpConfig.enabled) || ptpLogs.length > 0));
+
+  const showPhc2sysTab = isRunning
+    ? Boolean(graphData?.sidecars?.phc2sys_active)
+    : Boolean(showPtpTab && phcLogs.length > 0);
+
+  // Auto-redirect active tab if the selected sub-service tab is hidden
+  useEffect(() => {
+    if (activeTab === 'ptp4l' && !showPtpTab) {
+      setActiveTab('nodes');
+    } else if (activeTab === 'phc2sys' && !showPhc2sysTab) {
+      setActiveTab('nodes');
+    } else if (activeTab === 'aoip' && !showAoIpTab) {
+      setActiveTab('nodes');
+    }
+  }, [activeTab, showPtpTab, showPhc2sysTab, showAoIpTab]);
 
   const handleConfigureStreamInHub = (stream: AoIpStream | any) => {
     const rawName = stream.session_name || stream.sap_name || stream.name || 'Remote AoIP Stream';
@@ -304,6 +472,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30">
                   {t('services.pipewire.service_name', 'PipeWire Audio Hub')}
                 </span>
+                <PermissionLevelBadge level={svcLevel} />
                 {isRunning ? (
                   <span className="text-[9px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded font-bold flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -322,7 +491,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            {isRunning && (
+            {canOperate && isRunning && (
               <button
                 onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
                 disabled={isPending}
@@ -333,7 +502,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 <span className="hidden sm:inline">{t('common.restart', 'Restart')}</span>
               </button>
             )}
-            {isRunning ? (
+            {canOperate && (isRunning ? (
               <button
                 onClick={() => onStopService(currentProcess.id, currentProcess.name)}
                 disabled={isPending}
@@ -349,16 +518,18 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
               >
                 {t('common.start', 'Start')}
               </button>
+            ))}
+            {canManage && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditProcess(currentProcess);
+                }}
+                className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1.5 px-3 border border-white/10 text-[var(--text-primary)]"
+              >
+                {t('common.edit', 'Edit')}
+              </button>
             )}
-            <button
-              onClick={() => {
-                onClose();
-                onEditProcess(currentProcess);
-              }}
-              className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1.5 px-3 border border-white/10 text-[var(--text-primary)]"
-            >
-              {t('common.edit', 'Edit')}
-            </button>
             <button
               onClick={onClose}
               className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-sm border border-white/10 transition-colors ml-1"
@@ -407,12 +578,14 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   'Start this PipeWire service to inspect live audio graph nodes, streams, and virtual sinks.'
                 )}
               </span>
-              <button
-                onClick={() => onStartService(currentProcess.id)}
-                className="px-3 py-1 rounded-lg bg-brand-lime text-black font-bold text-xs"
-              >
-                {t('common.start', 'Start')}
-              </button>
+              {canOperate && (
+                <button
+                  onClick={() => onStartService(currentProcess.id)}
+                  className="px-3 py-1 rounded-lg bg-brand-lime text-black font-bold text-xs"
+                >
+                  {t('common.start', 'Start')}
+                </button>
+              )}
             </div>
           )}
 
@@ -447,8 +620,32 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
                 }`}
               >
-                {t('services.pipewire.consoleTab', 'Console & Logs')} ({daemonLogs.length})
+                {t('services.pipewire.consoleTab', 'Console & Logs')}
               </button>
+              {showPtpTab && (
+                <button
+                  onClick={() => setActiveTab('ptp4l')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'ptp4l'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                  }`}
+                >
+                  ⏱️ {t('services.pipewire.ptp4lTab', 'PTP Clock (ptp4l)')}
+                </button>
+              )}
+              {showPhc2sysTab && (
+                <button
+                  onClick={() => setActiveTab('phc2sys')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    activeTab === 'phc2sys'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                  }`}
+                >
+                  🔄 {t('services.pipewire.phc2sysTab', 'HW Sync (phc2sys)')}
+                </button>
+              )}
               {showAoIpTab && (
                 <button
                   onClick={() => setActiveTab('aoip')}
@@ -474,19 +671,10 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                  className="rounded border-[var(--glass-border)] text-brand-lime"
-                />
-                <span>{t('common.autoRefresh', 'Auto-refresh (3s)')}</span>
-              </label>
               <button
                 onClick={() => fetchGraphTelemetry(true)}
                 disabled={loading || !isRunning}
-                className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 text-[var(--text-primary)] disabled:opacity-30"
+                className="w-7 h-7 rounded-lg bg-[var(--input-bg)] hover:bg-white/10 flex items-center justify-center border border-[var(--glass-border)] text-[var(--text-primary)] disabled:opacity-30 transition-colors"
                 title={t('common.refresh', 'Refresh')}
               >
                 <RefreshIcon size={12} className={loading ? 'animate-spin' : ''} />
@@ -502,7 +690,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                   <table className="w-full text-left text-xs font-mono">
                     <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                       <tr>
-                        <th className="p-2.5">ID</th>
                         <th className="p-2.5">{t('services.pipewire.nodeNameEntity', 'Node / Entity Name')}</th>
                         <th className="p-2.5">Media Class</th>
                         <th className="p-2.5">State</th>
@@ -513,9 +700,8 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     <tbody className="divide-y divide-[var(--glass-border)]">
                       {graphData.nodes.map((node) => (
                         <tr key={node.id} className="hover:bg-white/2 transition-colors">
-                          <td className="p-2.5 text-zinc-500">#{node.id}</td>
                           <td className="p-2.5">
-                            <div className="flex flex-col">
+                            <div className="flex flex-col" title={`Node #${node.id}`}>
                               {node.human_label ? (
                                 <>
                                   <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
@@ -591,15 +777,17 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                         {t('services.pipewire.matrixRoutesHelp', 'Real-time audio routes maintained by PipeWireMatrixSupervisor companion')}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleReconcileMatrix}
-                      disabled={isReconciling || !isRunning}
-                      className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1 px-2.5 border border-white/10 text-brand-lime font-bold flex items-center gap-1 disabled:opacity-40"
-                    >
-                      <RefreshIcon size={12} className={isReconciling ? 'animate-spin' : ''} />
-                      <span>{isReconciling ? t('services.pipewire.reconciling', 'Reconciling...') : t('services.pipewire.reconcileMatrix', 'Reconcile Now')}</span>
-                    </button>
+                    {canOperate && (
+                      <button
+                        type="button"
+                        onClick={handleReconcileMatrix}
+                        disabled={isReconciling || !isRunning}
+                        className="pill-button bg-white/5 hover:bg-white/10 text-xs py-1 px-2.5 border border-white/10 text-brand-lime font-bold flex items-center gap-1 disabled:opacity-40"
+                      >
+                        <RefreshIcon size={12} className={isReconciling ? 'animate-spin' : ''} />
+                        <span>{isReconciling ? t('services.pipewire.reconciling', 'Reconciling...') : t('services.pipewire.reconcileMatrix', 'Reconcile Now')}</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="overflow-x-auto rounded-xl border border-[var(--glass-border)] bg-black/10">
@@ -692,7 +880,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     <table className="w-full text-left text-xs font-mono">
                       <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                         <tr>
-                          <th className="p-2.5">Link ID</th>
                           <th className="p-2.5">Output (Source Port)</th>
                           <th className="p-2.5 text-center">Direction</th>
                           <th className="p-2.5">Input (Target Port)</th>
@@ -702,7 +889,6 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       <tbody className="divide-y divide-[var(--glass-border)]">
                         {graphData.links.map((link) => (
                           <tr key={link.id} className="hover:bg-white/2 transition-colors">
-                            <td className="p-2.5 text-zinc-500 font-bold">#{link.id}</td>
                             <td className="p-2.5">
                               <div className="flex flex-col">
                                 <span className="text-[var(--text-primary)] font-bold">
@@ -755,16 +941,16 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={handleCopyLogs}
+                    onClick={() => handleCopyLogs('console', activeDaemonLogs)}
                     className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
                   >
-                    {copySuccess ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
-                    <span>{copySuccess ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
+                    {copySuccessTab === 'console' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                    <span>{copySuccessTab === 'console' ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      const text = daemonLogs
+                      const text = activeDaemonLogs
                         .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
                         .join('\n');
                       const blob = new Blob([text], { type: 'text/plain' });
@@ -778,7 +964,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     {t('services.pipewire.downloadLogs', 'Download Logs')}
                   </button>
                   <span className="text-[var(--text-secondary)] text-[10px] font-bold ml-1">
-                    {daemonLogs.length} {t('common.lines', 'lines')}
+                    {activeDaemonLogs.length} {t('common.lines', 'lines')}
                   </span>
                 </div>
               </div>
@@ -787,17 +973,171 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                 ref={processLogsContainerRef}
                 className="h-80 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
               >
-                {daemonLogs.length === 0 ? (
+                {activeDaemonLogs.length === 0 ? (
                   <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-24 select-none">
                     {isRunning
                       ? t('services.pipewire.waitingLogs', 'Daemon active. Waiting for PipeWire audio routing output...')
                       : t('services.pipewire.stoppedLogs', 'Daemon is stopped. Start service to view execution output.')}
                   </div>
                 ) : (
-                  daemonLogs.map((log, i) => {
+                  activeDaemonLogs.map((log, i) => {
                     const logMsg = typeof log === 'string' ? log : log.message || '';
                     const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
                     const isErr = logMsg.toLowerCase().includes('err') || (typeof log === 'object' && log.level === 'ERROR');
+                    const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
+
+                    return (
+                      <div key={i} className="whitespace-pre-wrap flex items-start gap-2">
+                        {logTime && (
+                          <span className="text-[var(--text-secondary)] select-none shrink-0 opacity-70">
+                            [{logTime}]
+                          </span>
+                        )}
+                        <span
+                          className={`${
+                            isErr ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {logMsg}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'ptp4l' && (
+            <div className="bg-black/60 border border-[var(--glass-border)] rounded-xl p-4 font-mono space-y-3">
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                  <span>⏱️</span>
+                  {t('services.pipewire.ptp4lTitle', 'PTP Master/Slave Clock Sidecar (ptp4l)')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyLogs('ptp4l', ptpLogs)}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    {copySuccessTab === 'ptp4l' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                    <span>{copySuccessTab === 'ptp4l' ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = ptpLogs
+                        .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+                        .join('\n');
+                      const blob = new Blob([text], { type: 'text/plain' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `ptp4l_${currentProcess.id}_console.log`;
+                      a.click();
+                    }}
+                    className="px-2.5 py-1 bg-brand-lime/10 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/20 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    {t('services.pipewire.downloadLogs', 'Download Logs')}
+                  </button>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold ml-1">
+                    {ptpLogs.length} {t('common.lines', 'lines')}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                ref={ptpLogsContainerRef}
+                className="h-80 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
+              >
+                {ptpLogs.length === 0 ? (
+                  <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-24 select-none">
+                    {isRunning
+                      ? t('services.pipewire.waitingSidecarLogs', 'Sidecar active. Waiting for clock synchronization events...')
+                      : t('services.pipewire.stoppedSidecarLogs', 'Sidecar is inactive or stopped.')}
+                  </div>
+                ) : (
+                  ptpLogs.map((log, i) => {
+                    const logMsg = typeof log === 'string' ? log : log.message || '';
+                    const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                    const isErr = logMsg.toLowerCase().includes('err') || logMsg.toLowerCase().includes('fail') || (typeof log === 'object' && log.level === 'ERROR');
+                    const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
+
+                    return (
+                      <div key={i} className="whitespace-pre-wrap flex items-start gap-2">
+                        {logTime && (
+                          <span className="text-[var(--text-secondary)] select-none shrink-0 opacity-70">
+                            [{logTime}]
+                          </span>
+                        )}
+                        <span
+                          className={`${
+                            isErr ? 'text-red-400 font-bold' : isWarn ? 'text-amber-400' : 'text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {logMsg}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'phc2sys' && (
+            <div className="bg-black/60 border border-[var(--glass-border)] rounded-xl p-4 font-mono space-y-3">
+              <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-2 flex-wrap gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                  <span>🔄</span>
+                  {t('services.pipewire.phc2sysTitle', 'Hardware PHC Sync Companion (phc2sys)')}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleCopyLogs('phc2sys', phcLogs)}
+                    className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-[var(--text-primary)] border border-[var(--glass-border)] hover:border-brand-lime/40 text-[9px] font-bold rounded uppercase tracking-wider transition-colors flex items-center gap-1 cursor-pointer"
+                  >
+                    {copySuccessTab === 'phc2sys' ? <CheckIcon size={12} /> : <ClipboardIcon size={12} />}
+                    <span>{copySuccessTab === 'phc2sys' ? t('services.pipewire.logsCopied', '✓ Copied') : t('services.pipewire.copyLogs', 'Copy Logs')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const text = phcLogs
+                        .map((l) => (typeof l === 'string' ? l : `[${l.timestamp || ''}] ${l.message || ''}`))
+                        .join('\n');
+                      const blob = new Blob([text], { type: 'text/plain' });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = `phc2sys_${currentProcess.id}_console.log`;
+                      a.click();
+                    }}
+                    className="px-2.5 py-1 bg-brand-lime/10 hover:bg-brand-lime/25 text-brand-lime border border-brand-lime/20 text-[9px] font-bold rounded uppercase tracking-wider transition-colors cursor-pointer"
+                  >
+                    {t('services.pipewire.downloadLogs', 'Download Logs')}
+                  </button>
+                  <span className="text-[var(--text-secondary)] text-[10px] font-bold ml-1">
+                    {phcLogs.length} {t('common.lines', 'lines')}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                ref={phcLogsContainerRef}
+                className="h-80 overflow-y-auto space-y-1 custom-scrollbar pr-2 select-text text-[11px] leading-relaxed"
+              >
+                {phcLogs.length === 0 ? (
+                  <div className="text-[var(--text-secondary)] opacity-40 italic text-center py-24 select-none">
+                    {isRunning
+                      ? t('services.pipewire.waitingSidecarLogs', 'Sidecar active. Waiting for clock synchronization events...')
+                      : t('services.pipewire.stoppedSidecarLogs', 'Sidecar is inactive or stopped.')}
+                  </div>
+                ) : (
+                  phcLogs.map((log, i) => {
+                    const logMsg = typeof log === 'string' ? log : log.message || '';
+                    const logTime = typeof log === 'object' && log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
+                    const isErr = logMsg.toLowerCase().includes('err') || logMsg.toLowerCase().includes('fail') || (typeof log === 'object' && log.level === 'ERROR');
                     const isWarn = logMsg.toLowerCase().includes('warn') || (typeof log === 'object' && log.level === 'WARN');
 
                     return (
@@ -839,7 +1179,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded text-[10px] font-mono text-[var(--text-secondary)] bg-white/5 border border-white/10">
-                      PTP Master Disabled
+                      {t('services.pipewire.ptpMasterDisabled', 'PTP Disabled')}
                     </span>
                   )}
                 </div>
@@ -850,7 +1190,19 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       {t('services.pipewire.ptpGrandmasterIp', 'Grandmaster IP')}
                     </span>
                     <span className="font-mono font-semibold text-[var(--text-primary)]">
-                      {graphData?.aoip_discovery?.ptp_status?.grandmaster_ip || (pwConfig.aes67_network?.ptp?.enabled ? 'Local Node' : '-')}
+                      {(() => {
+                        const ptpStat = graphData?.aoip_discovery?.ptp_status;
+                        const role = ptpStat?.state || ptpStat?.local_ptp4l_role;
+                        if (!pwConfig.aes67_network?.ptp?.enabled) return '-';
+                        if (ptpStat?.grandmaster_ip || ptpStat?.source_ip) {
+                          return ptpStat.grandmaster_ip || ptpStat.source_ip;
+                        }
+                        if (role === 'MASTER') return pwConfig.aes67_network?.ip || t('services.pipewire.ptpLocalNode', 'Local Node');
+                        if (role === 'SLAVE' || role === 'CALIBRATING' || role === 'UNCALIBRATED' || role === 'LISTENING') {
+                          return t('services.pipewire.ptpSearching', 'Searching Grandmaster...');
+                        }
+                        return '-';
+                      })()}
                     </span>
                   </div>
 
@@ -867,9 +1219,29 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                     <span className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block">
                       {t('services.pipewire.ptpRole', 'Local ptp4l State')}
                     </span>
-                    <span className="font-mono font-bold text-cyan-400 uppercase">
-                      {graphData?.aoip_discovery?.ptp_status?.state || (pwConfig.aes67_network?.ptp?.enabled ? 'MASTER' : 'INACTIVE')}
-                    </span>
+                    {(() => {
+                      const ptpStat = graphData?.aoip_discovery?.ptp_status;
+                      const role = ptpStat?.state || ptpStat?.local_ptp4l_role || (pwConfig.aes67_network?.ptp?.enabled ? (pwConfig.aes67_network?.ptp?.force_local_master ? 'MASTER' : 'LISTENING') : 'INACTIVE');
+                      const roleColor =
+                        role === 'MASTER' ? 'text-purple-400' :
+                        (role === 'SLAVE' || role === 'CALIBRATING') ? 'text-emerald-400' :
+                        role === 'UNCALIBRATED' ? 'text-amber-400' :
+                        role === 'LISTENING' ? 'text-cyan-400' :
+                        role === 'FAULTY' ? 'text-red-400' : 'text-zinc-500';
+                      const isSw = ptpStat?.time_stamping === 'software' || ptpStat?.free_running;
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`font-mono font-bold uppercase ${roleColor}`}>
+                            {role}
+                          </span>
+                          {pwConfig.aes67_network?.ptp?.enabled && role !== 'INACTIVE' && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-white/5 border border-white/10 text-[var(--text-secondary)]">
+                              {isSw ? 'SW · Free-Running' : 'HW · PHC'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="p-2.5 rounded-lg bg-black/20 border border-[var(--glass-border)]">
@@ -877,7 +1249,7 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       BMCA Priority / Domain
                     </span>
                     <span className="font-mono text-[var(--text-secondary)]">
-                      Prio: {pwConfig.aes67_network?.ptp?.priority1 ?? 128} · Dom: {pwConfig.aes67_network?.ptp?.domain ?? 0}
+                      Prio: {pwConfig.aes67_network?.aoip_profile === 'dante' && !pwConfig.aes67_network?.ptp?.force_local_master ? 254 : (pwConfig.aes67_network?.ptp?.priority1 ?? (pwConfig.aes67_network?.aoip_profile === 'dante' ? 253 : 128))} · Dom: {pwConfig.aes67_network?.aoip_profile === 'dante' ? 0 : (pwConfig.aes67_network?.ptp?.domain ?? 0)}
                     </span>
                   </div>
                 </div>
@@ -919,9 +1291,15 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       </thead>
                       <tbody className="divide-y divide-[var(--glass-border)]">
                         {remoteSinks.map((rs: any, idx: number) => {
-                          const isOnline = isRunning && Boolean(
+                          const liveSink = graphData?.aoip_discovery?.remote_sinks_status?.find(
+                            (s: any) => s.id === rs.id || (s.multicast_ip?.trim() === rs.multicast_ip?.trim() && Number(s.rtp_port) === Number(rs.rtp_port))
+                          );
+                          const isNodeLoaded = Boolean(
                             graphData?.nodes?.some((n) => n.name === `rtp_rx_${rs.id}` || n.name === rs.id)
                           );
+                          const isOnline = isRunning && isNodeLoaded && liveSink?.status === 'online';
+                          const isWaiting = isRunning && isNodeLoaded && (!liveSink || liveSink?.status === 'waiting');
+
                           return (
                             <tr key={rs.id || idx} className="hover:bg-white/2 transition-colors">
                               <td className="py-2.5 px-3 font-bold text-[var(--text-primary)]">
@@ -945,9 +1323,13 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
                                     🟢 {t('services.pipewire.statusOnline', 'Online / Linked')}
                                   </span>
-                                ) : (
+                                ) : isWaiting ? (
                                   <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30">
                                     🟡 {t('services.pipewire.statusWaiting', 'Waiting for Stream')}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30">
+                                    🔴 {t('services.pipewire.statusOffline', 'Offline / Unloaded')}
                                   </span>
                                 )}
                               </td>
@@ -969,29 +1351,62 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
                       {t('services.pipewire.discoveredLanStreams', 'Discovered LAN AoIP Streams (SAP Radar)')}
                     </h4>
                   </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 font-bold">
-                    {graphData?.aoip_discovery?.discovered_streams?.length || 0}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fetchGraphTelemetry(true)}
+                      disabled={loading || !isRunning}
+                      className="px-2 py-0.5 rounded bg-[var(--input-bg)] hover:bg-white/10 flex items-center gap-1 border border-[var(--glass-border)] text-[10px] font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-30 transition-colors cursor-pointer"
+                      title={t('services.pipewire.refreshRadar', 'Refresh & Prune SAP Streams')}
+                    >
+                      <RefreshIcon size={10} className={loading ? 'animate-spin' : ''} />
+                      <span>{t('common.refresh', 'Refresh')}</span>
+                    </button>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-brand-lime/10 text-brand-lime border border-brand-lime/20 font-bold">
+                      {graphData?.aoip_discovery?.discovered_streams?.length || 0}
+                    </span>
+                  </div>
                 </div>
 
                 {(!graphData?.aoip_discovery?.discovered_streams || graphData.aoip_discovery.discovered_streams.length === 0) ? (
                   <div className="py-6 text-center text-xs text-[var(--text-secondary)]">
-                    <div className="inline-block p-2 rounded-full bg-white/5 border border-white/10 mb-2">
-                      <span className="animate-spin inline-block text-brand-lime">↻</span>
-                    </div>
-                    <p>{t('services.pipewire.noLanStreamsDiscovered', 'Listening on 224.0.0.56 / 224.2.127.254:9875... No SAP announcements detected yet.')}</p>
+                    {isRunning ? (
+                      <>
+                        <div className="inline-block p-2 rounded-full bg-[var(--input-bg)] border border-[var(--glass-border)] mb-2">
+                          <span className="animate-spin inline-block text-brand-lime">↻</span>
+                        </div>
+                        <p className="font-semibold text-[var(--text-primary)]">
+                          {t('services.pipewire.scanningLanStreams', 'Scanning LAN for AoIP streams...')}
+                        </p>
+                        <p className="text-[11px] text-[var(--text-secondary)] mt-1 font-mono">
+                          {t('services.pipewire.aoipListeningHint', {
+                            defaultValue: 'Listening passively for SAP/SDP announcements on {{iface}}',
+                            iface: graphData?.aoip_discovery?.interface || currentProcess.config?.pipewire_config?.aes67_network?.interface || 'network'
+                          })}
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="inline-block p-2 rounded-full bg-[var(--input-bg)] border border-[var(--glass-border)] mb-2 text-zinc-500">
+                          <span>⏸</span>
+                        </div>
+                        <p>{t('services.pipewire.aoipDiscoveryOffline', 'AoIP stream scanner is idle. Start this PipeWire service to scan the network.')}</p>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border border-[var(--glass-border)]">
-                    <table className="w-full text-left text-xs font-mono">
-                      <thead className="bg-black/30 border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
+                    <table className="w-full text-left text-[11px] font-mono">
+                      <thead className="bg-[var(--input-bg)] border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)]">
                         <tr>
-                          <th className="py-2 px-3">{t('services.pipewire.remoteSinkName', 'Session / Stream Name')}</th>
-                          <th className="py-2 px-3">Multicast Endpoint</th>
-                          <th className="py-2 px-3">Audio Profile</th>
-                          <th className="py-2 px-3">{t('services.pipewire.streamOrigin', 'Origin')}</th>
-                          <th className="py-2 px-3">{t('services.pipewire.streamClock', 'PTP Clock')}</th>
-                          <th className="py-2 px-3 text-right">Action / State</th>
+                          <th className="py-2 px-2.5">{t('services.pipewire.remoteSinkName', 'Session / Stream Name')}</th>
+                          <th className="py-2 px-2.5 whitespace-nowrap">
+                            {t('services.pipewire.multicastEndpoint', 'Multicast Endpoint')} / {t('services.pipewire.streamOrigin', 'Origin')}
+                          </th>
+                          <th className="py-2 px-2.5 whitespace-nowrap">{t('services.pipewire.audioProfile', 'Audio Profile')}</th>
+                          <th className="py-2 px-2.5 whitespace-nowrap">{t('services.pipewire.streamClock', 'PTP Clock')}</th>
+                          <th className="py-2 px-2.5 whitespace-nowrap">{t('common.status', 'Status')}</th>
+                          <th className="py-2 px-2.5 text-right whitespace-nowrap">{t('services.pipewire.actionState', 'Action / State')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[var(--glass-border)]">
@@ -1005,39 +1420,60 @@ export const PipeWirePreviewModal: React.FC<PipeWirePreviewModalProps> = ({
 
                           return (
                             <tr key={sId} className="hover:bg-white/2 transition-colors">
-                              <td className="py-2.5 px-3">
-                                <div className="font-bold text-[var(--text-primary)] font-sans">{sName}</div>
-                                <div className="text-[10px] text-[var(--text-secondary)]">{sId}</div>
+                              <td className="py-2 px-2.5 max-w-[210px]">
+                                <div className="font-bold text-[var(--text-primary)] font-sans break-words">{sName}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)] truncate" title={sId}>{sId}</div>
                               </td>
-                              <td className="py-2.5 px-3 text-cyan-400 font-semibold">
-                                {stream.multicast_ip}:{stream.rtp_port}
+                              <td className="py-2 px-2.5 whitespace-nowrap">
+                                <div className="text-cyan-400 font-semibold">{stream.multicast_ip}:{stream.rtp_port}</div>
+                                <div className="text-[10px] text-[var(--text-secondary)]">
+                                  {t('services.pipewire.streamOrigin', 'Origin')}: {stream.origin_ip || '-'}
+                                </div>
                               </td>
-                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
+                              <td className="py-2 px-2.5 text-[var(--text-secondary)] whitespace-nowrap">
                                 {stream.channels}ch · {stream.format || 'S24BE'} · {sRate}Hz
                               </td>
-                              <td className="py-2.5 px-3 text-[var(--text-secondary)]">
-                                {stream.origin_ip || '-'}
-                              </td>
-                              <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[120px]" title={stream.ptp_clock_id || '-'}>
+                              <td className="py-2 px-2.5 text-[var(--text-secondary)] truncate max-w-[115px]" title={stream.ptp_clock_id || '-'}>
                                 {stream.ptp_clock_id || '-'}
                               </td>
-                              <td className="py-2.5 px-3 text-right">
+                              <td className="py-2 px-2.5 whitespace-nowrap">
+                                {stream.status === 'waiting' ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                                    {t('services.pipewire.statusWaiting', 'Waiting')}
+                                  </span>
+                                ) : stream.status === 'online' ? (
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                                    {t('common.active', 'Active')}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] px-2 py-0.5 rounded text-[var(--text-secondary)] bg-white/5 border border-white/10 inline-flex items-center whitespace-nowrap">
+                                    -
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-2 px-2.5 text-right whitespace-nowrap">
                                 {stream.is_local ? (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/30 inline-flex items-center whitespace-nowrap">
                                     {t('services.pipewire.localTxStream', 'Local Tx')}
                                   </span>
                                 ) : isConfigured ? (
-                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1 whitespace-nowrap">
                                     ✓ {t('services.pipewire.alreadyConfigured', 'Persisted')}
                                   </span>
-                                ) : (
+                                ) : canManage ? (
                                   <button
                                     onClick={() => handleConfigureStreamInHub(stream)}
-                                    className="px-2.5 py-1 rounded-lg bg-brand-lime hover:bg-brand-lime/90 text-black text-xs font-bold transition-all shadow-sm"
+                                    className="px-2.5 py-1 rounded-lg bg-brand-lime hover:bg-brand-lime/90 text-black text-[11px] font-bold transition-all shadow-sm inline-flex items-center gap-1 whitespace-nowrap"
                                     title="Import this stream into PipeWire Hub configuration"
                                   >
                                     ⚙️ {t('services.pipewire.configureInHub', 'Configure in Hub')}
                                   </button>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[var(--input-bg)] text-[var(--text-secondary)] border border-[var(--glass-border)] inline-flex items-center whitespace-nowrap">
+                                    {t('auth.permissionMonitor', 'MONITOR')}
+                                  </span>
                                 )}
                               </td>
                             </tr>

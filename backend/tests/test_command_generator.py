@@ -57,6 +57,8 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("srt://0.0.0.0:8888?mode=listener&latency=200&streamid=output_id", cmd_str)
         # Check Annex B filter for H.264 into SRT/mpegts
         self.assertIn("-bsf:v h264_mp4toannexb", cmd_str)
+        # Check max_muxing_queue_size guardrail against memory runaway
+        self.assertIn("-max_muxing_queue_size 1024", cmd_str)
 
     def test_ndi_input_and_output(self):
         # Test Case 2: NDI Input (no find_sources) and NDI Output (format=uyvy422)
@@ -1189,6 +1191,53 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertIn("-name ffmpeg_service_46", cmd_str)
         self.assertIn("-stream_name RTSP to PW", cmd_str)
         self.assertIn("mix_bus", cmd_str)
+
+    def test_signal_watchdog_filters_injection_and_vram_bridge(self):
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        proc = {
+            "input_config": {
+                "has_video": True,
+                "has_audio": True,
+                "input1": {"type": "srt", "url": "srt://127.0.0.1:9000", "hwaccel": "vaapi", "frames_destination": "vram"}
+            },
+            "codec_config": {"vcodec": "h264_vaapi", "acodec": "aac"},
+            "filter_config": {},
+            "output_config": {"type": "udp", "url": "udp://127.0.0.1:5000"},
+            "signal_watchdog": {
+                "silence_enabled": True,
+                "silence_threshold_db": -48,
+                "silence_duration": 12,
+                "black_enabled": True,
+                "black_duration": 5,
+                "black_pic_th": 0.98,
+                "black_pix_th": 0.10,
+                "freeze_enabled": True,
+                "freeze_duration": 6,
+                "freeze_noise_db": -55,
+            }
+        }
+        cmd = FFmpegCommandBuilder.build_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+        self.assertIn("silencedetect=n=-48dB:d=12", cmd_str)
+        self.assertIn("hwdownload,format=nv12", cmd_str)
+        self.assertIn("blackdetect=d=5:pic_th=0.98:pix_th=0.1,metadata=mode=print:key=lavfi.black_start,metadata=mode=print:key=lavfi.black_end", cmd_str)
+        self.assertIn("freezedetect=n=-55dB:d=6", cmd_str)
+        self.assertIn("hwupload", cmd_str)
+
+    def test_signal_watchdog_skipped_on_stream_copy(self):
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        proc = {
+            "input_config": {"has_video": True, "has_audio": True, "input1": {"type": "srt", "url": "srt://127.0.0.1:9000"}},
+            "codec_config": {"vcodec": "copy", "acodec": "copy"},
+            "filter_config": {},
+            "output_config": {"type": "udp", "url": "udp://127.0.0.1:5000"},
+            "signal_watchdog": {"silence_enabled": True, "black_enabled": True, "freeze_enabled": True}
+        }
+        cmd = FFmpegCommandBuilder.build_cmd(proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+        self.assertNotIn("silencedetect", cmd_str)
+        self.assertNotIn("blackdetect", cmd_str)
+        self.assertNotIn("freezedetect", cmd_str)
 
 
 if __name__ == '__main__':

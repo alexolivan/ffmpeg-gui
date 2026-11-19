@@ -380,6 +380,69 @@ class LCDManager:
                 logger.error(f"Error in led control loop: {e}")
             await asyncio.sleep(0.1)
 
+    def get_led_states_snapshot(self) -> List[str]:
+        """Return semantic states for the 4 CFA635 LEDs ('off', 'green', 'yellow', 'red', 'blink_green', 'blink_red')."""
+        led_profiles = [
+            self.lcd_led0_profile,
+            self.lcd_led1_profile,
+            self.lcd_led2_profile,
+            self.lcd_led3_profile,
+        ]
+        states: List[str] = []
+        for profile in led_profiles:
+            state = "off"
+            if profile == "heartbeat":
+                state = "blink_green"
+            elif profile in ("services", "streams"):
+                if self._cached_led_states.get("error_stream") or self._cached_led_states.get("error_service"):
+                    state = "red"
+                elif self._cached_led_states.get("running_stream") or self._cached_led_states.get("running_service"):
+                    state = "green"
+                else:
+                    state = "off"
+            elif profile == "tasks":
+                if self._cached_led_states.get("failed_task"):
+                    state = "red"
+                elif self._cached_led_states.get("running_task"):
+                    state = "green"
+                else:
+                    state = "off"
+            elif profile in ("resources", "alert"):
+                if self._cached_led_states.get("cpu_high") or self._cached_led_states.get("ram_high"):
+                    state = "red"
+                else:
+                    state = "green"
+            elif profile == "recording":
+                if self._cached_led_states.get("is_recording"):
+                    state = "blink_red"
+                else:
+                    state = "off"
+            elif profile == "storage":
+                if self._cached_led_states.get("storage_alert"):
+                    state = "red"
+                else:
+                    state = "green"
+            elif profile in ("peers", "p2p"):
+                peer_st = self._cached_led_states.get("peer_state", "none")
+                if peer_st == "error":
+                    state = "red"
+                elif peer_st == "warn":
+                    state = "yellow"
+                elif peer_st == "ok":
+                    state = "green"
+                else:
+                    state = "off"
+            elif profile in ("thermal", "hardware", "therm"):
+                t_st = self._cached_led_states.get("thermal_status", "normal")
+                if t_st == "critical":
+                    state = "red"
+                elif t_st == "warning":
+                    state = "yellow"
+                else:
+                    state = "green"
+            states.append(state)
+        return states
+
     def start(self):
         self._running = True
         try:

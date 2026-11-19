@@ -11,6 +11,9 @@ import {
   CheckIcon,
 } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
+import { useTelemetry } from '../../context/TelemetryContext';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 interface DesktopPreviewModalProps {
   selectedProcess: any;
@@ -23,6 +26,7 @@ interface DesktopPreviewModalProps {
   onStartService: (id: number) => void;
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
+  permissions?: EdgePermissionsSummary | null;
   API: string;
 }
 
@@ -53,17 +57,34 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
   onStartService,
   onStopService,
   onRestartService,
+  permissions,
   API,
 }) => {
   const { t } = useTranslation();
 
   const currentProcess = telemetry.find((p) => p.id === selectedProcess.id) || selectedProcess;
   const isRunning = currentProcess.status === 'running';
+  const svcLevel = getServiceLevel(permissions, currentProcess);
+  const canOperate = hasMinLevel(svcLevel, 'operate');
+  const canManage = hasMinLevel(svcLevel, 'manage');
 
   const isKiosk = selectedProcess.service_type === 'kiosk_browser';
   const kioskCfg = isKiosk ? (currentProcess.config?.kiosk_config || currentProcess.config || {}) : null;
-  const targetDesktopId = isKiosk ? kioskCfg?.desktop_service_id : selectedProcess.id;
+  const targetDesktopId = isKiosk
+    ? (kioskCfg?.desktop_service_id || kioskCfg?.target_desktop_service_id)
+    : selectedProcess.id;
   const targetDesktopProcess = isKiosk ? telemetry.find((p) => p.id === targetDesktopId) : null;
+
+  const effectiveDesktopLevel = (() => {
+    if (!permissions || permissions.is_owner !== false) return 'admin';
+    if (!isKiosk) return svcLevel;
+    const procs = permissions.scopes?.processes;
+    const tid = targetDesktopId !== undefined && targetDesktopId !== null ? String(targetDesktopId) : null;
+    if (tid && procs?.services && tid in procs.services) return procs.services[tid];
+    if (procs?.by_type && 'desktop' in procs.by_type) return procs.by_type.desktop;
+    return procs?.default || 'none';
+  })();
+  const isViewOnly = !hasMinLevel(effectiveDesktopLevel, 'operate');
   const deskCfg = isKiosk
     ? (targetDesktopProcess?.config?.desktop_config || targetDesktopProcess?.desktop_config || {})
     : (currentProcess.config?.desktop_config || currentProcess.desktop_config || currentProcess.config || {});
@@ -86,25 +107,20 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
   const logsContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Fetch daemon logs
+  const { subscribe } = useTelemetry();
+
+  // Subscribe to logs via WebSocket on-demand (Zero HTTP polling)
   useEffect(() => {
-    let interval: any = null;
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${currentProcess.id}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          setDaemonLogs(Array.isArray(data) ? data : []);
-        }
-      } catch {
-        // ignore log fetch failure
+    const unsub = subscribe('process_logs', currentProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setDaemonLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setDaemonLogs((prev) => [...prev, ...msg.lines]);
       }
-    };
-    fetchLogs();
-    interval = setInterval(fetchLogs, 2000);
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [API, currentProcess.id]);
+    });
+
+    return () => unsub();
+  }, [currentProcess.id, subscribe]);
 
   // Auto-scroll logs when updated
   useEffect(() => {
@@ -143,6 +159,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
         shared: true,
       });
 
+      rfb.viewOnly = isViewOnly;
       rfb.scaleViewport = scaleViewport;
       rfb.resizeSession = false;
 
@@ -190,6 +207,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
         const wsUrl = `${protocol}//${host}/ws/desktop/${targetDesktopId}/vnc`;
         try {
           const rfb = new RFB(container, wsUrl, { shared: true });
+          rfb.viewOnly = isViewOnly;
           rfb.scaleViewport = scaleViewport;
           rfb.addEventListener('connect', () => setConnectionStatus('connected'));
           rfb.addEventListener('disconnect', (e: any) => setConnectionStatus(e?.detail?.clean ? 'disconnected' : 'failed'));
@@ -254,6 +272,12 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
                 }`}>
                   {isKiosk ? `Kiosk (${kioskCfg?.engine_id || 'chromium'}) • Display :${displayNum}` : `Display :${displayNum} • ${resolution}`}
                 </span>
+                <PermissionLevelBadge level={svcLevel} />
+                {isViewOnly && (
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border bg-[var(--input-bg)] text-[var(--text-secondary)] border-[var(--glass-border)] uppercase">
+                    {t('auth.viewOnly', 'VIEW ONLY')}
+                  </span>
+                )}
               </div>
 
               <div className="flex items-center gap-3 text-xs text-[var(--text-secondary)] font-mono mt-0.5">
@@ -279,7 +303,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
 
           {/* Action Button Controls */}
           <div className="flex items-center gap-2 shrink-0">
-            {isRunning ? (
+            {canOperate && (isRunning ? (
               <>
                 <button
                   onClick={() => onRestartService(selectedProcess.id, selectedProcess.name)}
@@ -310,20 +334,22 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
                 <PlayIcon size={12} />
                 {t('common.start', 'Start')}
               </button>
+            ))}
+
+            {canManage && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onEditProcess(selectedProcess);
+                }}
+                className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer"
+                title={t('common.edit', 'Edit Service')}
+              >
+                <PencilIcon size={14} />
+              </button>
             )}
 
-            <button
-              onClick={() => {
-                onClose();
-                onEditProcess(selectedProcess);
-              }}
-              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all cursor-pointer"
-              title={t('common.edit', 'Edit Service')}
-            >
-              <PencilIcon size={14} />
-            </button>
-
-            {onCloneProcess && (
+            {canManage && onCloneProcess && (
               <button
                 onClick={() => {
                   onClose();
@@ -458,16 +484,18 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
                     ? t('kiosk.service_stopped_desc', 'Start the kiosk service to launch the browser and view the screen.')
                     : t('desktop.service_stopped_desc', 'Start the virtual desktop service to initialize the Xvfb X11 screen and connect via interactive HTML5 VNC.')}
                 </p>
-                <button
-                  onClick={() => onStartService(selectedProcess.id)}
-                  disabled={!!actionPending[selectedProcess.id]}
-                  className="mt-2 px-5 py-2 rounded-xl text-xs font-bold bg-brand-lime text-black hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <PlayIcon size={14} />
-                  {isKiosk
-                    ? t('common.start_service', 'Start Kiosk Display')
-                    : t('common.start_service', 'Start Virtual Desktop')}
-                </button>
+                {canOperate && (
+                  <button
+                    onClick={() => onStartService(selectedProcess.id)}
+                    disabled={!!actionPending[selectedProcess.id]}
+                    className="mt-2 px-5 py-2 rounded-xl text-xs font-bold bg-brand-lime text-black hover:opacity-90 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <PlayIcon size={14} />
+                    {isKiosk
+                      ? t('common.start_service', 'Start Kiosk Display')
+                      : t('common.start_service', 'Start Virtual Desktop')}
+                  </button>
+                )}
               </div>
             )
           ) : (

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   PlayIcon,
@@ -12,7 +12,11 @@ import {
   ShieldIcon,
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
+import { MicroSparkline } from '../common/MicroSparkline';
+import { ServiceRRDDrawer } from './ServiceRRDDrawer';
 import type { ServiceItem } from './UnifiedServiceCard';
+import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
+import { hasMinLevel, type CapabilityLevel } from '../../utils/permissions';
 
 interface PipeWireServiceCardProps {
   service: ServiceItem;
@@ -26,6 +30,7 @@ interface PipeWireServiceCardProps {
   onDeleteProcess: (service: ServiceItem) => void;
   onSelectedProcess: (service: ServiceItem) => void;
   onExportProcess?: (service: ServiceItem) => void;
+  serviceLevel?: CapabilityLevel;
   API?: string;
 }
 
@@ -57,9 +62,13 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   onDeleteProcess,
   onSelectedProcess,
   onExportProcess,
+  serviceLevel = 'admin',
   API,
 }) => {
   const { t } = useTranslation();
+  const [isRrdExpanded, setIsRrdExpanded] = useState(false);
+  const canOperate = hasMinLevel(serviceLevel, 'operate');
+  const canManage = hasMinLevel(serviceLevel, 'manage');
   const isRunning = service.status === 'running';
   const isPending = !!actionPending;
   const restartCount = service.restart_count || 0;
@@ -69,6 +78,8 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   const cpu = telemetryItem?.cpu ?? service.cpu ?? 0;
   const ram = telemetryItem?.ram ?? service.ram ?? 0;
   const pid = telemetryItem?.pid || service.pid;
+  const sparkline = telemetryItem?.sparkline || service.sparkline || [];
+  const hasRrdOutlier = telemetryItem?.has_rrd_outlier ?? service.has_rrd_outlier ?? false;
 
   const pwConfig = service.config?.pipewire_config || service.config || {};
   const sampleRate = pwConfig.sample_rate || 48000;
@@ -83,7 +94,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   return (
     <div
       onClick={() => onSelectedProcess(service)}
-      className={`group relative flex flex-col lg:flex-row lg:items-center justify-between p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
+      className={`group relative flex flex-col p-3.5 rounded-xl border transition-all duration-200 cursor-pointer ${
         isRunning
           ? 'bg-purple-500/5 border-purple-500/20 hover:bg-purple-500/10 hover:border-purple-500/40'
           : service.status === 'error'
@@ -91,6 +102,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
           : 'bg-white/2 hover:bg-white/5 border-[var(--glass-border)] opacity-85 hover:opacity-100'
       }`}
     >
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
       {/* Left Info Column */}
       <div className="flex flex-col gap-1.5 min-w-0 flex-1 pr-4">
         {/* Title & Badges Row */}
@@ -129,6 +141,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
             <EngineLogo softwareType="pipewire" size={12} API={API} />
             PipeWire Hub
           </span>
+          <PermissionLevelBadge level={serviceLevel} />
 
           {/* Pending Changes Reboot */}
           {service.pending_changes && (
@@ -227,15 +240,32 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
                 <span>AES67 Tx</span>
                 {aes67Interface && <span className="opacity-70 font-normal">@{aes67Interface}</span>}
               </span>
-              {aes67Net.ptp?.enabled && (
-                <span
-                  className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold flex items-center gap-1"
-                  title={`PTP Master Clock active (BMCA Priority ${aes67Net.ptp?.priority1 ?? 128}, Domain ${aes67Net.ptp?.domain ?? 0})`}
-                >
-                  <span>⏱️ PTP Master</span>
-                  <span className="opacity-70 font-normal text-[9px]">(Prio {aes67Net.ptp?.priority1 ?? 128})</span>
-                </span>
-              )}
+              {aes67Net.ptp?.enabled && (() => {
+                const livePtpRole = telemetryItem?.ptp_role || service.ptp_role;
+                const hasLiveRole = isRunning && livePtpRole && livePtpRole !== 'INACTIVE' && livePtpRole !== 'UNKNOWN';
+                const roleBadgeText = hasLiveRole ? `PTP: ${livePtpRole}` : 'PTPv2';
+                const roleColorClass =
+                  !hasLiveRole
+                    ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                    : livePtpRole === 'MASTER'
+                    ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                    : livePtpRole === 'SLAVE' || livePtpRole === 'CALIBRATING'
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                    : livePtpRole === 'UNCALIBRATED'
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : livePtpRole === 'FAULTY'
+                    ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                    : 'bg-blue-500/15 text-blue-400 border-blue-500/30';
+
+                return (
+                  <span
+                    className={`px-1.5 py-0.5 rounded border text-[10px] font-bold flex items-center gap-1 ${roleColorClass}`}
+                    title={`PTPv2 Synchronization (${hasLiveRole ? `Role: ${livePtpRole} · ` : ''}BMCA Priority ${aes67Net.aoip_profile === 'dante' && !aes67Net.ptp?.force_local_master ? 254 : (aes67Net.ptp?.priority1 ?? (aes67Net.aoip_profile === 'dante' ? 253 : 128))}, Domain ${aes67Net.aoip_profile === 'dante' ? 0 : (aes67Net.ptp?.domain ?? 0)})`}
+                  >
+                    <span>⏱️ {roleBadgeText}</span>
+                  </span>
+                );
+              })()}
             </>
           ) : (
             <span className="px-1.5 py-0.5 rounded bg-white/5 text-zinc-400 border border-white/10 text-[10px]">
@@ -246,6 +276,18 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
 
         {/* Compact Telemetry Strip */}
         <div className="flex gap-x-3 gap-y-1 mt-0.5 text-xs text-[var(--text-secondary)] flex-wrap items-center font-mono tabular-nums">
+          {isRunning && (
+            <>
+              <MicroSparkline
+                data={sparkline}
+                label="CPU"
+                hasOutlier={hasRrdOutlier}
+                isExpanded={isRrdExpanded}
+                onToggle={() => setIsRrdExpanded((prev) => !prev)}
+              />
+              <span className="opacity-20">|</span>
+            </>
+          )}
           <span>
             PID:{' '}
             <strong className={isRunning && pid ? 'text-[var(--text-primary)] font-bold' : 'text-zinc-500 font-normal'}>
@@ -273,17 +315,19 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
       {/* Right Iconic Action Button Bar */}
       <div className="flex items-center gap-1.5 mt-3 lg:mt-0 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
         {/* Edit Button */}
-        <button
-          disabled={isPending}
-          onClick={() => onEditProcess(service)}
-          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 text-[var(--text-primary)]"
-          title={t('common.edit', 'Edit Service Settings')}
-        >
-          <PencilIcon size={16} />
-        </button>
+        {canManage && (
+          <button
+            disabled={isPending}
+            onClick={() => onEditProcess(service)}
+            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 text-[var(--text-primary)]"
+            title={t('common.edit', 'Edit Service Settings')}
+          >
+            <PencilIcon size={16} />
+          </button>
+        )}
 
         {/* Clone Service Button */}
-        {onCloneProcess && (
+        {canManage && onCloneProcess && (
           <button
             disabled={isPending}
             onClick={() => onCloneProcess(service)}
@@ -295,7 +339,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         )}
 
         {/* Export Button */}
-        {onExportProcess && (
+        {canManage && onExportProcess && (
           <button
             disabled={isPending}
             onClick={() => onExportProcess(service)}
@@ -307,7 +351,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         )}
 
         {/* Restart Button */}
-        {isRunning && (
+        {canOperate && isRunning && (
           <button
             disabled={isPending}
             onClick={() => onRestartService(service.id, service.name)}
@@ -327,7 +371,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         )}
 
         {/* Start / Stop Action Controls */}
-        {isRunning || isRetrying ? (
+        {canOperate && (isRunning || isRetrying ? (
           <button
             disabled={actionPending === 'stopping'}
             onClick={() => onStopService(service.id, service.name)}
@@ -353,21 +397,36 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
               <PlayIcon size={16} />
             )}
           </button>
-        )}
+        ))}
 
         {/* Delete Process Button */}
-        <button
-          disabled={isRunning || isPending}
-          onClick={() => onDeleteProcess(service)}
-          className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/15 text-red-400/70 hover:text-red-400 border border-red-500/10 hover:border-red-500/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-30 disabled:cursor-not-allowed"
-          title={
-            isRunning
-              ? t('services.cannotDeleteRunning', 'Stop service before deleting')
-              : t('common.delete', 'Delete Service')
-          }
-        >
-          <TrashIcon size={16} />
-        </button>
+        {canManage && (
+          <button
+            disabled={isRunning || isPending}
+            onClick={() => onDeleteProcess(service)}
+            className="w-9 h-9 rounded-xl bg-red-500/5 hover:bg-red-500/15 text-red-400/70 hover:text-red-400 border border-red-500/10 hover:border-red-500/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-30 disabled:cursor-not-allowed"
+            title={
+              isRunning
+                ? t('services.cannotDeleteRunning', 'Stop service before deleting')
+                : t('common.delete', 'Delete Service')
+            }
+          >
+            <TrashIcon size={16} />
+          </button>
+        )}
+      </div>
+      </div>
+
+      {/* Expandable Volatile RRD Metrics Drawer */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <ServiceRRDDrawer
+          serviceId={service.id}
+          isOpen={isRrdExpanded}
+          hasVideo={false}
+          serviceType="pipewire_hub"
+          initialMetric="cpu"
+          onClose={() => setIsRrdExpanded(false)}
+        />
       </div>
     </div>
   );

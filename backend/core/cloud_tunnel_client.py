@@ -28,6 +28,7 @@ except ImportError:
 
 
 logger = logging.getLogger("ffmpeg_gui.cloud_tunnel")
+MAX_TUNNEL_FRAME_BYTES = 15_500_000
 
 
 def encode_body(data: Optional[bytes]) -> Optional[str]:
@@ -69,6 +70,7 @@ class CloudTunnelClient:
         self._last_connected_at: Optional[float] = None
         self._last_error: Optional[str] = None
         self._active_ws_streams: Dict[str, asyncio.Queue] = {}
+        self._active_http_streams: Dict[str, asyncio.Event] = {}
 
     def get_status(self) -> Dict[str, Any]:
         """Return real-time connection status for Web UI settings card."""
@@ -275,6 +277,111 @@ class CloudTunnelClient:
             logger.debug("SSO assertion validation error: %s", err)
             return False
 
+    def _verify_authz_assertion(
+        self, assertion: Optional[str], tunnel_secret: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Validate HMAC-SHA256 capability claims assertion and return decoded claims.
+        Format: {node_id}:{username}:{claims_b64}:{timestamp}:{expiry}:{sig}
+        """
+        if not assertion or not tunnel_secret:
+            return None
+
+        try:
+            parts = assertion.split(":")
+            if len(parts) != 6:
+                return None
+
+            node_id, username, claims_b64, ts_str, exp_str, signature = parts
+            now = int(time.time())
+            ts = int(ts_str)
+            exp = int(exp_str)
+
+            if now > exp or abs(now - ts) > 60:
+                return None
+
+            payload = f"{node_id}:{username}:{claims_b64}:{ts_str}:{exp_str}"
+            expected_sig = hmac.new(
+                tunnel_secret.encode("utf-8"),
+                payload.encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+
+            if not hmac.compare_digest(expected_sig, signature):
+                return None
+
+            padded = claims_b64 + "=" * (-len(claims_b64) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+            if not isinstance(claims, dict):
+                return None
+            return claims
+        except Exception as err:
+            logger.debug("Authz assertion validation error: %s", err)
+            return None
+
+    def _prepare_asgi_headers_and_state(
+        self,
+        headers_dict: Dict[str, str],
+        frame: Dict[str, Any],
+        tunnel_secret: str,
+        sso_enabled: bool,
+    ) -> Tuple[List[Tuple[bytes, bytes]], Dict[str, Any]]:
+        """Strip untrusted identity/claim headers and populate trusted ASGI state after HMAC check."""
+        untrusted = {
+            "x-authenticated-user",
+            "x-authenticated-channel",
+            "x-cloudhub-claims",
+            "x-cloudhub-stream",
+        }
+        asgi_headers: List[Tuple[bytes, bytes]] = []
+        for k, v in headers_dict.items():
+            if k.lower() in untrusted:
+                continue
+            asgi_headers.append((k.lower().encode("latin1"), v.encode("latin1")))
+
+        scope_state: Dict[str, Any] = {}
+        sso_assertion = frame.get("sso_assertion")
+        authz_assertion = frame.get("authz_assertion")
+
+        if self._verify_sso_assertion(sso_assertion, tunnel_secret, sso_enabled):
+            username = sso_assertion.split(":")[1] if sso_assertion else "cloudhub_operator"
+            with self.db_session_factory() as session:
+                settings = session.query(SystemSettings).first()
+                gui_password = settings.gui_password if settings else None
+
+            current_pw = gui_password or ""
+            ephemeral_token = auth_manager.create_session(
+                current_password=current_pw, expiry_seconds=60
+            )
+
+            cookie_header = f"gui_session={ephemeral_token}"
+            asgi_headers.append((b"cookie", cookie_header.encode("latin1")))
+            asgi_headers.append(
+                (b"authorization", f"Bearer {ephemeral_token}".encode("latin1"))
+            )
+            asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
+            asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
+
+            scope_state["authenticated_channel"] = "cloudhub"
+            scope_state["authenticated_user"] = username
+
+            if authz_assertion is not None:
+                verified_claims = self._verify_authz_assertion(authz_assertion, tunnel_secret)
+                if verified_claims is not None:
+                    scope_state["authz_claims"] = verified_claims
+                else:
+                    # Fail closed on tampered/expired authz assertion
+                    scope_state["authz_claims"] = {
+                        "user": username,
+                        "channel": "cloudhub",
+                        "scopes": {"dashboard": "none", "hardware": "none", "media": "none", "settings": "none", "forge": "none", "processes": {"default": "none"}},
+                    }
+
+        if bool(frame.get("supports_stream", False)):
+            asgi_headers.append((b"x-cloudhub-stream", b"1"))
+
+        return asgi_headers, scope_state
+
     async def _connection_loop(self) -> None:
         """Main outbound connection loop with exponential backoff."""
         backoff = 1.0
@@ -423,6 +530,26 @@ class CloudTunnelClient:
                     node_name = sys_settings.node_name if sys_settings else None
                     logo_text = sys_settings.logo_text if sys_settings else None
                     logo_path = sys_settings.logo_path if sys_settings else None
+                    lcd_enabled = bool(sys_settings.lcd_enabled) if sys_settings else False
+                    lcd_alias = (sys_settings.lcd_alias or "").strip() if sys_settings else ""
+                    lcd_model = (sys_settings.lcd_model or "cfa635").strip() if sys_settings else "cfa635"
+
+                import sys
+                main_mod = sys.modules.get("main") or sys.modules.get("backend.main")
+                lcd_mgr = getattr(main_mod, "lcd_manager", None) if main_mod else None
+                lcd_connected = bool(lcd_mgr and getattr(lcd_mgr, "_running", False))
+                locator_active = bool(getattr(lcd_mgr, "locator_active", False)) if lcd_connected else False
+                if lcd_connected and hasattr(lcd_mgr, "get_led_states_snapshot"):
+                    lcd_leds = lcd_mgr.get_led_states_snapshot()
+                elif lcd_enabled:
+                    lcd_leds = [
+                        "blink_green",
+                        "red" if error_services > 0 else ("green" if running_services > 0 else "off"),
+                        "off",
+                        "red" if (cpu > 90 or ram > 90) else "green",
+                    ]
+                else:
+                    lcd_leds = ["off", "off", "off", "off"]
 
                 payload = {
                     "type": "heartbeat",
@@ -430,6 +557,18 @@ class CloudTunnelClient:
                     "node_name": node_name,
                     "logo_text": logo_text,
                     "logo_path": logo_path,
+                    "capabilities": {
+                        "http_stream": True,
+                        "authz_claims": True,
+                    },
+                    "lcd": {
+                        "enabled": lcd_enabled,
+                        "connected": lcd_connected,
+                        "alias": lcd_alias or None,
+                        "model": lcd_model,
+                        "locator_active": locator_active,
+                        "leds": lcd_leds,
+                    },
                     "system": {
                         "cpu_percent": cpu,
                         "memory_percent": ram,
@@ -478,6 +617,11 @@ class CloudTunnelClient:
             elif msg_type == "http_req":
                 await self._handle_asgi_http(ws, msg, tunnel_secret, sso_enabled)
 
+            elif msg_type == "http_req_cancel":
+                ev = self._active_http_streams.pop(stream_id, None)
+                if ev:
+                    ev.set()
+
             elif msg_type == "ws_open":
                 await self._handle_asgi_ws_open(ws, msg, tunnel_secret, sso_enabled)
 
@@ -504,35 +648,10 @@ class CloudTunnelClient:
         query = frame.get("query", "")
         headers_dict = frame.get("headers", {})
         body_bytes = decode_body(frame.get("body")) or b""
-        sso_assertion = frame.get("sso_assertion")
 
-        # Prepare ASGI headers (list of [bytes, bytes])
-        asgi_headers = []
-        for k, v in headers_dict.items():
-            asgi_headers.append((k.lower().encode("latin1"), v.encode("latin1")))
-
-        # Check and inject SSO session
-        if self._verify_sso_assertion(sso_assertion, tunnel_secret, sso_enabled):
-            username = sso_assertion.split(":")[1] if sso_assertion else "cloudhub_operator"
-            with self.db_session_factory() as session:
-                settings = session.query(SystemSettings).first()
-                gui_password = settings.gui_password if settings else None
-
-            # Generate local ephemeral session token
-            current_pw = gui_password or ""
-            ephemeral_token = auth_manager.create_session(
-                current_password=current_pw, expiry_seconds=60
-            )
-
-            # Inject into cookies and Authorization header
-            cookie_header = f"gui_session={ephemeral_token}"
-            asgi_headers.append((b"cookie", cookie_header.encode("latin1")))
-            asgi_headers.append(
-                (b"authorization", f"Bearer {ephemeral_token}".encode("latin1"))
-            )
-            asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
-            asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
-
+        asgi_headers, scope_state = self._prepare_asgi_headers_and_state(
+            headers_dict, frame, tunnel_secret, sso_enabled
+        )
 
         scope = {
             "type": "http",
@@ -543,12 +662,16 @@ class CloudTunnelClient:
             "raw_path": path.encode("utf-8"),
             "query_string": query.encode("utf-8"),
             "headers": asgi_headers,
+            "state": scope_state,
             "client": ("127.0.0.1", 0),
             "server": ("cloudhub-tunnel", 0),
         }
 
         # Body stream
+        supports_stream = bool(frame.get("supports_stream", False))
         body_sent = False
+        disconnect_event = asyncio.Event()
+        self._active_http_streams[stream_id] = disconnect_event
 
         async def receive():
             nonlocal body_sent
@@ -559,47 +682,151 @@ class CloudTunnelClient:
                     "body": body_bytes,
                     "more_body": False,
                 }
-            return {"type": "http.request", "body": b"", "more_body": False}
+            # Per ASGI 3.0 spec, wait for disconnect once request body has finished
+            await disconnect_event.wait()
+            return {"type": "http.disconnect"}
 
         resp_status = 500
         resp_headers = []
         resp_body_chunks = []
+        streaming_started = False
+        stream_end_sent = False
+        is_streaming_headers = False
+        has_content_length = False
 
         async def send(message):
-            nonlocal resp_status, resp_headers
+            nonlocal resp_status, resp_headers, streaming_started, stream_end_sent, is_streaming_headers, has_content_length
             msg_type = message.get("type")
             if msg_type == "http.response.start":
                 resp_status = message.get("status", 200)
                 for hk, hv in message.get("headers", []):
-                    resp_headers.append(
-                        [hk.decode("latin1"), hv.decode("latin1")]
-                    )
+                    k_str = hk.decode("latin1")
+                    v_str = hv.decode("latin1")
+                    resp_headers.append([k_str, v_str])
+                    k_low = k_str.lower()
+                    v_low = v_str.lower()
+                    if k_low == "content-length":
+                        has_content_length = True
+                    elif k_low == "transfer-encoding" and "chunked" in v_low:
+                        is_streaming_headers = True
+                    elif k_low == "content-type" and (
+                        v_low.startswith("audio/")
+                        or v_low.startswith("video/")
+                        or "multipart/x-mixed-replace" in v_low
+                        or "application/ogg" in v_low
+                        or "application/octet-stream" in v_low
+                    ):
+                        is_streaming_headers = True
+
             elif msg_type == "http.response.body":
                 chunk = message.get("body", b"")
-                if chunk:
-                    resp_body_chunks.append(chunk)
+                more_body = bool(message.get("more_body", False))
+
+                if (
+                    not streaming_started
+                    and supports_stream
+                    and (is_streaming_headers or (not has_content_length and more_body))
+                ):
+                    streaming_started = True
+                    await ws.send(json.dumps({
+                        "type": "http_resp_start",
+                        "stream_id": stream_id,
+                        "status_code": resp_status,
+                        "headers": resp_headers,
+                    }))
+
+                if streaming_started:
+                    if chunk and not disconnect_event.is_set():
+                        # Keep each base64 chunk well below MAX_TUNNEL_FRAME_BYTES
+                        max_raw_chunk = 8_000_000
+                        for offset in range(0, len(chunk), max_raw_chunk):
+                            sub = chunk[offset : offset + max_raw_chunk]
+                            await ws.send(json.dumps({
+                                "type": "http_resp_chunk",
+                                "stream_id": stream_id,
+                                "data_b64": encode_body(sub),
+                            }))
+                    if (not more_body or disconnect_event.is_set()) and not stream_end_sent:
+                        stream_end_sent = True
+                        await ws.send(json.dumps({
+                            "type": "http_resp_end",
+                            "stream_id": stream_id,
+                        }))
+                else:
+                    if chunk:
+                        resp_body_chunks.append(chunk)
+                    # Legacy fallback when CloudHub does not support chunked streaming
+                    for hk, hv in resp_headers:
+                        if hk.lower() == "content-type" and "multipart/x-mixed-replace" in hv.lower():
+                            disconnect_event.set()
+                            break
 
         try:
             await self.app(scope, receive, send)
-            full_body = b"".join(resp_body_chunks)
-            resp_frame = {
-                "type": "http_resp",
-                "stream_id": stream_id,
-                "status_code": resp_status,
-                "headers": resp_headers,
-                "body": encode_body(full_body),
-            }
-            await ws.send(json.dumps(resp_frame))
+            if streaming_started:
+                if not stream_end_sent:
+                    stream_end_sent = True
+                    await ws.send(json.dumps({
+                        "type": "http_resp_end",
+                        "stream_id": stream_id,
+                    }))
+            else:
+                full_body = b"".join(resp_body_chunks)
+                resp_frame = {
+                    "type": "http_resp",
+                    "stream_id": stream_id,
+                    "status_code": resp_status,
+                    "headers": resp_headers,
+                    "body": encode_body(full_body),
+                }
+                payload_str = json.dumps(resp_frame)
+                if len(payload_str.encode("utf-8")) > MAX_TUNNEL_FRAME_BYTES:
+                    logger.warning(
+                        "CloudHub tunnel HTTP response too large (%d bytes > %d) for %s %s; returning 413",
+                        len(payload_str),
+                        MAX_TUNNEL_FRAME_BYTES,
+                        scope.get("method", "?"),
+                        scope.get("path", "?"),
+                    )
+                    err_body = json.dumps({
+                        "detail": "Response payload exceeds CloudHub tunnel frame limit",
+                        "max_frame_bytes": MAX_TUNNEL_FRAME_BYTES,
+                        "original_status": resp_status,
+                    }).encode("utf-8")
+                    resp_frame = {
+                        "type": "http_resp",
+                        "stream_id": stream_id,
+                        "status_code": 413,
+                        "headers": [["content-type", "application/json"]],
+                        "body": encode_body(err_body),
+                    }
+                    payload_str = json.dumps(resp_frame)
+                await ws.send(payload_str)
         except Exception as err:
             logger.error("In-memory ASGI HTTP dispatch error: %s", err)
-            err_frame = {
-                "type": "http_resp",
-                "stream_id": stream_id,
-                "status_code": 500,
-                "headers": [["content-type", "application/json"]],
-                "body": encode_body(json.dumps({"detail": str(err)}).encode("utf-8")),
-            }
-            await ws.send(json.dumps(err_frame))
+            if streaming_started:
+                if not stream_end_sent:
+                    stream_end_sent = True
+                    try:
+                        await ws.send(json.dumps({
+                            "type": "http_resp_end",
+                            "stream_id": stream_id,
+                            "error": str(err),
+                        }))
+                    except Exception:
+                        pass
+            else:
+                err_frame = {
+                    "type": "http_resp",
+                    "stream_id": stream_id,
+                    "status_code": 500,
+                    "headers": [["content-type", "application/json"]],
+                    "body": encode_body(json.dumps({"detail": str(err)}).encode("utf-8")),
+                }
+                await ws.send(json.dumps(err_frame))
+        finally:
+            self._active_http_streams.pop(stream_id, None)
+            disconnect_event.set()
 
     async def _handle_asgi_ws_open(
         self, ws: Any, frame: Dict[str, Any], tunnel_secret: str, sso_enabled: bool
@@ -609,30 +836,15 @@ class CloudTunnelClient:
         path = frame.get("path", "/")
         query = frame.get("query", "")
         headers_dict = frame.get("headers", {})
-        sso_assertion = frame.get("sso_assertion")
 
-        asgi_headers = []
-        for k, v in headers_dict.items():
-            asgi_headers.append((k.lower().encode("latin1"), v.encode("latin1")))
+        asgi_headers, scope_state = self._prepare_asgi_headers_and_state(
+            headers_dict, frame, tunnel_secret, sso_enabled
+        )
 
-        if self._verify_sso_assertion(sso_assertion, tunnel_secret, sso_enabled):
-            username = sso_assertion.split(":")[1] if sso_assertion else "cloudhub_operator"
-            with self.db_session_factory() as session:
-                settings = session.query(SystemSettings).first()
-                gui_password = settings.gui_password if settings else None
-
-            current_pw = gui_password or ""
-            ephemeral_token = auth_manager.create_session(
-                current_password=current_pw, expiry_seconds=60
-            )
-            cookie_header = f"gui_session={ephemeral_token}"
-            asgi_headers.append((b"cookie", cookie_header.encode("latin1")))
-            asgi_headers.append(
-                (b"authorization", f"Bearer {ephemeral_token}".encode("latin1"))
-            )
-            asgi_headers.append((b"x-authenticated-user", username.encode("latin1")))
-            asgi_headers.append((b"x-authenticated-channel", b"cloudhub"))
-
+        sec_subprotocols = []
+        raw_subprotocols = headers_dict.get("sec-websocket-protocol") or headers_dict.get("Sec-WebSocket-Protocol", "")
+        if raw_subprotocols:
+            sec_subprotocols = [p.strip() for p in raw_subprotocols.split(",") if p.strip()]
 
         scope = {
             "type": "websocket",
@@ -643,9 +855,10 @@ class CloudTunnelClient:
             "raw_path": path.encode("utf-8"),
             "query_string": query.encode("utf-8"),
             "headers": asgi_headers,
+            "state": scope_state,
             "client": ("127.0.0.1", 0),
             "server": ("cloudhub-tunnel", 0),
-            "subprotocols": [],
+            "subprotocols": sec_subprotocols,
         }
 
         queue: asyncio.Queue = asyncio.Queue()
@@ -679,29 +892,48 @@ class CloudTunnelClient:
             elif msg_type == "websocket.send":
                 text = message.get("text")
                 bytes_data = message.get("bytes")
-                if text is not None:
+                if text is not None or bytes_data is not None:
+                    is_binary = bytes_data is not None
                     out = {
                         "type": "ws_frame",
                         "stream_id": stream_id,
-                        "is_binary": False,
-                        "data": text,
+                        "is_binary": is_binary,
+                        "data": encode_body(bytes_data) if is_binary else text,
                     }
-                    await ws.send(json.dumps(out))
-                elif bytes_data is not None:
-                    out = {
-                        "type": "ws_frame",
-                        "stream_id": stream_id,
-                        "is_binary": True,
-                        "data": encode_body(bytes_data),
-                    }
-                    await ws.send(json.dumps(out))
+                    payload_str = json.dumps(out)
+                    if len(payload_str.encode("utf-8")) > MAX_TUNNEL_FRAME_BYTES:
+                        logger.warning(
+                            "CloudHub tunnel WS frame too large (%d bytes > %d) for stream %s; closing stream",
+                            len(payload_str),
+                            MAX_TUNNEL_FRAME_BYTES,
+                            stream_id,
+                        )
+                        try:
+                            await ws.send(json.dumps({
+                                "type": "ws_close",
+                                "stream_id": stream_id,
+                                "code": 1009,
+                            }))
+                        except Exception:
+                            pass
+                        await queue.put(None)
+                        return
+                    try:
+                        await ws.send(payload_str)
+                    except Exception:
+                        # Reverse tunnel socket closed or restarting; disconnect in-memory queue
+                        await queue.put(None)
+                        raise
             elif msg_type == "websocket.close":
                 out = {
                     "type": "ws_close",
                     "stream_id": stream_id,
                     "code": message.get("code", 1000),
                 }
-                await ws.send(json.dumps(out))
+                try:
+                    await ws.send(json.dumps(out))
+                except Exception:
+                    pass
 
         try:
             await self.app(scope, receive, send)

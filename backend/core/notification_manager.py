@@ -22,6 +22,7 @@ class NotificationManager:
         self.logger = logging.getLogger("NotificationManager")
         self.config = self._default_config()
         self._failed_services = set()
+        self._signal_alarm_services = set()
         self._last_thermal_status = "normal"
         self._last_thermal_alert_time = 0.0
         self._queue = asyncio.Queue()
@@ -198,6 +199,57 @@ class NotificationManager:
             self.enqueue_notification({"subject": subject, "body": body})
             return True
         return False
+
+    def notify_signal_alarm(
+        self,
+        proc_id: int,
+        proc_name: str,
+        sensors: List[str],
+        reaction_mode: str,
+        backup_name: Optional[str] = None,
+    ) -> bool:
+        """Queues a signal-watchdog alarm email with per-service coalescing."""
+        if not (self.is_enabled() and self.config.get("notify_service_failures", True)):
+            return False
+        if proc_id in self._signal_alarm_services:
+            return False
+        self._signal_alarm_services.add(proc_id)
+        sensor_str = ", ".join(s.upper() for s in sensors) if sensors else "SIGNAL"
+        action_desc = reaction_mode
+        if reaction_mode == "activate_backup" and backup_name:
+            action_desc = f"activate_backup ({backup_name})"
+        subject = f"[FFmpeg-GUI SIGNAL ALARM] {proc_name} ({sensor_str})"
+        body = (
+            f"In-Band Signal Watchdog triggered an alarm for service '{proc_name}' (ID: {proc_id}).\n\n"
+            f"Tripped sensors: {sensor_str}\n"
+            f"Reaction executed: {action_desc}\n"
+        )
+        self.enqueue_notification({"subject": subject, "body": body})
+        return True
+
+    def notify_signal_recovery(
+        self,
+        proc_id: int,
+        proc_name: str,
+        reaction_mode: str,
+        backup_name: Optional[str] = None,
+    ) -> bool:
+        """Queues a signal-watchdog recovery email if the service was previously in alarm."""
+        if proc_id not in self._signal_alarm_services:
+            return False
+        self._signal_alarm_services.discard(proc_id)
+        if not (self.is_enabled() and self.config.get("notify_service_failures", True)):
+            return False
+        action_desc = reaction_mode
+        if reaction_mode == "activate_backup" and backup_name:
+            action_desc = f"released backup ({backup_name})"
+        subject = f"[FFmpeg-GUI SIGNAL RECOVERED] {proc_name}"
+        body = (
+            f"In-Band Signal Watchdog confirmed signal recovery for service '{proc_name}' (ID: {proc_id}).\n\n"
+            f"Recovery action: {action_desc}\n"
+        )
+        self.enqueue_notification({"subject": subject, "body": body})
+        return True
 
 
     def _build_email_message(

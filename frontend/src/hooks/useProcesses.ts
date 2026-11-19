@@ -1,105 +1,45 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useTelemetry } from '../context/TelemetryContext';
 
 const API = '';
 
 export function useProcesses() {
   const { t } = useTranslation();
-  const [telemetry, setTelemetry] = useState<any[]>([]);
-  const [taskExecutions, setTaskExecutions] = useState<any[]>([]);
-  const [upcomingTasks, setUpcomingTasks] = useState<any[]>([]);
-  const [systemTelemetry, setSystemTelemetry] = useState<any>({
-    cpu_percent: 0,
-    memory_percent: 0,
-    memory_used_mb: 0,
-    memory_total_mb: 0,
-    net_sent_kb: 0,
-    net_recv_kb: 0,
-    uptime_seconds: 0,
-    storages: [],
-    peers: []
-  });
-  const [taskStats, setTaskStats] = useState<any>({
-    active_count: 0,
-    completed_count: 0,
-    failed_count: 0,
-    total_count: 0
-  });
+  const {
+    telemetry,
+    systemTelemetry,
+    taskExecutions,
+    upcomingTasks,
+    taskStats,
+    actionPending,
+    setActionPending,
+    subscribe,
+  } = useTelemetry();
+
   const [selectedProcess, setSelectedProcess] = useState<any | null>(null);
   const [logs, setLogs] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProcess, setEditingProcess] = useState<any | null>(null);
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
-  // ── Telemetry WebSocket ────────────────────────────────────────
+  // ── Process logs: On-Demand WebSocket Subscription (Zero HTTP Polling) ──
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/telemetry`);
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === 'telemetry') {
-        setTelemetry(msg.data);
-        if (Array.isArray(msg.data)) {
-          setActionPending(prev => {
-            const next = { ...prev };
-            let changed = false;
-            msg.data.forEach((p: any) => {
-              const pending = next[p.id];
-              if (pending === 'stopping' && p.status === 'stopped') {
-                delete next[p.id];
-                changed = true;
-              } else if ((pending === 'starting' || pending === 'restarting') && p.status === 'running') {
-                delete next[p.id];
-                changed = true;
-              }
-            });
-            return changed ? next : prev;
-          });
-        }
-        if (msg.task_executions) {
-          setTaskExecutions(msg.task_executions);
-        }
-        if (msg.upcoming_tasks) {
-          setUpcomingTasks(msg.upcoming_tasks);
-        }
-        if (msg.system) {
-          setSystemTelemetry({
-            ...msg.system,
-            storages: msg.storages || [],
-            peers: msg.peers || [],
-            hardware_health: msg.hardware_health || null
-          });
-        } else if (msg.hardware_health) {
-          setSystemTelemetry((prev: any) => ({
-            ...prev,
-            hardware_health: msg.hardware_health
-          }));
-        }
-        if (msg.task_stats) {
-          setTaskStats(msg.task_stats);
-        }
-      }
-    };
-    return () => ws.close();
-  }, []);
+    if (!selectedProcess) {
+      setLogs([]);
+      return;
+    }
 
-  // ── Process logs polling ───────────────────────────────────────
-  useEffect(() => {
-    if (!selectedProcess) return;
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch(`${API}/processes/${selectedProcess.id}/logs`);
-        if (res.ok) {
-          setLogs(await res.json());
-        }
-      } catch (err) {
-        console.error("Error fetching process logs:", err);
+    const unsub = subscribe('process_logs', selectedProcess.id, (msg: any) => {
+      if (msg.reset) {
+        setLogs(msg.lines || []);
+      } else if (Array.isArray(msg.lines) && msg.lines.length > 0) {
+        setLogs(prev => [...prev, ...msg.lines]);
       }
-    };
-    fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
-  }, [selectedProcess]);
+    });
+
+    return () => unsub();
+  }, [selectedProcess?.id, subscribe]);
 
   const handleDeleteProcess = async (proc: any) => {
     const isConfirmed = window.confirm(
@@ -118,8 +58,6 @@ export function useProcesses() {
       console.error("Error deleting process:", err);
     }
   };
-
-  const [actionPending, setActionPending] = useState<Record<number, 'starting' | 'stopping' | 'restarting'>>({});
 
   const handleStartService = async (procId: number) => {
     if (actionPending[procId]) return;

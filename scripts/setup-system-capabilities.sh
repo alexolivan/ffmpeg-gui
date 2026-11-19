@@ -32,28 +32,44 @@ if [ -f "$SYSTEM_SERVICE" ]; then
 
     # Ensure CapabilityBoundingSet contains all required capabilities
     if grep -q "^CapabilityBoundingSet=" "$SYSTEM_SERVICE"; then
-        CURRENT_BOUNDING=$(grep "^CapabilityBoundingSet=" "$SYSTEM_SERVICE" | cut -d= -f2)
-        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE"; then
-            echo "--> Updating CapabilityBoundingSet to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME, CAP_PERFMON, CAP_SYS_ADMIN..."
-            sed -i 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_PERFMON CAP_SYS_ADMIN/' "$SYSTEM_SERVICE"
+        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE" || ! grep -q "CAP_SYS_NICE" "$SYSTEM_SERVICE"; then
+            echo "--> Updating CapabilityBoundingSet to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME, CAP_SYS_NICE, CAP_IPC_LOCK, CAP_PERFMON, CAP_SYS_ADMIN..."
+            sed -i 's/^CapabilityBoundingSet=.*/CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK CAP_PERFMON CAP_SYS_ADMIN/' "$SYSTEM_SERVICE"
             CHANGED=1
         fi
     else
         echo "--> Injecting CapabilityBoundingSet into $SYSTEM_SERVICE..."
-        sed -i '/\[Service\]/a CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_PERFMON CAP_SYS_ADMIN' "$SYSTEM_SERVICE"
+        sed -i '/\[Service\]/a CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK CAP_PERFMON CAP_SYS_ADMIN' "$SYSTEM_SERVICE"
         CHANGED=1
     fi
 
-    # Ensure AmbientCapabilities contains network and timing capabilities
+    # Ensure AmbientCapabilities contains network, timing, and realtime scheduling capabilities
     if grep -q "^AmbientCapabilities=" "$SYSTEM_SERVICE"; then
-        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE"; then
-            echo "--> Updating AmbientCapabilities to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME..."
-            sed -i 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME/' "$SYSTEM_SERVICE"
+        if ! grep -q "CAP_SYS_TIME" "$SYSTEM_SERVICE" || ! grep -q "CAP_NET_ADMIN" "$SYSTEM_SERVICE" || ! grep -q "CAP_SYS_NICE" "$SYSTEM_SERVICE"; then
+            echo "--> Updating AmbientCapabilities to include CAP_NET_ADMIN, CAP_NET_RAW, CAP_SYS_TIME, CAP_SYS_NICE, CAP_IPC_LOCK..."
+            sed -i 's/^AmbientCapabilities=.*/AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK/' "$SYSTEM_SERVICE"
             CHANGED=1
         fi
     else
         echo "--> Injecting AmbientCapabilities into $SYSTEM_SERVICE..."
-        sed -i '/\[Service\]/a AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME' "$SYSTEM_SERVICE"
+        sed -i '/\[Service\]/a AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_TIME CAP_SYS_NICE CAP_IPC_LOCK' "$SYSTEM_SERVICE"
+        CHANGED=1
+    fi
+
+    # Ensure POSIX Realtime scheduling rlimits for PipeWire AoIP / AES67 / Dante
+    if ! grep -q "^LimitRTPRIO=" "$SYSTEM_SERVICE"; then
+        echo "--> Injecting LimitRTPRIO=95 into $SYSTEM_SERVICE..."
+        sed -i '/^AmbientCapabilities=/a LimitRTPRIO=95' "$SYSTEM_SERVICE"
+        CHANGED=1
+    fi
+    if ! grep -q "^LimitNICE=" "$SYSTEM_SERVICE"; then
+        echo "--> Injecting LimitNICE=-19 into $SYSTEM_SERVICE..."
+        sed -i '/^LimitRTPRIO=/a LimitNICE=-19' "$SYSTEM_SERVICE"
+        CHANGED=1
+    fi
+    if ! grep -q "^LimitMEMLOCK=" "$SYSTEM_SERVICE"; then
+        echo "--> Injecting LimitMEMLOCK=infinity into $SYSTEM_SERVICE..."
+        sed -i '/^LimitNICE=/a LimitMEMLOCK=infinity' "$SYSTEM_SERVICE"
         CHANGED=1
     fi
 
@@ -109,6 +125,45 @@ if [ -n "$PTP4L_BIN" ] && [ -x "$PTP4L_BIN" ] && command -v setcap >/dev/null 2>
     fi
 else
     echo "--> Note: ptp4l not found. If running PipeWire PTP Master Clocks, install linuxptp system package."
+fi
+
+# ------------------------------------------------------------------------------
+# 5. PTP Hardware Clock (/dev/ptp*) Device Node Permissions (udev rule)
+# ------------------------------------------------------------------------------
+PTP_UDEV_RULE="/etc/udev/rules.d/99-ffmpeg-gui-ptp.rules"
+PTP_GROUP=""
+if getent group ffmpeg-gui >/dev/null 2>&1; then
+    PTP_GROUP="ffmpeg-gui"
+elif [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    PTP_GROUP="$(id -gn "$SUDO_USER" 2>/dev/null || true)"
+fi
+
+if [ -n "$PTP_GROUP" ]; then
+    PTP_RULE_LINE="SUBSYSTEM==\"ptp\", KERNEL==\"ptp[0-9]*\", GROUP=\"${PTP_GROUP}\", MODE=\"0660\""
+else
+    PTP_RULE_LINE='SUBSYSTEM=="ptp", KERNEL=="ptp[0-9]*", MODE="0660", TAG+="uaccess"'
+fi
+
+if [ -d "/etc/udev/rules.d" ]; then
+    CURRENT_RULE=""
+    if [ -f "$PTP_UDEV_RULE" ]; then
+        CURRENT_RULE="$(grep -v '^#' "$PTP_UDEV_RULE" | grep -v '^[[:space:]]*$' | head -n 1 || true)"
+    fi
+    if [ "$CURRENT_RULE" != "$PTP_RULE_LINE" ]; then
+        echo "--> Installing udev rule $PTP_UDEV_RULE ($PTP_RULE_LINE)..."
+        cat <<EOF > "$PTP_UDEV_RULE"
+# Managed by ffmpeg-gui (allows unprivileged ptp4l and PipeWire PTP0-Driver access to /dev/ptp*)
+$PTP_RULE_LINE
+EOF
+        chmod 0644 "$PTP_UDEV_RULE"
+        if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload-rules 2>/dev/null || true
+            udevadm trigger --subsystem-match=ptp 2>/dev/null || true
+            udevadm settle --timeout=2 2>/dev/null || true
+        fi
+    else
+        echo "--> udev rule $PTP_UDEV_RULE already up to date."
+    fi
 fi
 
 echo "================================================================="
