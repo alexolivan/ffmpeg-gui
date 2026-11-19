@@ -35,6 +35,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Virtual Desktop Ingest & Intelligent Audio/FPS Sync**: Ingest uncompressed video from X11 Virtual Desktops with automatic geometry adoption, 1-click framerate alignment, and 1-click ALSA loopback audio pairing (`hw:Loopback,1,X`) to prevent audio desync or FFmpeg stream mapping crashes.
 - **Boot Sequence Hierarchies**: Configure specific startup ordering and delay gaps to synchronize cross-dependent streams (e.g., waiting for an input stream to initialize before starting a transcoder).
 - **GPU/CPU Pipeline Diagramming**: An interactive resource pipeline diagram in the GUI that visually tracks GPU decoding, filtering, encoding, and CPU multiplexing flow.
+- **Unified WebSocket Telemetry**: Live system metrics, service statuses, resource locks, and on-demand process/task logs stream over `/ws/telemetry`, eliminating periodic HTTP polling in views and preview modals.
 - **Live Stream Previews**: Embedded native HLS live video & audio player for HLS broadcast services, plus configurable periodic frame snapshots (MJPEG) with performance toggles for other streaming outputs.
 
 ![Hybrid GPU/CPU Transcode Pipeline](docs/assets/screenshot6.png)
@@ -56,7 +57,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ### 📻 4. Icecast2 Audio Broadcasting & Radio Hub
 - **Native Service Orchestration**: Manage dedicated Icecast2 server daemons directly alongside FFmpeg and MediaMTX pipelines.
 - **Dual HTTP & HTTPS/TLS Sockets**: Run unencrypted listener sockets (TCP 7000) and encrypted TLS streams (TCP 7443) simultaneously with automated concatenated PEM certificate bundles.
-- **Interactive Server Preview & Live Player**: Monitor stream status with an embedded live web iframe preview, HTML5 in-browser audio player for active mountpoints, listener counters, and real-time logs.
+- **Interactive Server Preview & Live Player**: Monitor stream status with an embedded live web iframe preview, HTML5 in-browser audio player for active mountpoints, listener counters, and real-time logs—routed through the internal reverse proxy so previews and audio work seamlessly over CloudHub tunnels as well.
 - **Static & Dynamic Mountpoint Management**: Configure granular mountpoints with max audience limits, fallback drop protection (`fallback-mount` / `fallback-override`), and burst buffers.
 - **Audience & Telemetry Monitoring**: Real-time `/status-json.xsl` and `/admin/stats.xml` telemetry polling directly into service cards and preview modal.
 - **Automated Native Log Rotation & Lifecycle**: Configurable `<logsize>` and `<logarchive>` native rotation coupled with system scheduled tasks (`system://log_rotate`) for automated `.gz` compression, retention purging, and orphan cleanup.
@@ -116,19 +117,24 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ![PipeWire Real-Time Audio Graph & Nodes Telemetry Inspector](docs/assets/screenshot25.png)
 
 - **Isolated Daemon Orchestration**: Deploy dedicated PipeWire server daemons running entirely in ephemeral RAM directories (`/tmp/ffmpeg-gui/pipewire-{id}`) with custom quantum and sample rate (48000 Hz) isolation.
-- **Virtual Audio Sinks & AES67 Multicast Broadcast**: Configure custom multi-channel virtual audio sinks (`mix_bus`, `kiosk_audio`, etc.) with optional AES67 / Dante multicast broadcast output over physical network interfaces with PTP clock domain support.
+- **AoIP Operating Profiles & Virtual Sinks**: Configure multi-channel virtual audio sinks (`mix_bus`, `kiosk_audio`, etc.) with three AoIP operating profiles (`ffmpeg-gui Mesh (Flexible)`, `Audinate Dante / AES67 (Strict)` enforcing port `5004`, RTP payload `96`, 1 ms ptime and hardware PTP gating, and `Broadcast / AES67 (Standard)`).
+- **PTPv2 Sync, BMCA & Non-Root Hardware Clocks**: IEEE 1588-2008 PTPv2 synchronization with BMCA Backup Master support, host OS `CLOCK_REALTIME` protection, non-root `/dev/ptp*` hardware clock access via udev rules, live `ptp4l`/`phc2sys` sidecar log tabs, and hitless sidecar reattachment across daemon restarts.
 - **Desktop & Web Kiosk Native Audio Routing**: Route Virtual Desktop and Kiosk audio directly to PipeWire sinks via native PulseAudio emulation sockets (`PULSE_SERVER`), completely bypassing legacy `apulse` or `snd-aloop` constraints.
 - **Universal FFmpeg Audio Matrix**:
   - Ingest directly from virtual bus monitors (`-f pulse -i <sink>.monitor`).
   - Playout directly into virtual sinks (`-f pulse <sink>`).
   - Bit-perfect 0% CPU Stream Copy (`-c:a copy`) passthrough between raw sources/destinations (ALSA, PipeWire, RTSP, RTP, file recording).
   - Automated lease management keeping the PipeWire daemon alive while active consumers stream and stopping cleanly on idle.
-- **Real-Time Graph & Node Inspector**: Telemetry modal providing real-time audio graph visualization (`pw-dump`), listing all active nodes, ports, links, and execution states.
+- **Reactive WebSocket Graph & SAP Radar Inspector**: Real-time WebSocket audio graph visualization (`pw-dump`), live node/port/link states, and SAP Radar stream discovery with dedicated `Online / Linked`, `Waiting`, and `Offline` indicators.
 
-### 🛡️ 9. Decoupled Watchdog Recovery
-- **Automatic Auto-Start**: Recovers crashed or disconnected streams automatically.
-- **Freeze Protection**: Actively monitors process FPS, bitrate, and outputs, force-restarting streams if frames freeze or connection drops.
+### 🛡️ 9. Process Watchdog & In-Band Signal Failover
+- **Automatic Auto-Start & Circuit Breaker**: Recovers crashed or disconnected streams automatically, while a crash-loop circuit breaker aborts retries on unrecoverable fatal errors (missing binary protocol, format, or codec).
+- **Freeze & Speed Protection**: Actively monitors process FPS, bitrate, and encoding speed, force-restarting streams if frames stall or speed drops below thresholds.
+- **Two-Tier RAM Guardrail & Muxing Queue Ceiling**: Enforces per-service soft RAM limits and a global hard RAM limit (`watchdog_hard_memory_limit_mb`), paired with `-max_muxing_queue_size 1024` on live outputs to prevent unbounded memory growth during asymmetric A/V desync.
+- **In-Band Signal Watchdog & Continuity Failover**: Dedicated `Watchdog` configuration tab injecting pass-through FFmpeg detectors (`silencedetect`, real-time `blackdetect` via metadata print, and `freezedetect`), with automatic VRAM bridge (`hwdownload`/`hwupload`) on hardware pipelines, `OR`/`AND` condition evaluation with recovery hold-off hysteresis, and selectable reactions (`Alert Only`, `Restart Self`, or `Activate Backup` failover leases with 1-hop anti-cascade protection).
 - **Jittered Backoff**: Uses exponential backoff delays combined with randomized jitter to break lockstep recovery loops and reduce server resource peaks during network outages.
+
+![Watchdog & In-Band Signal Failover Configuration](docs/assets/screenshot27.png)
 
 ### ⏰ 10. Task Scheduler & Service Maintenance Orchestration
 - **Automation Jobs**: Schedule recurring (cron-like) or one-shot encoding tasks (e.g., recording daily broadcasts, scheduled stream dumps).
@@ -137,6 +143,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Bilateral Cloning**: Seamlessly convert any active or stopped media service into a scheduled task template, or duplicate a task config into a running daemon service with a single click.
 
 ![Scheduled Tasks & Cron Automation](docs/assets/screenshot4.png)
+
+![Service Maintenance Restart Task Configuration](docs/assets/screenshot26.png)
 
 ### 🔒 11. HTTPS & Let's Encrypt SSL Manager
 - **Automated SSL/TLS Certificates**: Request and renew Let's Encrypt certificates directly from the GUI panel.
@@ -154,9 +162,10 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ### 🔔 14. State-Based SMTP Notifications
 - **Alert Fatigue Prevention**: Stateful notification queue that filters redundant alerts. Emails are dispatched exclusively on initial stream crashes, recovery success, and final retry exhaustion.
+- **In-Band Signal Alarms & Recovery**: Coalesced email alerts when signal watchdog sensors (`silence`, `black`, `freeze`) trip or recover after hold-off hysteresis.
 - **System Health Checks**: Active warnings for pending SSL/TLS certificate expirations, disk space utilization exceeding 90%, and debounced hardware thermal overheating and throttling events.
 
-### 📟 14. CFA635 LCD Display Driver
+### 📟 15. CFA635 LCD Display Driver
 - **Serial LCD Integration**: Direct driver control for CrystalFontz CFA635 USB/Serial displays. Renders live CPU, RAM, active stream counts, locator beacons, and handles backlight dimming timeouts.
 - **Bicolor Status LEDs**: Maps physical LEDs to profile monitors:
   - Heartbeat status indicator.
@@ -168,12 +177,12 @@ Inspired by high-reliability systems and developer utility, it provides an intui
   - Federated peer status monitor (`P2P` profile with worst-state aggregation).
   - Thermal overheat and throttling alert (`THERM` profile).
 
-### 🌐 15. Styling & Localization
+### 🌐 16. Styling & Localization
 - **Multi-Theme Engine**: 5 visual styles (Studio Dark, Cyberpunk Neon, Nordic Frost, Broadcast Light, Warm Paper) loaded instantly without page flash.
 - **Full Translations**: English, Spanish, and Catalan interfaces with 100% i18n parity.
 - **Modern 4-Column 1080p Layout**: Responsive 4-column dashboard grid layout maximizing space utilization on high-resolution broadcast control monitors.
 
-### 🌡️ 16. Industrial Hardware Telemetry & Thermal Shielding
+### 🌡️ 17. Industrial Hardware Telemetry & Thermal Shielding
 - **Kernel-Level Health Extraction**: Direct `/sys/class/hwmon` and `/sys/devices/system/cpu` reading with package/core temperatures, cooling fan RPM tachometers, and CPU throttling detection (`throttle_active`, `package_throttled`, `core_throttled`).
 - **Host System & Service Uptimes**: Live side-by-side telemetry comparison of host OS uptime versus `ffmpeg-gui` systemd unit runtime directly in the Dashboard.
 - **Specialized Card Telemetry**: AudioScience DSP load and temperature tracking via `hpicontrol.py`, Magewell Pro Capture FPGA core temperatures, and Blackmagic DeckLink PCIe link generation/bus width.
@@ -184,7 +193,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 
 ![Warm Paper Theme in Task Scheduling](docs/assets/screenshot12.png)
 
-### 🛡️ 17. Brute-Force Protection & Security Logging (Fail2ban Ready)
+### 🛡️ 18. Brute-Force Protection & Security Logging (Fail2ban Ready)
 - **In-Memory IP Lockout**: Built-in guard tracks failed login attempts in RAM and temporarily bans abusive clients (`HTTP 429 Too Many Requests` / `Retry-After`) with zero SQLite overhead during attacks.
 - **Permanent Loopback Immunity**: Localhost and loopback interfaces (`127.0.0.1`, `::1`) are hardcoded as immune to prevent locking out local SSH tunnels or reverse proxies, alongside custom CIDR/IP whitelisting.
 - **Standardized Logs for External IDS/IPS**: Standardized warning events emitted in `ffmpeg-gui.log` and Nginx-format HTTP lines in `access.log` with real client IP resolution via `X-Forwarded-For` and `X-Real-IP`.
@@ -199,7 +208,7 @@ sudo cp packaging/fail2ban/jail.d/ffmpeg-gui.local /etc/fail2ban/jail.d/
 sudo fail2ban-client reload
 ```
 
-### 🧰 18. Administrative Rescue CLI (`ffmpeg-gui-admin`)
+### 🧰 19. Administrative Rescue CLI (`ffmpeg-gui-admin`)
 - **Out-of-Band Recovery**: Command-line utility to diagnose and recover instances without browser access.
 - **Admin Password Reset**: Reset administrative passwords directly from the terminal (`reset-admin`).
 - **IP Ban & Lockout Clearing**: Clear active in-memory brute-force lockouts (`reset-lockout` / `reset-all`) in case an administrator gets locked out.
@@ -212,29 +221,31 @@ sudo fail2ban-client reload
 ./bin/ffmpeg-gui-admin reset-admin
 ```
 
-### 🌐 19. Dynamic Interface Binding & Live Firewall Matrix
+### 🌐 20. Dynamic Interface Binding & Live Firewall Matrix
 - **Dynamic Interface Enumeration**: Detects all physical, virtual, and loopback interfaces (IP, netmask, MAC, speed, and link state).
 - **Fail-Safe Bind Resolver**: Prevents administrative lock-out if network interfaces change, drop, or migrate; automatically falls back to `0.0.0.0` with clear diagnostic warnings.
 - **Daemon Integration**: Bind FFmpeg-GUI core, MediaMTX, Icecast2, and PipeWire Audio Hubs (AES67 AoIP, SAP discovery, PTPv2) to specific interfaces or individual IP addresses.
 - **Live Firewall Matrix & Rule Generator**: Real-time socket scanner reporting live listening ports across all daemons, stream pipelines, and AoIP receivers with 1-click copyable UFW and iptables rule sets.
 
-### 📡 20. LAN Discovery Beacon & Desktop Companion
-- **UDP Broadcast Beacon**: Background presence service broadcasting JSON appliance heartbeats on port `59990/udp` with an immutable hardware-backed node identity.
+### 📡 21. LAN Discovery Beacon & Desktop Companion
+- **Multi-NIC / Multi-Subnet UDP Beacon**: Background presence service enumerating all active physical/VLAN/bridge LAN IPv4 interfaces (`"ips"`), broadcasting JSON appliance heartbeats on port `59990/udp` to both `255.255.255.255` and per-subnet directed broadcast addresses with a hardware-backed node identity.
 - **Web GUI Kill-Switch**: Fully configurable and toggleable from Web GUI Settings (`Network & SSL`) or REST API.
 - **Desktop Companion App**: Pair with [ffmpeg-gui-scanner](https://github.com/alexolivan/ffmpeg-gui-scanner) on Windows, macOS, or Linux for zero-configuration LAN discovery, live vitality tracking, and 1-click dashboard access.
 
-### ☁️ 21. CloudHub Central Directory & Reverse Tunnel Bastion
+### ☁️ 22. CloudHub Central Directory & Reverse Tunnel Bastion
 - **Zero-Port-Forwarding Remote Access**: Outbound WebSocket reverse tunnel connecting to a central [ffmpeg-gui-cloudhub](https://github.com/alexolivan/ffmpeg-gui-cloudhub) instance, bypassing firewalls and CGNAT without requiring VPN setups or open inbound router ports.
-- **In-Memory ASGI Bridge**: Proxied HTTP and WebSocket traffic executes directly within the local FastAPI application, eliminating port binding conflicts and SSL redirect loops.
+- **In-Memory ASGI Bridge & Chunked Streaming**: Proxied HTTP, chunked streaming responses (live MJPEG previews and internal Icecast reverse proxying), and WebSocket traffic execute directly within the local FastAPI application, with per-frame size guards against oversized payload disconnects.
 - **Zero-Knowledge Single Sign-On (SSO)**: Ephemeral HMAC-SHA256 signed assertions grant instant operator access without sharing local passwords.
 - **Fine-Grained RBAC Claims Enforcement**: Signed tunnel capability assertions (`authz_claims`) enforce module, service, and task level permissions (`monitor`, `operate`, `manage`, `admin`) across HTTP, WebSocket streams, VNC view-only mode, and redacted UI controls.
 - **1-Click Token Enrollment**: Simple enrollment flow from the Network settings card with live vitality telemetry streaming.
 
-### 📊 22. Volatile 24h RRD Metrics & Prometheus / OpenMetrics Exporter
+### 📊 23. Volatile 24h RRD Metrics & Prometheus / OpenMetrics Exporter
 - **Zero Disk Writes (Flash/SATADom Friendly)**: Pure in-memory multi-tier circular buffers (`30m` @ 5s, `6h` @ 60s, `24h` @ 300s) storing live telemetry (bitrate, fps, speed, cpu, ram) under 100 KB RAM per service with zero flash storage writes.
 - **Min/Max Outlier Envelope Retention**: Brief drops (such as bitrate falling to 0 for a few seconds) remain visible over 24h via shaded corridor envelopes rather than disappearing into averaged lines.
 - **In-Card Micro-Sparklines & Expandable Histograms**: Compact sparklines in service cards with anomaly indicators and expandable interactive SVG drawer histograms with hover tooltips and crosshairs across all 5 visual themes.
-- **Authenticated Prometheus / OpenMetrics HTTP Endpoint**: Standard `/api/metrics` and `/metrics` scraper endpoints exposing node and service metrics, configurable in Settings with Bearer token authentication, IP/CIDR filtering, and copyable `prometheus.yml` scrape configs.
+- **Authenticated Prometheus / OpenMetrics v2 Exporter**: Standard `/api/metrics` and `/metrics` scraper endpoints exposing host health, FFmpeg, Icecast2, MediaMTX, PipeWire, task, peer latency, and `ffmpeg_gui_service_signal_alarm` metrics, configurable in Settings with Bearer token authentication, IP/CIDR filtering, and copyable `prometheus.yml` scrape configs. Ready-to-import Prometheus and Grafana dashboard templates are available in [`packaging/prometheus/`](packaging/prometheus/).
+
+![Prometheus & OpenMetrics Exporter Settings](docs/assets/screenshot28.png)
 
 ---
 
