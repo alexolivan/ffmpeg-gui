@@ -3668,19 +3668,90 @@ class ProcessManager:
             log_path=log_path
         )
 
-    async def _log_reader(self, process_id: int, proc: asyncio.subprocess.Process, log_path: Optional[str] = None):
+    def _rotate_or_truncate_active_process_log(
+        self, process_id: int, log_path: str, log_file_obj, limit_bytes: int
+    ):
+        """Compresses or truncates an active process log file in-place when it exceeds limit_bytes."""
+        import gzip
+        import shutil
+
+        parent_dir = os.path.dirname(os.path.abspath(log_path))
+        rotated_ok = False
+        tmp_path = f"{log_path}.1.gz.rot_tmp"
+        try:
+            usage = shutil.disk_usage(parent_dir)
+            has_room = (
+                usage.total > 0
+                and (usage.used / usage.total) < 0.85
+                and usage.free > max(limit_bytes // 2, 1024 * 1024)
+            )
+            if has_room:
+                max_live_backups = 3
+                for idx in range(max_live_backups - 1, 0, -1):
+                    src = f"{log_path}.{idx}.gz"
+                    dst = f"{log_path}.{idx + 1}.gz"
+                    if os.path.exists(src):
+                        try:
+                            os.replace(src, dst)
+                        except Exception:
+                            pass
+                with open(log_path, "rb") as f_in:
+                    with gzip.open(tmp_path, "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+                os.replace(tmp_path, f"{log_path}.1.gz")
+                rotated_ok = True
+        except Exception as rot_err:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+            self.logger.debug(f"Live compression rotation skipped for {log_path}: {rot_err}")
+
+        try:
+            log_file_obj.flush()
+        except Exception:
+            pass
+        try:
+            os.ftruncate(log_file_obj.fileno(), 0)
+            log_file_obj.seek(0)
+        except Exception:
+            try:
+                os.truncate(log_path, 0)
+            except Exception:
+                pass
+
+        action_label = "rotated to .1.gz" if rotated_ok else "truncated in-place"
+        warn_msg = (
+            f"[SYSTEM] Log file exceeded maximum size limit ({limit_bytes} bytes) "
+            f"and was {action_label} to protect RAM/storage."
+        )
+        self._handle_log_msg(process_id, warn_msg, status_re=None)
+
+    async def _log_reader(
+        self,
+        process_id: int,
+        proc: asyncio.subprocess.Process,
+        log_path: Optional[str] = None,
+        max_log_bytes: Optional[int] = None,
+    ):
         import re
+        import time
         # Regex for ffmpeg status line (supports bitrate=N/A for DeckLink/NDI outputs, and optional fps for audio-only outputs)
         status_re = re.compile(r"(?:fps=\s*([\d.]+).*?)?bitrate=\s*([\d.]+kbits/s|N/A).*speed=\s*([\d.]+x)")
         buffer = bytearray()
-        
+        limit_bytes = max_log_bytes if (max_log_bytes and max_log_bytes > 0) else self._get_max_log_file_bytes()
+        check_step_bytes = min(262144, max(512, limit_bytes // 4))
+        bytes_since_check = 0
+        last_check_ts = time.monotonic()
+
         log_file = None
         if log_path:
             try:
                 log_file = open(log_path, "ab", buffering=0)
             except Exception as e:
                 self.logger.error(f"Failed to open log file {log_path} for writing: {e}")
-                
+
         try:
             while True:
                 if proc is None or proc.stdout is None:
@@ -3692,10 +3763,19 @@ class ProcessManager:
                         if msg:
                             self._handle_log_msg(process_id, msg, status_re)
                     break
-                
+
                 if log_file:
                     try:
                         log_file.write(chunk)
+                        bytes_since_check += len(chunk)
+                        now_m = time.monotonic()
+                        if bytes_since_check >= check_step_bytes or (now_m - last_check_ts) >= 5.0:
+                            bytes_since_check = 0
+                            last_check_ts = now_m
+                            if log_path and os.path.exists(log_path) and os.path.getsize(log_path) > limit_bytes:
+                                self._rotate_or_truncate_active_process_log(
+                                    process_id, log_path, log_file, limit_bytes
+                                )
                     except Exception as e:
                         self.logger.error(f"Error writing log chunk for process {process_id}: {e}")
                 
@@ -3998,9 +4078,12 @@ class ProcessManager:
         sidecar_name: Optional[str] = None
     ):
         """Tails the physical log file on disk for daemon services and enforces a real-time size circuit breaker."""
+        import time
         effective_pid = pid or (proc.pid if proc else None)
         limit_bytes = max_log_bytes if (max_log_bytes and max_log_bytes > 0) else self._get_max_log_file_bytes()
         check_counter = 0
+        lines_since_check = 0
+        last_size_check = time.monotonic()
         try:
             await asyncio.sleep(0.1)
             if not os.path.exists(log_path):
@@ -4018,6 +4101,22 @@ class ProcessManager:
                                 self._handle_sidecar_log_msg(process_id, sidecar_name, msg)
                             else:
                                 self._handle_log_msg(process_id, msg, status_re=None)
+                        lines_since_check += 1
+                        now_m = time.monotonic()
+                        if lines_since_check >= 20 or (now_m - last_size_check) >= 2.0:
+                            lines_since_check = 0
+                            last_size_check = now_m
+                            try:
+                                if os.path.exists(log_path) and os.path.getsize(log_path) > limit_bytes:
+                                    os.truncate(log_path, 0)
+                                    f.seek(0, os.SEEK_SET)
+                                    warn_msg = (
+                                        f"[SYSTEM] Log file exceeded maximum size limit ({limit_bytes} bytes) "
+                                        "and was truncated in-place to protect RAM/storage."
+                                    )
+                                    self._handle_log_msg(process_id, warn_msg, status_re=None)
+                            except Exception as trunc_err:
+                                self.logger.debug(f"Could not truncate flooded log {log_path}: {trunc_err}")
                         continue
 
                     # Only check if process has exited once EOF on the current log stream is reached

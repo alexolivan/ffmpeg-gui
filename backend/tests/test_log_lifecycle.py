@@ -1,12 +1,14 @@
 import unittest
 import asyncio
+import errno
 import os
 import time
 import tempfile
 import configparser
 import shutil
 import gzip
-from unittest.mock import MagicMock
+from collections import namedtuple
+from unittest.mock import MagicMock, patch
 
 from database.db import SessionLocal, init_db
 from database.models import Service, Storage, ScheduledTask
@@ -307,6 +309,142 @@ class TestLogLifecycle(unittest.IsolatedAsyncioTestCase):
         # Recent archive must exist, expired must be deleted
         self.assertTrue(os.path.exists(recent_arch), "Recent access.log archive must be preserved")
         self.assertFalse(os.path.exists(expired_arch), "Expired access.log archive must be deleted")
+
+    async def test_execute_log_rotate_icecast_timestamp_archives_and_zero_byte_cleanup(self):
+        """Verifies Icecast .YYYYMMDD_HHMMSS archives are compressed, pruned by backup_count/age, and 0-byte files deleted."""
+        config_path = os.path.join(self.temp_dir.name, "test_ice_ts.conf")
+        config = configparser.ConfigParser()
+        config["logging"] = {
+            "retention_days": "30",
+            "rotation_max_bytes": "10485760",
+            "rotation_backup_count": "3",
+            "compression_enabled": "false",
+        }
+        with open(config_path, "w") as f:
+            config.write(f)
+        os.environ["CONFIG_FILE_PATH"] = config_path
+
+        ice_dir = os.path.join(self.log_dir, "icecast_101")
+        os.makedirs(ice_dir, exist_ok=True)
+        with open(os.path.join(ice_dir, "access.log"), "w") as f:
+            f.write("active")
+
+        now = time.time()
+        # 1. Expired timestamped archive (45 days old)
+        expired_ts = os.path.join(ice_dir, "access.log.20261004_200158")
+        with open(expired_ts, "w") as f:
+            f.write("expired icecast archive")
+        os.utime(expired_ts, (now - 45 * 86400, now - 45 * 86400))
+
+        # 2. Zero-byte ENOSPC remnant
+        zero_ts = os.path.join(ice_dir, "access.log.20261123_153254")
+        with open(zero_ts, "w") as f:
+            pass
+
+        # 3. Five recent timestamped archives (backup_count=3 should prune oldest 2 and gzip newest 3 on 256MB tmpfs)
+        recent_paths = []
+        for idx in range(5):
+            p = os.path.join(ice_dir, f"access.log.20261124_0{idx}0000")
+            with open(p, "w") as f:
+                f.write(f"log batch {idx}\n" * 20)
+            t = now - (5 - idx) * 3600
+            os.utime(p, (t, t))
+            recent_paths.append(p)
+
+        DiskUsage = namedtuple("DiskUsage", ["total", "used", "free"])
+        small_tmpfs = DiskUsage(total=256 * 1024 * 1024, used=64 * 1024 * 1024, free=192 * 1024 * 1024)
+
+        logs = []
+        with patch("core.task_manager.shutil.disk_usage", return_value=small_tmpfs):
+            await self.manager._execute_log_rotate(lambda m: logs.append(m), lambda m: logs.append(m))
+
+        self.assertFalse(os.path.exists(expired_ts), "Expired timestamped archive must be deleted")
+        self.assertFalse(os.path.exists(zero_ts), "Zero-byte Icecast archive must be removed")
+        self.assertFalse(os.path.exists(recent_paths[0]), "Oldest excess archive #0 must be pruned")
+        self.assertFalse(os.path.exists(recent_paths[1]), "Oldest excess archive #1 must be pruned")
+        for kept in recent_paths[2:]:
+            self.assertFalse(os.path.exists(kept), "Uncompressed kept archive must be replaced by .gz on <=512MB tmpfs")
+            self.assertTrue(os.path.exists(kept + ".gz"), "Kept Icecast archive must be gzipped")
+
+    async def test_rotate_shifts_process_backups_and_cleans_enospc(self):
+        """Verifies .1 -> .2 shifting and safe ENOSPC cleanup + emergency truncate."""
+        config_path = os.path.join(self.temp_dir.name, "test_shift.conf")
+        config = configparser.ConfigParser()
+        config["logging"] = {
+            "retention_days": "30",
+            "rotation_max_bytes": "500",
+            "rotation_backup_count": "3",
+            "compression_enabled": "true",
+        }
+        with open(config_path, "w") as f:
+            config.write(f)
+        os.environ["CONFIG_FILE_PATH"] = config_path
+
+        proc_log = os.path.join(self.log_dir, "process_101.log")
+        prev_arch = os.path.join(self.log_dir, "process_101.log.1")
+        with open(prev_arch, "wb") as f:
+            f.write(b"OLD_ARCHIVE\n" * 10)
+        with open(proc_log, "wb") as f:
+            f.write(b"NEW_ACTIVE\n" * 80)
+
+        logs = []
+        await self.manager._execute_log_rotate(lambda m: logs.append(m), lambda m: logs.append(m))
+
+        self.assertTrue(os.path.exists(os.path.join(self.log_dir, "process_101.log.1.gz")))
+        self.assertTrue(os.path.exists(os.path.join(self.log_dir, "process_101.log.2.gz")))
+        self.assertEqual(os.path.getsize(proc_log), 0)
+
+        # Now simulate ENOSPC while rotating oversized process_101.log
+        with open(proc_log, "wb") as f:
+            f.write(b"FLOOD\n" * 200)
+        with patch("core.task_manager.gzip.open", side_effect=OSError(errno.ENOSPC, "No space left on device")):
+            await self.manager._execute_log_rotate(lambda m: logs.append(m), lambda m: logs.append(m))
+
+        self.assertEqual(os.path.getsize(proc_log), 0, "Active log must be emergency-truncated on ENOSPC")
+        leftover_tmps = [f for f in os.listdir(self.log_dir) if f.endswith(".rot_tmp")]
+        self.assertEqual(leftover_tmps, [], "No .rot_tmp files may linger after ENOSPC")
+
+    def test_enforce_log_storage_quota_purges_oldest_archives_and_emergency_truncates(self):
+        """Verifies storage pressure pruning at >=80% and emergency active log truncation at >=92%."""
+        DiskUsage = namedtuple("DiskUsage", ["total", "used", "free"])
+        total = 256 * 1024 * 1024
+
+        arch_old = os.path.join(self.log_dir, "process_101.log.2.gz")
+        arch_new = os.path.join(self.log_dir, "process_101.log.1.gz")
+        active_proc = os.path.join(self.log_dir, "process_101.log")
+        for idx, p in enumerate((arch_old, arch_new)):
+            with open(p, "wb") as f:
+                f.write(b"A" * 4096)
+            t = time.time() - (2 - idx) * 3600
+            os.utime(p, (t, t))
+        with open(active_proc, "wb") as f:
+            f.write(b"B" * (600 * 1024))
+
+        # Sequence: initial 88% -> after deleting arch_old drops to 74% -> stops before deleting arch_new
+        usage_seq = iter([
+            DiskUsage(total=total, used=int(total * 0.88), free=int(total * 0.12)),  # entry check
+            DiskUsage(total=total, used=int(total * 0.88), free=int(total * 0.12)),  # before arch_old
+            DiskUsage(total=total, used=int(total * 0.74), free=int(total * 0.26)),  # before arch_new (<=0.75 stop)
+            DiskUsage(total=total, used=int(total * 0.74), free=int(total * 0.26)),  # post-loop emergency check
+        ])
+        logs = []
+        with patch("core.task_manager.shutil.disk_usage", side_effect=lambda _p: next(usage_seq)):
+            self.manager._enforce_log_storage_quota({self.log_dir}, {"access.log", "ffmpeg-gui.log"}, logs.append, logs.append)
+
+        self.assertFalse(os.path.exists(arch_old), "Oldest archive must be purged under storage pressure")
+        self.assertTrue(os.path.exists(arch_new), "Newer archive should be retained once pressure drops <=75%")
+        self.assertGreater(os.path.getsize(active_proc), 0, "Active log must stay intact below emergency watermark")
+
+        # Now simulate 95% full with NO archives left -> emergency truncate active_proc (>512KB)
+        os.remove(arch_new)
+        em_seq = iter([
+            DiskUsage(total=total, used=int(total * 0.95), free=int(total * 0.05)),
+            DiskUsage(total=total, used=int(total * 0.95), free=int(total * 0.05)),
+            DiskUsage(total=total, used=int(total * 0.95), free=int(total * 0.05)),
+        ])
+        with patch("core.task_manager.shutil.disk_usage", side_effect=lambda _p: next(em_seq)):
+            self.manager._enforce_log_storage_quota({self.log_dir}, {"access.log", "ffmpeg-gui.log"}, logs.append, logs.append)
+        self.assertEqual(os.path.getsize(active_proc), 0, "Largest active log must be truncated in-place at >=92%")
 
 if __name__ == "__main__":
     unittest.main()
