@@ -4743,6 +4743,7 @@ async def startup_event():
     asyncio.create_task(auto_start_services())
     asyncio.create_task(peer_federation_sync_loop())
     asyncio.create_task(task_manager.execute_on_boot_cleanup())
+    await task_manager.start_log_monitor()
     await scheduler.start()
 
     try:
@@ -4828,6 +4829,7 @@ async def shutdown_event():
 
     logger.info("Shutdown: Stopping scheduler...")
     await scheduler.stop()
+    await task_manager.stop_log_monitor()
     
     try:
         from core.hardware_health import hardware_health_manager

@@ -76,6 +76,34 @@ class TestLogFloodShield(unittest.IsolatedAsyncioTestCase):
             if os.path.exists(log_path):
                 os.remove(log_path)
 
+    async def test_log_reader_rotates_and_truncates_on_flood(self):
+        """When FFmpeg stdout/stderr exceeds max_log_bytes, _log_reader rotates/truncates in real time."""
+        pm = ProcessManager(db_session_factory=MagicMock())
+        process_id = 889
+        pm.log_buffers[process_id] = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = os.path.join(tmpdir, f"process_{process_id}.log")
+            chunks = [b"frame= 100 fps=25.0 bitrate=2000.0kbits/s speed=1.0x\n" * 30] * 4 + [b""]
+            mock_stdout = MagicMock()
+
+            async def _fake_read(_n=4096):
+                return chunks.pop(0) if chunks else b""
+
+            mock_stdout.read = _fake_read
+            mock_proc = MagicMock()
+            mock_proc.stdout = mock_stdout
+
+            await pm._log_reader(process_id, mock_proc, log_path=log_path, max_log_bytes=2048)
+
+            self.assertLessEqual(os.path.getsize(log_path), 2048, "Active process log must remain bounded under max_log_bytes")
+            self.assertTrue(os.path.exists(f"{log_path}.1.gz"), "Oversized process log should live-rotate to .1.gz")
+            system_msgs = [
+                entry["message"] for entry in pm.log_buffers[process_id]
+                if "[SYSTEM]" in entry["message"] and "exceeded maximum size limit" in entry["message"]
+            ]
+            self.assertTrue(len(system_msgs) > 0, "Expected [SYSTEM] live rotation alert in log buffer")
+
     def test_get_max_log_file_bytes_fallback(self):
         """Verifies _get_max_log_file_bytes default and safety floor."""
         pm = ProcessManager(db_session_factory=MagicMock())
