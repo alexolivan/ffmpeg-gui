@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.68.1] - 2026-11-24
+
+### Fixed
+- **Log Rotation, Icecast Timestamped Archives & tmpfs Pressure Guardrail (`backend/core/task_manager.py`, `backend/core/process_manager.py`, `backend/main.py`)**:
+  - Updated `_execute_log_rotate` to recognize Icecast `<logarchive>1</logarchive>` timestamped files (`access.log.YYYYMMDD_HHMMSS` / `error.log.YYYYMMDD_HHMMSS`), delete 0-byte `ENOSPC` leftovers, enforce `rotation_backup_count` per stream prefix, and compress archives automatically on small volumes (`<= 512 MB` tmpfs) or `>= 70%` disk usage.
+  - Added safe atomic rotation (`_rotate_active_file`) with `.1 -> .2 -> ...` shifting for process/sidecar logs, `.rot_tmp` cleanup on `ENOSPC`, and emergency in-place truncation if rotation fails due to full disk.
+  - Added real-time log size rotation and truncation (`_rotate_or_truncate_active_process_log`) to FFmpeg `ProcessManager._log_reader`, and fixed `_file_log_tailer` continuous line-flood detection.
+  - Added `_enforce_log_storage_quota` (`>= 80%` high watermark pruning oldest archives down to `75%`; `>= 92%` emergency in-place active log truncation) plus a lightweight 15-minute `log_pressure_monitor_loop` started on server boot.
+
 ## [2.68.0] - 2026-11-19
 
 ### Added

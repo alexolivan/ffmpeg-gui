@@ -1,8 +1,12 @@
 import asyncio
+import errno
+import gzip
 import psutil
 import logging
 import os
 import shlex
+import shutil
+import time
 from datetime import datetime
 import re
 from typing import Optional
@@ -20,6 +24,8 @@ class TaskManager:
         self._last_status_commit = {}
         self._notified_failed_executions = set()
         self._aborted_executions = set()
+        self._last_log_cleanup_ts = 0.0
+        self._log_monitor_task = None
 
     def notify_task_failure(self, execution_id: int, task_name: str, error_msg: Optional[str] = None):
         if execution_id in self._notified_failed_executions:
@@ -718,18 +724,332 @@ class TaskManager:
         log_info(f"Service maintenance restart sequence finished {'with errors' if not all_success else 'successfully'}.")
         return all_success
 
-    async def _execute_log_rotate(self, log_info, log_error):
-        import time
-        import gzip
-        import shutil
-        import re
+    @staticmethod
+    def _is_icecast_archive_name(filename: str) -> bool:
+        """Recognize Icecast rotated logs: .old, .N, .YYYYMMDD_HHMMSS, and .gz variants."""
+        if filename.endswith(".old") or filename.endswith(".gz"):
+            return True
+        if re.search(r"\.\d+(\.gz)?$", filename):
+            return True
+        if re.search(r"\.\d{8}_\d{6}(\.gz)?$", filename):
+            return True
+        return False
 
+    @staticmethod
+    def _is_compression_enforced(target_dir: str, configured_compression: bool) -> bool:
+        """Enable compression if configured, on small volumes (<=512 MB tmpfs), or above 70% disk usage."""
+        if configured_compression:
+            return True
+        try:
+            usage = shutil.disk_usage(target_dir)
+            if usage.total > 0:
+                if usage.total <= 512 * 1024 * 1024:
+                    return True
+                if (usage.used / usage.total) >= 0.70:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    @staticmethod
+    def _extract_numeric_archive_index(filename: str, base_name: str) -> Optional[int]:
+        if not filename.startswith(base_name + "."):
+            return None
+        rest = filename[len(base_name) + 1:]
+        m = re.match(r"^(\d+)(?:\.gz)?$", rest)
+        return int(m.group(1)) if m else None
+
+    def _compress_file_atomic(self, src_path: str, log_info, log_error) -> Optional[str]:
+        gz_path = f"{src_path}.gz"
+        tmp_path = f"{gz_path}.rot_tmp"
+        try:
+            st = os.stat(src_path)
+            with open(src_path, "rb") as f_in:
+                with gzip.open(tmp_path, "wb") as f_out:
+                    shutil.copyfileobj(f_in, f_out)
+            os.replace(tmp_path, gz_path)
+            try:
+                os.utime(gz_path, (st.st_atime, st.st_mtime))
+            except Exception:
+                pass
+            os.remove(src_path)
+            log_info(f"Compressed archive: {os.path.basename(src_path)} -> {os.path.basename(gz_path)}")
+            return gz_path
+        except Exception as comp_err:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+            log_error(f"Failed to compress {os.path.basename(src_path)}: {comp_err}")
+            return None
+
+    def _shift_numbered_archives(self, base_path: str, backup_count: int, log_info):
+        backup_count = max(1, int(backup_count or 5))
+        parent_dir = os.path.dirname(os.path.abspath(base_path))
+        base_name = os.path.basename(base_path)
+        if not os.path.isdir(parent_dir):
+            return
+        # Remove any existing archives >= backup_count first
+        for fname in os.listdir(parent_dir):
+            idx = self._extract_numeric_archive_index(fname, base_name)
+            if idx is not None and idx >= backup_count:
+                try:
+                    os.remove(os.path.join(parent_dir, fname))
+                    log_info(f"Pruned excess log archive: {fname}")
+                except Exception:
+                    pass
+        # Shift i -> i + 1 descending from backup_count - 1 down to 1
+        for i in range(backup_count - 1, 0, -1):
+            for ext in (".gz", ""):
+                src = os.path.join(parent_dir, f"{base_name}.{i}{ext}")
+                dst = os.path.join(parent_dir, f"{base_name}.{i + 1}{ext}")
+                if os.path.exists(src):
+                    try:
+                        os.replace(src, dst)
+                    except Exception:
+                        pass
+
+    def _rotate_active_file(
+        self,
+        active_path: str,
+        max_bytes: int,
+        backup_count: int,
+        compression_enabled: bool,
+        log_info,
+        log_error,
+        shift_backups: bool = True,
+    ):
+        if not active_path or not os.path.isfile(active_path):
+            return
+        try:
+            sz = os.path.getsize(active_path)
+        except OSError:
+            return
+        if sz <= max_bytes:
+            return
+
+        parent_dir = os.path.dirname(os.path.abspath(active_path))
+        use_gzip = self._is_compression_enforced(parent_dir, compression_enabled)
+        if shift_backups:
+            self._shift_numbered_archives(active_path, backup_count, log_info)
+
+        arch_path = f"{active_path}.1.gz" if use_gzip else f"{active_path}.1"
+        tmp_path = f"{arch_path}.rot_tmp"
+        try:
+            usage = shutil.disk_usage(parent_dir)
+            needed = max(sz // 4, 65536) if use_gzip else sz
+            if usage.free < needed:
+                raise OSError(errno.ENOSPC, f"Insufficient free space ({usage.free} bytes) to rotate {os.path.basename(active_path)}")
+
+            if use_gzip:
+                with open(active_path, "rb") as f_in:
+                    with gzip.open(tmp_path, "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+            else:
+                shutil.copyfile(active_path, tmp_path)
+
+            os.replace(tmp_path, arch_path)
+            with open(active_path, "r+b") as f_trunc:
+                f_trunc.truncate(0)
+            log_info(f"Rotated oversized log {os.path.basename(active_path)} ({sz / (1024*1024):.2f} MB -> {os.path.basename(arch_path)})")
+        except Exception as rot_err:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+            log_error(f"Failed to rotate oversized log {os.path.basename(active_path)}: {rot_err}")
+            is_enospc = getattr(rot_err, "errno", None) == errno.ENOSPC or "space" in str(rot_err).lower()
+            if is_enospc:
+                try:
+                    with open(active_path, "r+b") as f_trunc:
+                        f_trunc.truncate(0)
+                    log_error(f"Emergency truncated {os.path.basename(active_path)} in-place due to low disk/tmpfs space.")
+                except Exception as trunc_err:
+                    log_error(f"Failed emergency truncate on {os.path.basename(active_path)}: {trunc_err}")
+
+    def _collect_log_dirs_for_pressure_check(self) -> list:
+        dirs = set()
+        default_logs_dir = os.path.abspath("data/logs")
+        if os.path.isdir(default_logs_dir):
+            dirs.add(default_logs_dir)
+        config_path = os.environ.get("CONFIG_FILE_PATH")
+        if config_path and os.path.exists(config_path):
+            try:
+                import configparser
+                cfg = configparser.ConfigParser()
+                cfg.read(config_path)
+                if "logging" in cfg:
+                    fp = cfg["logging"].get("file_path")
+                    ap = cfg["logging"].get("access_log_path")
+                    for p in (fp, ap):
+                        if p:
+                            d = os.path.dirname(os.path.abspath(p))
+                            if os.path.isdir(d):
+                                dirs.add(d)
+            except Exception:
+                pass
+        try:
+            with self.db_session_factory() as session:
+                from database.models import Storage
+                for st in session.query(Storage).filter(Storage.type == "logs").all():
+                    if st.path and os.path.isdir(st.path):
+                        dirs.add(os.path.abspath(st.path))
+        except Exception:
+            pass
+        return sorted(dirs)
+
+    def _enforce_log_storage_quota(
+        self,
+        log_dirs: set,
+        log_base_names: set,
+        log_info,
+        log_error,
+        high_watermark: float = 0.80,
+        target_watermark: float = 0.75,
+        emergency_watermark: float = 0.92,
+    ):
+        """Enforces storage pressure protection across unique mountpoints (e.g. 256MB tmpfs)."""
+        dev_groups = {}
+        for ldir in log_dirs:
+            if not ldir or not os.path.isdir(ldir) or not os.access(ldir, os.W_OK):
+                continue
+            try:
+                st_dev = os.stat(ldir).st_dev
+                dev_groups.setdefault(st_dev, []).append(ldir)
+            except Exception:
+                continue
+
+        for st_dev, dirs_on_dev in dev_groups.items():
+            rep_dir = dirs_on_dev[0]
+            try:
+                usage = shutil.disk_usage(rep_dir)
+            except Exception:
+                continue
+            if usage.total <= 0:
+                continue
+            used_ratio = usage.used / usage.total
+            if used_ratio < high_watermark:
+                continue
+
+            log_info(
+                f"Log storage pressure detected on {rep_dir}: "
+                f"{used_ratio * 100:.1f}% used ({usage.used / (1024*1024):.1f}/{usage.total / (1024*1024):.1f} MB). Pruning oldest archives..."
+            )
+
+            # 1. Gather all rotated archives across dirs_on_dev
+            archives = []
+            active_logs = []
+            for ldir in dirs_on_dev:
+                try:
+                    for entry in os.listdir(ldir):
+                        ep = os.path.join(ldir, entry)
+                        if os.path.isfile(ep):
+                            if re.match(r"^(process|ptp4l|phc2sys)_(\d+)\.log$", entry) or entry in log_base_names:
+                                active_logs.append((os.path.getsize(ep), ep))
+                            elif (
+                                re.match(r"^(process|ptp4l|phc2sys)_(\d+)\.log\..+$", entry)
+                                or any(entry.startswith(b + ".") for b in log_base_names)
+                                or entry.endswith(".rot_tmp")
+                            ):
+                                archives.append((os.path.getmtime(ep), os.path.getsize(ep), ep))
+                        elif os.path.isdir(ep) and re.match(r"^icecast_(\d+)$", entry):
+                            for sub in os.listdir(ep):
+                                sp = os.path.join(ep, sub)
+                                if not os.path.isfile(sp):
+                                    continue
+                                if self._is_icecast_archive_name(sub) or sub.endswith(".rot_tmp"):
+                                    archives.append((os.path.getmtime(sp), os.path.getsize(sp), sp))
+                                elif sub in ("access.log", "error.log"):
+                                    active_logs.append((os.path.getsize(sp), sp))
+                except Exception:
+                    continue
+
+            # Delete oldest archives first (smallest mtime, largest size tie-breaker)
+            archives.sort(key=lambda item: (item[0], -item[1]))
+            for _mtime, _sz, arch_p in archives:
+                try:
+                    usage_now = shutil.disk_usage(rep_dir)
+                    if usage_now.total > 0 and (usage_now.used / usage_now.total) <= target_watermark:
+                        break
+                    os.remove(arch_p)
+                    log_info(f"Storage-pressure purge deleted archive: {os.path.basename(arch_p)}")
+                except Exception as del_err:
+                    log_error(f"Failed storage-pressure delete on {arch_p}: {del_err}")
+
+            # 2. Emergency fallback: if disk is STILL critically full (>= emergency_watermark), truncate largest active logs in-place
+            try:
+                usage_after = shutil.disk_usage(rep_dir)
+                if usage_after.total > 0 and (usage_after.used / usage_after.total) >= emergency_watermark:
+                    active_logs.sort(key=lambda item: -item[0])
+                    for sz, act_p in active_logs:
+                        if sz < 512 * 1024:
+                            continue
+                        usage_chk = shutil.disk_usage(rep_dir)
+                        if usage_chk.total > 0 and (usage_chk.used / usage_chk.total) <= 0.85:
+                            break
+                        try:
+                            with open(act_p, "r+b") as f_trunc:
+                                f_trunc.truncate(0)
+                            log_error(f"Emergency storage-pressure truncate on active log {os.path.basename(act_p)} (was {sz / (1024*1024):.2f} MB).")
+                        except Exception as t_err:
+                            log_error(f"Failed emergency truncate on {act_p}: {t_err}")
+            except Exception:
+                pass
+
+    async def start_log_monitor(self):
+        if self._log_monitor_task and not self._log_monitor_task.done():
+            return
+        self._log_monitor_task = asyncio.create_task(self._log_pressure_monitor_loop())
+
+    async def stop_log_monitor(self):
+        if self._log_monitor_task and not self._log_monitor_task.done():
+            self._log_monitor_task.cancel()
+            try:
+                await self._log_monitor_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        self._log_monitor_task = None
+
+    async def _log_pressure_monitor_loop(self):
+        """Lightweight 15-min loop checking log volume pressure & periodic Icecast/FFmpeg rotation."""
+        def _log_info(msg):
+            self.logger.info(f"[LogMonitor] {msg}")
+        def _log_err(msg):
+            self.logger.error(f"[LogMonitor] {msg}")
+
+        while True:
+            try:
+                await asyncio.sleep(900)
+                now_ts = time.time()
+                needs_cleanup = (now_ts - self._last_log_cleanup_ts) >= (6 * 3600)
+                if not needs_cleanup:
+                    for d in self._collect_log_dirs_for_pressure_check():
+                        try:
+                            u = shutil.disk_usage(d)
+                            if u.total > 0 and (u.used / u.total) >= 0.75:
+                                needs_cleanup = True
+                                break
+                        except Exception:
+                            continue
+                if needs_cleanup:
+                    await self._execute_log_rotate(_log_info, _log_err)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.debug(f"Log pressure monitor tick error: {e}")
+
+    async def _execute_log_rotate(self, log_info, log_error):
         config_path = os.environ.get("CONFIG_FILE_PATH")
         retention_days = 30
         rotation_max_bytes = 10485760  # 10 MB default
+        rotation_backup_count = 5
+        rotation_enabled = False
         logging_mode = "both"
         logging_file_path = None
         compression_enabled = True
+        access_log_path = None
 
         if config_path and os.path.exists(config_path):
             try:
@@ -749,12 +1069,18 @@ class TaskManager:
                     except Exception:
                         pass
                     try:
+                        rotation_backup_count = logging_cfg.getint("rotation_backup_count", 5)
+                    except Exception:
+                        pass
+                    try:
+                        rotation_enabled = logging_cfg.getboolean("rotation_enabled", False)
+                    except Exception:
+                        pass
+                    try:
                         compression_enabled = logging_cfg.getboolean("compression_enabled", True)
                     except Exception:
                         pass
                     access_log_path = logging_cfg.get("access_log_path", None)
-                else:
-                    access_log_path = None
                 if "server" in config and not logging_file_path:
                     logging_file_path = config["server"].get("log_file", None)
             except Exception as cfg_err:
@@ -765,8 +1091,13 @@ class TaskManager:
             retention_days = 30
         if rotation_max_bytes <= 0:
             rotation_max_bytes = 10485760
+        if rotation_backup_count <= 0:
+            rotation_backup_count = 5
 
-        log_info(f"Log retention policy: {retention_days} days, max file size before rotation: {rotation_max_bytes / (1024 * 1024):.1f} MB.")
+        log_info(
+            f"Log retention policy: {retention_days} days, max file size: {rotation_max_bytes / (1024 * 1024):.1f} MB, "
+            f"max backups: {rotation_backup_count}, compression: {compression_enabled}."
+        )
 
         # 1. Clean up expired TaskExecution and ProcessLog records from SQLite database
         try:
@@ -797,81 +1128,104 @@ class TaskManager:
         except Exception as db_clean_err:
             log_error(f"Failed to prune old task/process log records from DB: {db_clean_err}")
 
+        resolved_log_dirs = set()
+        log_base_names = {"access.log", "ffmpeg-gui.log"}
+
         # 2. Clean up and rotate application server log and HTTP access log files
         use_file = bool(logging_file_path and logging_mode in ("file", "both"))
         if use_file and os.path.exists(os.path.dirname(os.path.abspath(logging_file_path))):
             abs_log_path = os.path.abspath(logging_file_path)
             log_dir = os.path.dirname(abs_log_path)
             log_filename = os.path.basename(abs_log_path)
+            resolved_log_dirs.add(log_dir)
+            log_base_names.add(log_filename)
             
             now = time.time()
             deleted_count = 0
             preserved_count = 0
             
-            # 2a. Purge expired server log archives (.gz)
+            # 2a. Purge expired / excess server log archives and compress if enforced
+            eff_app_comp = self._is_compression_enforced(log_dir, compression_enabled)
             for name in os.listdir(log_dir):
-                if name.startswith(log_filename) and name.endswith(".gz"):
+                if name.endswith(".rot_tmp") and name.startswith(log_filename):
+                    try:
+                        os.remove(os.path.join(log_dir, name))
+                    except Exception:
+                        pass
+                    continue
+                if name.startswith(log_filename + ".") and (name.endswith(".gz") or re.search(r"\.\d+$", name)):
                     file_path = os.path.join(log_dir, name)
                     if not os.path.isfile(file_path):
                         continue
                     mtime = os.path.getmtime(file_path)
                     age_days = (now - mtime) / (24 * 3600)
-                    if age_days > retention_days:
+                    idx = self._extract_numeric_archive_index(name, log_filename)
+                    if age_days > retention_days or (idx is not None and idx > rotation_backup_count):
                         try:
                             os.remove(file_path)
-                            log_info(f"Deleted expired rotated log file: {name} (age: {age_days:.1f} days)")
+                            if age_days > retention_days:
+                                log_info(f"Deleted expired rotated log file: {name} (age: {age_days:.1f} days)")
+                            else:
+                                log_info(f"Pruned excess rotated log file: {name}")
                             deleted_count += 1
                         except Exception as e:
                             log_error(f"Failed to delete {name}: {e}")
                     else:
+                        if eff_app_comp and not name.endswith(".gz"):
+                            self._compress_file_atomic(file_path, log_info, log_error)
                         log_info(f"Preserved rotated log file: {name} (age: {age_days:.1f} days)")
                         preserved_count += 1
 
-            # 2b. Rotate and purge HTTP access log files
-            resolved_access_log = access_log_path or os.environ.get("ACCESS_LOG_PATH") or os.path.join(log_dir, "access.log")
-            if resolved_access_log and os.path.exists(resolved_access_log) and os.path.isfile(resolved_access_log):
-                # Rotate oversized active access.log via copytruncate
-                try:
-                    access_sz = os.path.getsize(resolved_access_log)
-                    if access_sz > rotation_max_bytes:
-                        arch_access = f"{resolved_access_log}.1.gz" if compression_enabled else f"{resolved_access_log}.1"
-                        if compression_enabled:
-                            with open(resolved_access_log, "rb") as f_in:
-                                with gzip.open(arch_access, "wb") as f_out:
-                                    shutil.copyfileobj(f_in, f_out)
-                        else:
-                            shutil.copyfile(resolved_access_log, arch_access)
-                        with open(resolved_access_log, "r+b") as f_trunc:
-                            f_trunc.truncate(0)
-                        log_info(f"Rotated oversized HTTP access log {os.path.basename(resolved_access_log)} ({access_sz / (1024*1024):.2f} MB -> {arch_access})")
-                except Exception as acc_rot_err:
-                    log_error(f"Failed to rotate oversized access log: {acc_rot_err}")
+            # Fallback rotation of server log when live RotatingFileHandler is disabled
+            if not rotation_enabled and os.path.isfile(abs_log_path):
+                self._rotate_active_file(
+                    abs_log_path, rotation_max_bytes, rotation_backup_count, compression_enabled, log_info, log_error
+                )
 
-                # Purge expired access.log archives (.gz)
-                access_base = os.path.basename(resolved_access_log)
+            # 2b. Purge and rotate HTTP access log files
+            resolved_access_log = access_log_path or os.environ.get("ACCESS_LOG_PATH") or os.path.join(log_dir, "access.log")
+            if resolved_access_log:
                 access_dir = os.path.dirname(os.path.abspath(resolved_access_log))
+                access_base = os.path.basename(resolved_access_log)
+                resolved_log_dirs.add(access_dir)
+                log_base_names.add(access_base)
                 if os.path.exists(access_dir):
+                    eff_acc_comp = self._is_compression_enforced(access_dir, compression_enabled)
                     for name in os.listdir(access_dir):
-                        if name.startswith(access_base) and name.endswith(".gz"):
+                        if name.endswith(".rot_tmp") and name.startswith(access_base):
+                            try:
+                                os.remove(os.path.join(access_dir, name))
+                            except Exception:
+                                pass
+                            continue
+                        if name.startswith(access_base + ".") and (name.endswith(".gz") or re.search(r"\.\d+$", name)):
                             file_path = os.path.join(access_dir, name)
                             if not os.path.isfile(file_path):
                                 continue
                             mtime = os.path.getmtime(file_path)
                             age_days = (now - mtime) / (24 * 3600)
-                            if age_days > retention_days:
+                            idx = self._extract_numeric_archive_index(name, access_base)
+                            if age_days > retention_days or (idx is not None and idx > rotation_backup_count):
                                 try:
                                     os.remove(file_path)
-                                    log_info(f"Deleted expired rotated access log: {name} (age: {age_days:.1f} days)")
+                                    log_info(f"Deleted expired/excess access log: {name} (age: {age_days:.1f} days)")
                                     deleted_count += 1
                                 except Exception as e:
                                     log_error(f"Failed to delete {name}: {e}")
+                            elif eff_acc_comp and not name.endswith(".gz"):
+                                self._compress_file_atomic(file_path, log_info, log_error)
+
+                if os.path.isfile(resolved_access_log):
+                    self._rotate_active_file(
+                        resolved_access_log, rotation_max_bytes, rotation_backup_count, compression_enabled, log_info, log_error,
+                        shift_backups=False,
+                    )
 
             log_info(f"Cleanup finished. Deleted {deleted_count} files, preserved {preserved_count} files.")
 
-        # 3. Clean up, rotate, compress, and enforce retention on Services logs (FFmpeg, MediaMTX, Icecast)
+        # 3. Clean up, rotate, compress, and enforce retention on Services logs (FFmpeg, MediaMTX, Icecast, PTP sidecars)
         try:
             now_ts = time.time()
-            resolved_log_dirs = set()
             active_service_ids = set()
 
             default_logs_dir = os.path.abspath("data/logs")
@@ -897,60 +1251,63 @@ class TaskManager:
                 if not os.path.exists(ldir) or not os.access(ldir, os.W_OK):
                     continue
 
-                for entry in os.listdir(ldir):
+                eff_dir_comp = self._is_compression_enforced(ldir, compression_enabled)
+
+                # Clean up any leftover partial .rot_tmp files from crashed rotations
+                for entry in list(os.listdir(ldir)):
+                    if entry.endswith(".rot_tmp"):
+                        try:
+                            os.remove(os.path.join(ldir, entry))
+                        except Exception:
+                            pass
+
+                # --- A. Process & Sidecar Logs: Pass 1 = archives/orphans, Pass 2 = active logs ---
+                active_proc_paths = []
+                for entry in list(os.listdir(ldir)):
                     entry_path = os.path.join(ldir, entry)
-
-                    # --- A. Process Logs: process_{id}.log* ---
-                    m_proc = re.match(r"^process_(\d+)\.log(.*)$", entry)
+                    m_proc = re.match(r"^(process|ptp4l|phc2sys)_(\d+)\.log(.*)$", entry)
                     if m_proc:
-                        srv_id = int(m_proc.group(1))
-                        suffix = m_proc.group(2)
+                        kind_prefix = m_proc.group(1)
+                        srv_id = int(m_proc.group(2))
+                        suffix = m_proc.group(3)
 
-                        # Orphan cleanup
                         if srv_id not in active_service_ids:
                             try:
                                 if os.path.isfile(entry_path):
                                     os.remove(entry_path)
-                                    log_info(f"Deleted orphaned process log: {entry}")
+                                    log_info(f"Deleted orphaned {kind_prefix} log: {entry}")
                             except Exception as o_err:
-                                log_error(f"Failed to delete orphaned process log {entry}: {o_err}")
+                                log_error(f"Failed to delete orphaned log {entry}: {o_err}")
                             continue
 
-                        # Active service log: archive vs main file
-                        if suffix:  # e.g. .1.gz, .old, .1
+                        if suffix:
+                            base_proc_name = f"{kind_prefix}_{srv_id}.log"
+                            idx = self._extract_numeric_archive_index(entry, base_proc_name)
                             mtime = os.path.getmtime(entry_path)
                             age_days = max(0.0, (now_ts - mtime) / (24 * 3600))
-                            if age_days > retention_days:
+                            if age_days > retention_days or (idx is not None and idx > rotation_backup_count):
                                 try:
                                     os.remove(entry_path)
-                                    log_info(f"Deleted expired process log archive: {entry} (age: {age_days:.1f} days)")
+                                    log_info(f"Deleted expired/excess process log archive: {entry} (age: {age_days:.1f} days)")
                                 except Exception as d_err:
                                     log_error(f"Failed to delete expired archive {entry}: {d_err}")
+                            elif eff_dir_comp and not entry.endswith(".gz"):
+                                self._compress_file_atomic(entry_path, log_info, log_error)
                         else:
-                            # Active process_{id}.log
-                            try:
-                                sz = os.path.getsize(entry_path)
-                                if sz > rotation_max_bytes:
-                                    arch_path = f"{entry_path}.1.gz" if compression_enabled else f"{entry_path}.1"
-                                    if compression_enabled:
-                                        with open(entry_path, "rb") as f_in:
-                                            with gzip.open(arch_path, "wb") as f_out:
-                                                shutil.copyfileobj(f_in, f_out)
-                                    else:
-                                        shutil.copyfile(entry_path, arch_path)
-                                    # Truncate active file to 0 bytes so writing process continues cleanly
-                                    with open(entry_path, "r+b") as f_trunc:
-                                        f_trunc.truncate(0)
-                                    log_info(f"Rotated oversized process log {entry} ({sz / (1024*1024):.2f} MB -> {arch_path})")
-                            except Exception as rot_err:
-                                log_error(f"Failed to rotate oversized log {entry}: {rot_err}")
+                            active_proc_paths.append(entry_path)
 
+                for entry_path in active_proc_paths:
+                    self._rotate_active_file(
+                        entry_path, rotation_max_bytes, rotation_backup_count, compression_enabled, log_info, log_error
+                    )
+
+                for entry in list(os.listdir(ldir)):
+                    entry_path = os.path.join(ldir, entry)
                     # --- B. Icecast directories: icecast_{id} ---
                     m_ice = re.match(r"^icecast_(\d+)$", entry)
                     if m_ice and os.path.isdir(entry_path):
                         ice_id = int(m_ice.group(1))
 
-                        # Orphan cleanup
                         if ice_id not in active_service_ids:
                             try:
                                 shutil.rmtree(entry_path)
@@ -959,61 +1316,74 @@ class TaskManager:
                                 log_error(f"Failed to delete orphaned Icecast directory {entry}: {o_err}")
                             continue
 
-                        # Active Icecast directory: examine files inside
                         try:
-                            for sub_entry in os.listdir(entry_path):
+                            # Remove leftover temp files first
+                            for sub_entry in list(os.listdir(entry_path)):
+                                if sub_entry.endswith(".rot_tmp"):
+                                    try:
+                                        os.remove(os.path.join(entry_path, sub_entry))
+                                    except Exception:
+                                        pass
+
+                            # Phase 1: Prune 0-byte or expired archives
+                            remaining_by_stream = {"access.log": [], "error.log": []}
+                            for sub_entry in list(os.listdir(entry_path)):
                                 sub_path = os.path.join(entry_path, sub_entry)
                                 if not os.path.isfile(sub_path):
                                     continue
 
-                                is_archive = (
-                                    sub_entry.endswith(".old")
-                                    or sub_entry.endswith(".gz")
-                                    or re.search(r"\.\d+(\.gz)?$", sub_entry)
-                                )
-
-                                if is_archive:
+                                if self._is_icecast_archive_name(sub_entry):
+                                    sz = os.path.getsize(sub_path)
                                     mtime = os.path.getmtime(sub_path)
                                     age_days = max(0.0, (now_ts - mtime) / (24 * 3600))
+                                    if sz == 0:
+                                        try:
+                                            os.remove(sub_path)
+                                            log_info(f"Deleted empty Icecast log archive: {entry}/{sub_entry}")
+                                        except Exception:
+                                            pass
+                                        continue
                                     if age_days > retention_days:
                                         try:
                                             os.remove(sub_path)
                                             log_info(f"Deleted expired Icecast log archive: {entry}/{sub_entry} (age: {age_days:.1f} days)")
                                         except Exception as d_err:
                                             log_error(f"Failed to delete expired Icecast log {sub_entry}: {d_err}")
-                                    elif compression_enabled and not sub_entry.endswith(".gz"):
-                                        # Compress uncompressed .old archive to save disk space
-                                        gz_path = f"{sub_path}.gz"
-                                        try:
-                                            with open(sub_path, "rb") as f_in:
-                                                with gzip.open(gz_path, "wb") as f_out:
-                                                    shutil.copyfileobj(f_in, f_out)
-                                            os.remove(sub_path)
-                                            log_info(f"Compressed Icecast archive: {entry}/{sub_entry} -> {sub_entry}.gz")
-                                        except Exception as comp_err:
-                                            log_error(f"Failed to compress {sub_entry}: {comp_err}")
-                                else:
-                                    # Active log file (access.log or error.log)
-                                    sz = os.path.getsize(sub_path)
-                                    if sz > rotation_max_bytes:
-                                        arch_path = f"{sub_path}.1.gz" if compression_enabled else f"{sub_path}.1"
-                                        try:
-                                            if compression_enabled:
-                                                with open(sub_path, "rb") as f_in:
-                                                    with gzip.open(arch_path, "wb") as f_out:
-                                                        shutil.copyfileobj(f_in, f_out)
-                                            else:
-                                                shutil.copyfile(sub_path, arch_path)
-                                            with open(sub_path, "r+b") as f_trunc:
-                                                f_trunc.truncate(0)
-                                            log_info(f"Rotated oversized Icecast log {entry}/{sub_entry} ({sz / (1024*1024):.2f} MB)")
-                                        except Exception as rot_err:
-                                            log_error(f"Failed to rotate Icecast log {sub_entry}: {rot_err}")
+                                        continue
+
+                                    stream_key = "access.log" if sub_entry.startswith("access.log.") else ("error.log" if sub_entry.startswith("error.log.") else "access.log")
+                                    remaining_by_stream[stream_key].append((mtime, sub_path))
+
+                            # Phase 2: Enforce rotation_backup_count per stream prefix, then compress remaining
+                            for stream_key, items in remaining_by_stream.items():
+                                items.sort(key=lambda x: x[0], reverse=True)
+                                for keep_item in items[rotation_backup_count:]:
+                                    try:
+                                        os.remove(keep_item[1])
+                                        log_info(f"Pruned excess Icecast archive ({stream_key}): {entry}/{os.path.basename(keep_item[1])}")
+                                    except Exception as p_err:
+                                        log_error(f"Failed to prune excess Icecast log {keep_item[1]}: {p_err}")
+                                for _mtime, arch_p in items[:rotation_backup_count]:
+                                    if eff_dir_comp and not arch_p.endswith(".gz") and os.path.exists(arch_p):
+                                        self._compress_file_atomic(arch_p, log_info, log_error)
+
+                            # Phase 3: Rotate oversized active Icecast access.log / error.log if needed
+                            for active_name in ("access.log", "error.log"):
+                                active_sub = os.path.join(entry_path, active_name)
+                                if os.path.isfile(active_sub):
+                                    self._rotate_active_file(
+                                        active_sub, rotation_max_bytes, rotation_backup_count, compression_enabled, log_info, log_error
+                                    )
                         except Exception as ice_scan_err:
                             log_error(f"Failed scanning Icecast directory {entry}: {ice_scan_err}")
 
+            # 3b. Global Storage-Pressure Guardrail across unique log filesystems
+            self._enforce_log_storage_quota(resolved_log_dirs, log_base_names, log_info, log_error)
+
         except Exception as svc_log_err:
             log_error(f"Error during service log lifecycle management: {svc_log_err}")
+
+        self._last_log_cleanup_ts = time.time()
 
         # 4. Clean up temporary files in /dev/shm or /tmp older than 1 day
         for temp_dir in ["/dev/shm", "/tmp"]:
