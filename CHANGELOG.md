@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.71.0] - 2026-11-25
+
+### Changed
+- **Portal `<SearchableSelect />` Rollout — Phase 1 (`SearchableSelect.tsx`, `searchableSelectHelper.ts`, Service/Task Modals, Engine Forms & Network Selectors)**:
+  - Extended `SearchableSelect` with `wrapLabels`, `maxDropdownWidth` (dynamic viewport-clamped expansion for long descriptions/badges), `accent` (`orange` / `lime`), and native hover `title` tooltips on options.
+  - Migrated Phase 1 dynamic/modal selectors: `BuildSdksModal`, `ProcessConfigForm` (FFmpeg build), `IcecastConfigForm` (engine build & log storage), `MediaMtxConfigForm` (release, HLS/log storages), `PipeWireConfigForm` (engine build, AES67 NIC with disabled/PTP badges, log storage), `BatchJobForm`, `ServiceRestartTaskForm`, `WatchdogFormSection` (backup service with loop-disabled items), `LifecycleFormSection` (log storage), and `NetworkInterfaceSelector`.
+
 ## [2.70.1] - 2026-11-25
 
 ### Fixed

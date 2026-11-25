@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SearchableSelect } from './SearchableSelect';
 
 export interface NetworkInterfaceAddress {
   address: string;
@@ -85,46 +86,43 @@ export const NetworkInterfaceSelector: React.FC<NetworkInterfaceSelectorProps> =
         </label>
       )}
 
-      <div className="relative">
-        <select
-          value={value || '0.0.0.0'}
-          disabled={disabled || loading}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer disabled:opacity-50"
-        >
-          <option value="0.0.0.0">
-            {t('common.network.interfaceSelector.allInterfaces', '0.0.0.0 (All Interfaces - Recommended)')}
-          </option>
-          <option value="127.0.0.1">
-            {t('common.network.interfaceSelector.localhostOnly', '127.0.0.1 (Localhost Only)')}
-          </option>
-
-          {/* Group detected host interfaces */}
-          {interfaces
+      <SearchableSelect
+        accent="lime"
+        wrapLabels
+        maxDropdownWidth={440}
+        value={value || '0.0.0.0'}
+        disabled={disabled || loading}
+        onChange={onChange}
+        buttonClassName="font-mono"
+        options={[
+          {
+            value: '0.0.0.0',
+            label: t('common.network.interfaceSelector.allInterfaces', '0.0.0.0 (All Interfaces - Recommended)'),
+          },
+          {
+            value: '127.0.0.1',
+            label: t('common.network.interfaceSelector.localhostOnly', '127.0.0.1 (Localhost Only)'),
+          },
+          ...interfaces
             .filter((iface) => !iface.is_loopback && iface.ipv4_addresses.length > 0)
-            .map((iface) => (
-              <optgroup
-                key={iface.name}
-                label={`${iface.name} [${iface.is_up ? 'UP' : 'DOWN'}${
-                  iface.speed > 0 ? `, ${iface.speed} Mbps` : ''
-                }${iface.is_default_gateway ? ` · ${t('common.network.interfaceSelector.defaultGateway', 'Gateway')}` : ''}]`}
-              >
-                {iface.ipv4_addresses.map((addr) => (
-                  <option key={`${iface.name}-${addr.address}`} value={addr.address}>
-                    {addr.address} ({iface.name})
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-
-          {/* If the current value is not in detected IPs, show it as an alert item */}
-          {!isValueRecognized && (
-            <option value={value}>
-              ⚠️ {value} ({t('common.network.interfaceSelector.customOrMissing', 'Configured - Not Detected')})
-            </option>
-          )}
-        </select>
-      </div>
+            .flatMap((iface) => {
+              const groupLabel = `${iface.name} [${iface.is_up ? 'UP' : 'DOWN'}${
+                iface.speed > 0 ? `, ${iface.speed} Mbps` : ''
+              }${iface.is_default_gateway ? ` · ${t('common.network.interfaceSelector.defaultGateway', 'Gateway')}` : ''}]`;
+              return iface.ipv4_addresses.map((addr) => ({
+                value: addr.address,
+                label: `${addr.address} (${iface.name})`,
+                group: groupLabel,
+              }));
+            }),
+          ...(!isValueRecognized
+            ? [{
+                value,
+                label: `⚠️ ${value} (${t('common.network.interfaceSelector.customOrMissing', 'Configured - Not Detected')})`,
+              }]
+            : []),
+        ]}
+      />
 
       {isSpecificIp && (
         <div className="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-xl space-y-1.5 text-[11px] leading-snug">

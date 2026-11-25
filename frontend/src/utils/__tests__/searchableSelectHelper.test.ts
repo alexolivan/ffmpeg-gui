@@ -53,6 +53,19 @@ describe('searchableSelectHelper', () => {
     expect(placement.left).toBe(612);
   });
 
+  it('computes maxWidth when maxDropdownWidth is provided', () => {
+    const placement = computeDropdownPlacement(
+      { top: 100, bottom: 130, left: 40, width: 180 },
+      { width: 1280, height: 800 },
+      280,
+      180,
+      440
+    );
+
+    expect(placement.width).toBe(180);
+    expect(placement.maxWidth).toBe(440);
+  });
+
   it('filters options case-insensitively across label, value, and group', () => {
     const options = [
       { value: 'n9.1', label: 'n9.1', group: 'Latest' },

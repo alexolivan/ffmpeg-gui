@@ -23,6 +23,7 @@ export interface DropdownPlacement {
   bottom?: number;
   left: number;
   width: number;
+  maxWidth: number;
   maxHeight: number;
 }
 
@@ -34,7 +35,8 @@ export function computeDropdownPlacement(
   rect: TriggerRect,
   viewport: ViewportSize,
   desiredMaxHeight = 280,
-  minWidth = 180
+  minWidth = 180,
+  maxWidth?: number
 ): DropdownPlacement {
   const margin = 8;
   const gap = 4;
@@ -47,6 +49,9 @@ export function computeDropdownPlacement(
 
   const maxAllowedWidth = Math.max(120, viewport.width - margin * 2);
   const width = Math.min(Math.max(rect.width, minWidth), maxAllowedWidth);
+  const effectiveMaxWidth = maxWidth
+    ? Math.min(Math.max(width, maxWidth), maxAllowedWidth)
+    : width;
   const left = Math.max(margin, Math.min(rect.left, viewport.width - width - margin));
 
   if (openAbove) {
@@ -55,6 +60,7 @@ export function computeDropdownPlacement(
       bottom: Math.max(margin, viewport.height - rect.top + gap),
       left,
       width,
+      maxWidth: effectiveMaxWidth,
       maxHeight,
     };
   }
@@ -64,6 +70,7 @@ export function computeDropdownPlacement(
     top: Math.max(margin, rect.bottom + gap),
     left,
     width,
+    maxWidth: effectiveMaxWidth,
     maxHeight,
   };
 }

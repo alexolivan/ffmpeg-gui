@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
+import { SearchableSelect } from '../common/SearchableSelect';
 import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
 export interface ServiceRestartTaskFormProps {
@@ -235,21 +236,21 @@ export const ServiceRestartTaskForm: React.FC<ServiceRestartTaskFormProps> = ({
 
           {/* Add service bar */}
           <div className="flex items-center gap-2">
-            <select
+            <SearchableSelect
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={420}
+              className="min-w-[220px]"
+              buttonClassName="px-2.5 py-1.5"
               value={selectedServiceToAdd}
-              onChange={(e) => setSelectedServiceToAdd(e.target.value)}
-              className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] focus:border-brand-lime outline-none"
-            >
-              {availableServices.length === 0 ? (
-                <option value="">{t('common.noData', 'No services found')}</option>
-              ) : (
-                availableServices.map((svc) => (
-                  <option key={svc.id} value={String(svc.id)}>
-                    {svc.name} (#{svc.id}) [{svc.service_type || 'ffmpeg_stream'}]
-                  </option>
-                ))
-              )}
-            </select>
+              onChange={(val) => setSelectedServiceToAdd(val)}
+              disabled={availableServices.length === 0}
+              placeholder={t('common.noData', 'No services found')}
+              options={availableServices.map((svc) => ({
+                value: String(svc.id),
+                label: `${svc.name} (#${svc.id}) [${svc.service_type || 'ffmpeg_stream'}]`,
+              }))}
+            />
             <button
               type="button"
               onClick={handleAddService}
@@ -409,15 +410,18 @@ export const ServiceRestartTaskForm: React.FC<ServiceRestartTaskFormProps> = ({
             <label className="text-[11px] font-bold uppercase text-[var(--text-secondary)] tracking-wider">
               Trigger Mechanism
             </label>
-            <select
+            <SearchableSelect
+              accent="lime"
+              searchable={false}
+              buttonClassName="px-3 py-2"
               value={scheduleType}
-              onChange={(e) => setScheduleType(e.target.value)}
-              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] focus:border-brand-lime outline-none"
-            >
-              <option value="recurring">Recurring (Cron Schedule)</option>
-              <option value="one_shot">One-shot (Target DateTime)</option>
-              <option value="manual">Manual Trigger Only (On-Demand)</option>
-            </select>
+              onChange={(val) => setScheduleType(val)}
+              options={[
+                { value: 'recurring', label: 'Recurring (Cron Schedule)' },
+                { value: 'one_shot', label: 'One-shot (Target DateTime)' },
+                { value: 'manual', label: 'Manual Trigger Only (On-Demand)' },
+              ]}
+            />
           </div>
 
           {scheduleType === 'recurring' && (

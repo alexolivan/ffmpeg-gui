@@ -18,6 +18,7 @@ import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
 import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
 import { AliasField } from './common/AliasField';
+import { SearchableSelect } from './common/SearchableSelect';
 
 const VIDEO_ALLOWED_TYPES = ['file', 'desktop', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
 const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls', 'pipewire'];
@@ -1349,20 +1350,22 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         </div>
         <div className="flex gap-2 items-center">
           {availableBuilds.length > 0 && (
-            <select
+            <SearchableSelect
               id="process-build"
-              name="ffmpeg_build_id"
-              className="flex-1 min-w-0 bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-orange transition-all truncate"
-              value={config.ffmpeg_build_id ?? ''}
-              onChange={e => handleBuildChange(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">Default FFmpeg build</option>
-              {availableBuilds.map(b => (
-                <option key={b.id} value={b.id}>
-                  {b.name} — FFmpeg {b.ffmpeg_version}{b.is_default ? ' ★' : ''}
-                </option>
-              ))}
-            </select>
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={440}
+              className="flex-1 min-w-0"
+              value={config.ffmpeg_build_id ? String(config.ffmpeg_build_id) : ''}
+              onChange={val => handleBuildChange(val ? Number(val) : null)}
+              options={[
+                { value: '', label: 'Default FFmpeg build' },
+                ...availableBuilds.map(b => ({
+                  value: String(b.id),
+                  label: `${b.name} — FFmpeg ${b.ffmpeg_version}${b.is_default ? ' ★' : ''}`,
+                })),
+              ]}
+            />
           )}
           {/* Stream toggles */}
           <div

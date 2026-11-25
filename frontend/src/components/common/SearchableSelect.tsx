@@ -10,6 +10,21 @@ import {
 
 export type { SelectOption };
 
+const ACCENT_STYLES = {
+  orange: {
+    openBorder: 'border-brand-orange',
+    focusBorder: 'focus:border-brand-orange',
+    chevronOpen: 'text-brand-orange',
+    selectedOption: 'bg-brand-orange/20 text-brand-orange font-semibold cursor-pointer',
+  },
+  lime: {
+    openBorder: 'border-brand-lime',
+    focusBorder: 'focus:border-brand-lime',
+    chevronOpen: 'text-brand-lime',
+    selectedOption: 'bg-brand-lime/20 text-brand-lime font-semibold cursor-pointer',
+  },
+} as const;
+
 interface SearchableSelectProps {
   options: SelectOption[];
   value: string;
@@ -19,10 +34,13 @@ interface SearchableSelectProps {
   emptyMessage?: string;
   searchable?: boolean;
   disabled?: boolean;
+  wrapLabels?: boolean;
+  accent?: 'orange' | 'lime';
   className?: string;
   buttonClassName?: string;
   maxDropdownHeight?: number;
   minDropdownWidth?: number;
+  maxDropdownWidth?: number;
   id?: string;
   'aria-label'?: string;
 }
@@ -36,14 +54,18 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   emptyMessage,
   searchable,
   disabled = false,
+  wrapLabels = false,
+  accent = 'orange',
   className = '',
   buttonClassName = '',
   maxDropdownHeight = 280,
   minDropdownWidth = 180,
+  maxDropdownWidth,
   id,
   'aria-label': ariaLabel,
 }) => {
   const { t } = useTranslation();
+  const styles = ACCENT_STYLES[accent];
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -80,7 +102,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width },
         { width: window.innerWidth, height: window.innerHeight },
         maxDropdownHeight,
-        minDropdownWidth
+        minDropdownWidth,
+        maxDropdownWidth
       )
     );
   };
@@ -88,7 +111,18 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   useLayoutEffect(() => {
     if (!isOpen) return;
     updatePlacement();
-  }, [isOpen, filteredOptions.length]);
+  }, [isOpen, filteredOptions.length, maxDropdownWidth]);
+
+  useLayoutEffect(() => {
+    if (!isOpen || !placement || !menuRef.current || !triggerRef.current) return;
+    const margin = 8;
+    const menuWidth = menuRef.current.offsetWidth;
+    const triggerLeft = triggerRef.current.getBoundingClientRect().left;
+    const clampedLeft = Math.max(margin, Math.min(triggerLeft, window.innerWidth - menuWidth - margin));
+    if (Math.abs(clampedLeft - placement.left) > 1) {
+      setPlacement((prev) => (prev ? { ...prev, left: clampedLeft } : prev));
+    }
+  }, [isOpen, placement?.left, placement?.width, filteredOptions.length]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -241,7 +275,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
           });
         }}
         className={`w-full flex items-center justify-between gap-2 text-left bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none transition-colors ${
-          isOpen ? 'border-brand-orange' : 'hover:border-[var(--glass-border-hover)] focus:border-brand-orange'
+          isOpen ? styles.openBorder : `hover:border-[var(--glass-border-hover)] ${styles.focusBorder}`
         } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${buttonClassName}`}
       >
         <span className={`truncate ${!selectedOption && !value ? 'text-[var(--text-secondary)]' : ''}`}>
@@ -249,7 +283,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         </span>
         <svg
           className={`w-3.5 h-3.5 shrink-0 text-[var(--text-secondary)] transition-transform duration-150 ${
-            isOpen ? 'rotate-180 text-brand-orange' : ''
+            isOpen ? `rotate-180 ${styles.chevronOpen}` : ''
           }`}
           fill="none"
           viewBox="0 0 24 24"
@@ -268,7 +302,9 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             top: placement.top,
             bottom: placement.bottom,
             left: placement.left,
-            width: placement.width,
+            minWidth: placement.width,
+            maxWidth: placement.maxWidth,
+            width: maxDropdownWidth ? 'max-content' : placement.width,
             maxHeight: placement.maxHeight,
             zIndex: 9999,
           }}
@@ -286,7 +322,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                   setHighlightedIndex(0);
                 }}
                 placeholder={searchPlaceholder || t('common.searchPlaceholder', 'Search...')}
-                className="w-full rounded-lg px-2.5 py-1.5 text-xs bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none focus:border-brand-orange"
+                className={`w-full rounded-lg px-2.5 py-1.5 text-xs bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none ${styles.focusBorder}`}
               />
             </div>
           )}
@@ -315,6 +351,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                         }}
                         type="button"
                         role="option"
+                        title={option.label}
                         aria-selected={isSelected}
                         disabled={option.disabled}
                         onMouseEnter={() => setHighlightedIndex(flatIndex)}
@@ -323,13 +360,15 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
                           option.disabled
                             ? 'opacity-40 cursor-not-allowed'
                             : isSelected
-                              ? 'bg-brand-orange/20 text-brand-orange font-semibold cursor-pointer'
+                              ? styles.selectedOption
                               : isHighlighted
                                 ? 'bg-[var(--input-bg)] text-[var(--text-primary)] cursor-pointer'
                                 : 'text-[var(--text-primary)] hover:bg-[var(--input-bg)] cursor-pointer'
                         }`}
                       >
-                        <span className="truncate">{option.label}</span>
+                        <span className={wrapLabels ? 'whitespace-normal break-words leading-snug' : 'truncate'}>
+                          {option.label}
+                        </span>
                         {isSelected && <span className="text-[10px] shrink-0">✓</span>}
                       </button>
                     );
