@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PencilIcon, TrashIcon } from '../../Icons';
 import { EngineLogo } from '../../common/EngineLogo';
+import { SearchableSelect } from '../../common/SearchableSelect';
 
 export interface SoftwareEngineBuild {
   id: number;
@@ -529,17 +530,17 @@ export const SoftwareEngineCard: React.FC<SoftwareEngineCardProps> = ({
 
                   {releases.length > 0 && (
                     <>
-                      <select
+                      <SearchableSelect
+                        searchable={true}
                         value={selectedRelease}
-                        onChange={(e) => setSelectedRelease(e.target.value)}
-                        className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded px-2 py-1 text-[11px] text-[var(--text-primary)] font-mono"
-                      >
-                        {releases.map((r) => (
-                          <option key={r.tag} value={r.tag}>
-                            {r.name || (r.tag.startsWith('v') ? r.tag : `v${r.tag}`)}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => setSelectedRelease(val)}
+                        className="min-w-[180px]"
+                        buttonClassName="!bg-[var(--bg-card)] !px-2 !py-1 !text-[11px] font-mono rounded"
+                        options={releases.map((r) => ({
+                          value: r.tag,
+                          label: r.name || (r.tag.startsWith('v') ? r.tag : `v${r.tag}`),
+                        }))}
+                      />
 
                       <button
                         type="button"

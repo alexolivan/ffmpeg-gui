@@ -49,6 +49,9 @@
     "activeConnectedConsumers": "Consumidors actius connectats",
     "activeConnectedBroadcasters": "Emissors i consumidors actius connectats",
     "idle": "0 Leases (Inactiu)",
+    "selectOption": "Seleccionar...",
+    "searchPlaceholder": "Cercar...",
+    "noMatchingOptions": "Sense coincidències",
     "network": {
       "interfaceSelector": {
         "allInterfaces": "0.0.0.0 (Totes les interfícies - Recomanat)",

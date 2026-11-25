@@ -214,12 +214,6 @@ select {
   padding-right: 2.5rem !important;
 }
 
-select option {
-  background-color: #1a1a1a;
-  color: white;
-  padding: 12px;
-}
-
 input:focus, select:focus {
   border-color: var(--accent-lime) !important;
   box-shadow: 0 0 15px rgba(212, 255, 91, 0.1);
