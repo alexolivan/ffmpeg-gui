@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.74.1] - 2026-11-25
+
+### Fixed
+- **Audio / Video Sync (`aresample`) Hidden on Audio-Only Services (`FiltersFormSection.tsx`)**:
+  - Moved the **Audio / Video Sync (`aresample`)** configuration card (`Sync Mode`, `osr`, `min_comp`, `min_hard_comp`, `first_pts`) from the `video` sub-tab (`activeSubTab === 'video' && hasVideo`) to the top of the `audio` sub-tab (`activeSubTab === 'audio' && hasAudio`), making it accessible and revertible for audio-only services (such as `ALSA / PipeWire -> Icecast`) as well as video+audio services.
+
 ## [2.74.0] - 2026-11-25
 
 ### Added
