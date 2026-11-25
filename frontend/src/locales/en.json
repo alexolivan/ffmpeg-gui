@@ -49,6 +49,9 @@
     "activeConnectedConsumers": "Active connected consumers",
     "activeConnectedBroadcasters": "Active connected broadcasters / consumers",
     "idle": "0 Leases (Idle)",
+    "selectOption": "Select...",
+    "searchPlaceholder": "Search...",
+    "noMatchingOptions": "No matching options",
     "network": {
       "interfaceSelector": {
         "allInterfaces": "0.0.0.0 (All Interfaces - Recommended)",
