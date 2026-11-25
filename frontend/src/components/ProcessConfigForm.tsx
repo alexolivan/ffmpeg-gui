@@ -52,6 +52,7 @@ interface ProcessConfig {
       probesize: string;
       thread_queue_size: number;
       enable_preview?: boolean | null;
+      flush_packets?: boolean | null;
     };
     highpass?: string;
     lowpass?: string;
@@ -81,6 +82,7 @@ interface ProcessConfig {
       osr?: string;
       min_comp?: number;
       min_hard_comp?: number;
+      first_pts?: number | null;
     };
     overlays?: any[];
   };
@@ -420,6 +422,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             probesize: filterCfg.advanced?.probesize ?? '',
             thread_queue_size: filterCfg.advanced?.thread_queue_size ?? 0,
             enable_preview: filterCfg.advanced?.enable_preview ?? null,
+            flush_packets: filterCfg.advanced?.flush_packets ?? null,
           },
           highpass: filterCfg.highpass || '',
           lowpass: filterCfg.lowpass || '',
@@ -476,12 +479,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             osr: filterCfg.aresample.osr || '',
             min_comp: filterCfg.aresample.min_comp ?? 0.01,
             min_hard_comp: filterCfg.aresample.min_hard_comp ?? 0.1,
+            first_pts: filterCfg.aresample.first_pts ?? null,
           } : {
             enabled: !!filterCfg.aresample,
             mode: 'basic',
             osr: '',
             min_comp: 0.01,
             min_hard_comp: 0.1,
+            first_pts: null,
           },
           overlays: filterCfg.overlays || [],
         },
@@ -534,7 +539,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         advanced: {
           realtime: null, stream_loop: null, threads: 0,
           hwaccel: 'none', hwaccel_output_format: '', probesize: '', thread_queue_size: 0,
-          enable_preview: null,
+          enable_preview: null, flush_packets: null,
         },
         highpass: '',
         lowpass: '',
@@ -542,7 +547,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         compressor: { enabled: false, attack: 0.3, release: 0.3, gate: -60, gate_ratio: 4, threshold: -30, ratio: 4, gain: 0 },
         limiter: { enabled: false, ceiling: -0.1, release: 50 },
         volume: '',
-        aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 },
+        aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: 0 },
         overlays: [],
       },
       output: { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
@@ -976,7 +981,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
             compressor: { enabled: false, attack: 0.3, release: 0.3, gate: -60, gate_ratio: 4, threshold: -30, ratio: 4, gain: 0 },
             limiter: { enabled: false, ceiling: -0.1, release: 50 },
             volume: '',
-            aresample: { enabled: false, mode: 'basic' as 'basic' | 'advanced', osr: '', min_comp: 0.01, min_hard_comp: 0.1 }
+            aresample: { enabled: false, mode: 'basic' as 'basic' | 'advanced', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: null }
           }
         : prev.filters;
       return {
@@ -1562,6 +1567,77 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         return null;
       })()}
 
+      {/* Live Audio Sync Recommendation Banner */}
+      {(() => {
+        const effectiveAudioInput = config.use_secondary_input ? config.input2?.type : config.input1?.type;
+        const isLiveAudioInput = ['alsa', 'pipewire', 'decklink'].includes(effectiveAudioInput || '');
+        const isLiveOutput = ['icecast', 'rtmp', 'srt', 'rtsp', 'whip', 'udp', 'hls'].includes(config.output?.type || '');
+        const isPcmViable = isPcmPassthroughViable(effectiveAudioInput, config.output?.type);
+        const needsAresampleSync = !config.filters.aresample?.enabled;
+        const needsIcecastPtsReset =
+          config.output?.type === 'icecast' &&
+          (config.filters.aresample?.mode !== 'advanced' ||
+            config.filters.aresample?.first_pts === null ||
+            config.filters.aresample?.first_pts === undefined);
+        const needsThreadQueueBoost =
+          !isFfmpeg9Plus &&
+          ['alsa', 'pipewire'].includes(effectiveAudioInput || '') &&
+          (!config.filters.advanced?.thread_queue_size || config.filters.advanced.thread_queue_size < 1024);
+
+        if (
+          config.has_audio &&
+          config.audio_codec_id !== 'copy' &&
+          !isPcmViable &&
+          isLiveAudioInput &&
+          isLiveOutput &&
+          (needsAresampleSync || needsIcecastPtsReset || needsThreadQueueBoost)
+        ) {
+          return (
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-brand-orange/10 border border-brand-orange/30 rounded-2xl text-xs text-[var(--text-primary)] mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-start gap-2.5">
+                <span className="text-sm mt-0.5 text-brand-orange font-bold">
+                  ⏱
+                </span>
+                <div>
+                  <strong className="text-brand-orange">{t('forge.liveAudioSyncRecommendationTitle')}</strong>{' '}
+                  <span className="text-[var(--text-secondary)]">{t('forge.liveAudioSyncRecommendationText')}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfig(prev => ({
+                    ...prev,
+                    filters: {
+                      ...prev.filters,
+                      aresample: {
+                        enabled: true,
+                        mode: 'advanced',
+                        osr: prev.filters.aresample?.osr || '',
+                        min_comp: prev.filters.aresample?.min_comp ?? 0.01,
+                        min_hard_comp: prev.filters.aresample?.min_hard_comp ?? 0.1,
+                        first_pts: 0,
+                      },
+                      advanced: {
+                        ...prev.filters.advanced,
+                        thread_queue_size:
+                          !isFfmpeg9Plus && (!prev.filters.advanced?.thread_queue_size || prev.filters.advanced.thread_queue_size < 1024)
+                            ? 4096
+                            : prev.filters.advanced?.thread_queue_size ?? 0,
+                      },
+                    },
+                  }));
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 bg-brand-orange hover:bg-brand-orange/80 text-black font-black px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
+              >
+                {t('forge.applyLiveAudioSync')}
+              </button>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
       {/* ── Scrollable content ── */}
       <div className="flex-1 overflow-y-auto pr-3 space-y-4 min-h-0 custom-scrollbar">
 
@@ -1865,6 +1941,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                 probesize={config.filters.advanced.probesize}
                 thread_queue_size={config.filters.advanced.thread_queue_size}
                 enable_preview={config.filters.advanced.enable_preview}
+                flush_packets={config.filters.advanced.flush_packets}
                 inputThreadQueueUnsupported={isFfmpeg9Plus}
                 onChange={handleAdvancedFlagsChange}
               />

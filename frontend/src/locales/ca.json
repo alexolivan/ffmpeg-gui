@@ -1424,6 +1424,9 @@
     "pcmCopyRecommendationTitle": "Passthrough PCM Disponible",
     "pcmCopyRecommendationText": "Tant l'entrada com la sortida són fonts PCM sense comprimir. Utilitzar Stream Copy (-c:a copy) elimina la sobrecàrrega de CPU per transcodificació i minimitza la latència.",
     "useStreamCopy": "⚡ Utilitzar Stream Copy",
+    "liveAudioSyncRecommendationTitle": "Sincronització de Rellotge d'Àudio en Viu Recomanada:",
+    "liveAudioSyncRecommendationText": "Les entrades de captura en viu (ALSA/PipeWire/DeckLink) cap a sortides de xarxa poden patir deriva de rellotge, esgotament de memòria intermèdia i talls de reproducció. Activar aresample async amb first_pts=0 i un búfer d'entrada adequat evita caigudes de velocitat per sota de 1.0x.",
+    "applyLiveAudioSync": "⚡ Aplicar Sincronització Live",
     "pcmCopyActive": "⚡ Passthrough Directe PCM Actiu (Zero Latència de Transcodificació)",
     "decklinkToolsOption": "DeckLink Tools (Blackmagic decklink-ctl)",
     "targetDecklinkSdk": "SDK DeckLink de Destí",
@@ -1863,6 +1866,8 @@
     "keepOriginal": "Mantenir Original",
     "minSyncSec": "Sinc. Mínima (seg)",
     "hardSyncSec": "Sinc. Estricta (seg)",
+    "firstPts": "Primer PTS (mostres)",
+    "firstPtsPlaceholder": "Auto (buit) o 0",
     "audioCodecCopyNotice": "⚠️ El còdec d'àudio està establert en 'copy'. Els filtres d'àudio i ajustos DSP estan deshabilitats perquè el flux es copia directament sense re-codificar.",
     "audioDspLevels": "DSP i Nivells d'Àudio",
     "inputLevelCleanFilters": "Nivell d'Entrada i Filtres de Neteja",
@@ -1942,6 +1947,8 @@
     "advanced": {
       "enablePreview": "Monitor de Previsualització",
       "enablePreviewDesc": "Genera miniatures periòdiques en memòria/disc per a la GUI. Desactiva-ho en CPUs ajustades o fluxos en viu exigents per evitar caigudes de velocitat (xruns a ALSA).",
+      "flushPackets": "Buidar Paquets AVIO",
+      "flushPacketsDesc": "Buida cada paquet codificat a l'instant (-flush_packets 1) sense retenir-lo en RAM, evitant bloquejos i talls en fluxos d'àudio de baix bitrate (Icecast/SRT/RTMP).",
       "threadQueueFfmpeg9Note": "FFmpeg 9+ va eliminar -thread_queue_size per a entrades; aquest valor s'ignora automàticament en compilacions FFmpeg 9+."
     }
   },
