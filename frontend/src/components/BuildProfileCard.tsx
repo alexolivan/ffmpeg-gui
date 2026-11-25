@@ -9,7 +9,8 @@ import {
   ExportIcon,
   StarIcon,
   CheckIcon,
-  BroomIcon
+  BroomIcon,
+  ClipboardIcon
 } from './Icons'
 import { EngineLogo } from './common/EngineLogo'
 import { hasMinLevel, type CapabilityLevel } from '../utils/permissions'
@@ -53,6 +54,7 @@ interface BuildProfileCardProps {
   onDelete: (id: number) => void
   onSetDefault: (id: number) => void
   onEdit: (build: BuildProfile) => void
+  onClone?: (build: BuildProfile) => void
   onViewLogs: (id: number) => void
   onExport: (id: number) => void
   forgeLevel?: CapabilityLevel
@@ -100,7 +102,7 @@ function matchesVersion(sdkVersion: string | null | undefined, reqVersion: strin
 }
 
 export default function BuildProfileCard({
-  build, installedSdks: installedSdksProp, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onViewLogs, onExport, forgeLevel = 'admin', API = '',
+  build, installedSdks: installedSdksProp, isAnyBuilding = false, onCompile, onStop, onValidate, onCleanSources, onDelete, onSetDefault, onEdit, onClone, onViewLogs, onExport, forgeLevel = 'admin', API = '',
 }: BuildProfileCardProps) {
   const { t } = useTranslation()
   const canOperate = hasMinLevel(forgeLevel, 'operate')
@@ -342,6 +344,17 @@ export default function BuildProfileCard({
               className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-[var(--text-primary)] flex items-center justify-center border border-white/10 transition-all hover:scale-105 hover:border-brand-lime/40"
             >
               📜
+            </button>
+          )}
+
+          {/* Clone Recipe Button */}
+          {canAdmin && onClone && (!build.source_type || build.source_type === 'compiled') && (
+            <button
+              onClick={() => onClone(build)}
+              title={t('forge.cloneRecipe', 'CLONE RECIPE')}
+              className="w-9 h-9 rounded-xl bg-[var(--input-bg)] hover:bg-[var(--glass-border)] text-[var(--text-primary)] flex items-center justify-center border border-[var(--glass-border)] transition-all hover:scale-105 hover:border-brand-lime/40"
+            >
+              <ClipboardIcon size={16} />
             </button>
           )}
 
