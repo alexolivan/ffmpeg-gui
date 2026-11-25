@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.73.0] - 2026-11-25
+
+### Changed
+- **Portal `<SearchableSelect />` Rollout — Phase 3 (`DesktopConfigForm`, `KioskConfigForm`, `FiltersFormSection`, `SettingsView`, Hardware & ALSA Mixer Cards)**:
+  - Migrated the remaining dynamic service/storage/hardware selectors across the GUI for uniform portal dropdown behavior:
+    - `DesktopConfigForm` (ALSA loopback subdevice with occupancy badges, PipeWire hub and target sink) and `KioskConfigForm` (virtual desktop service, browser build/binary, cache storage).
+    - `FiltersFormSection` (overlay media storage) and `SettingsView` (log storage).
+    - `AlsaAudioSettingsCard` (sound card selector and enumerated mixer/routing controls), `DecklinkSettingsCard` (physical card selector), `MagewellSettingsCard` (physical card selector), and `InboundKeysCard` (endpoint candidate selector).
+  - Raised `SearchableSelect` portal `zIndex` to `10050` so dropdowns inside nested portal popups stack cleanly above parent overlays.
+
 ## [2.72.0] - 2026-11-25
 
 ### Changed

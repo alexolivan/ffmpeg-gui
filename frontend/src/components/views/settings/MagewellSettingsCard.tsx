@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SearchableSelect } from '../../common/SearchableSelect';
 
 export interface MagewellAudioChannel {
   pair: string;
@@ -339,22 +340,24 @@ export const MagewellSettingsCard: React.FC<{ API?: string; canManage?: boolean 
               <label htmlFor="magewell-card-select" className="text-xs font-mono font-bold text-text-secondary uppercase">
                 {t('settings.magewell.selectCard', 'Physical Card:')}
               </label>
-              <select
+              <SearchableSelect
                 id="magewell-card-select"
                 aria-label={t('settings.magewell.selectCard', 'Physical Card:')}
-                value={selectedCardIdx}
-                onChange={(e) => {
-                  setSelectedCardIdx(Number(e.target.value));
+                accent="lime"
+                wrapLabels
+                maxDropdownWidth={440}
+                className="min-w-[220px]"
+                buttonClassName="px-3 py-1.5 font-mono font-bold"
+                value={String(selectedCardIdx)}
+                onChange={(val) => {
+                  setSelectedCardIdx(Number(val));
                   setSelectedChannelIdx(0);
                 }}
-                className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-xs font-mono font-bold text-[var(--text-primary)] focus:outline-none focus:border-brand-cyan transition-all"
-              >
-                {status.cards.map((card, idx) => (
-                  <option key={idx} value={idx}>
-                    [{card.board_id}] {card.product_name} {card.serial_number ? `(S/N: ${card.serial_number})` : ''} — {card.num_channels} {t('settings.magewell.channelUnit', 'ch')}
-                  </option>
-                ))}
-              </select>
+                options={status.cards.map((card, idx) => ({
+                  value: String(idx),
+                  label: `[${card.board_id}] ${card.product_name}${card.serial_number ? ` (S/N: ${card.serial_number})` : ''} — ${card.num_channels} ${t('settings.magewell.channelUnit', 'ch')}`,
+                }))}
+              />
             </div>
 
             {currentCard && (

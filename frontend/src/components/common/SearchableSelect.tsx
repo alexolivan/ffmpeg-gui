@@ -306,7 +306,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
             maxWidth: placement.maxWidth,
             width: maxDropdownWidth ? 'max-content' : placement.width,
             maxHeight: placement.maxHeight,
-            zIndex: 9999,
+            zIndex: 10050,
           }}
           className="flex flex-col rounded-xl bg-[var(--bg-dark)] border border-[var(--glass-border)] shadow-2xl overflow-hidden text-[var(--text-primary)]"
           onKeyDown={handleKeyDown}

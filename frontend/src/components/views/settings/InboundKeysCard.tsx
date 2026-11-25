@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlusIcon, ClipboardIcon, CheckIcon, TrashIcon } from '../../Icons';
+import { SearchableSelect } from '../../common/SearchableSelect';
 
 interface InboundKey {
   id: number;
@@ -378,20 +379,24 @@ export const InboundKeysCard: React.FC<InboundKeysCardProps> = ({ API }) => {
                       {t('common.loading', 'Loading...')}
                     </div>
                   ) : (
-                    <select
+                    <SearchableSelect
+                      accent="lime"
+                      wrapLabels
+                      maxDropdownWidth={460}
+                      buttonClassName="font-mono"
                       value={selectedEndpointMode}
-                      onChange={(e) => setSelectedEndpointMode(e.target.value)}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] font-mono cursor-pointer"
-                    >
-                      {candidateOptions.map((cand, idx) => (
-                        <option key={idx} value={cand.url} className="bg-[var(--bg-card)] text-[var(--text-primary)]">
-                          {cand.url} {cand.interface === 'browser' ? `(${t('settings.peers.browserUrl', 'Current Browser URL')})` : `(${cand.interface} - ${cand.ip})`}
-                        </option>
-                      ))}
-                      <option value="custom" className="bg-[var(--bg-card)] text-[var(--text-primary)]">
-                        {t('settings.peers.endpointCustom', 'Custom Endpoint URL...')}
-                      </option>
-                    </select>
+                      onChange={(val) => setSelectedEndpointMode(val)}
+                      options={[
+                        ...candidateOptions.map((cand) => ({
+                          value: cand.url,
+                          label: `${cand.url} ${cand.interface === 'browser' ? `(${t('settings.peers.browserUrl', 'Current Browser URL')})` : `(${cand.interface} - ${cand.ip})`}`,
+                        })),
+                        {
+                          value: 'custom',
+                          label: t('settings.peers.endpointCustom', 'Custom Endpoint URL...'),
+                        },
+                      ]}
+                    />
                   )}
                 </div>
 

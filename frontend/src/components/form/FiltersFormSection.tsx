@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { OverlayCanvasPreview } from './OverlayCanvasPreview';
+import { SearchableSelect } from '../common/SearchableSelect';
 import {
   generateAnchorExpressions,
   parseAnchorFromExpressions,
@@ -1345,25 +1346,27 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
                                       {t('filters.mediaStorageSelector')}
                                     </label>
-                                    <select
-                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none text-white focus:border-brand-lime disabled:opacity-35"
-                                      value={overlay.storage_id || ''}
-                                      onChange={(e) =>
+                                    <SearchableSelect
+                                      accent="lime"
+                                      wrapLabels
+                                      maxDropdownWidth={440}
+                                      disabled={isVideoCopy}
+                                      value={overlay.storage_id ? String(overlay.storage_id) : ''}
+                                      onChange={(val) =>
                                         updateOverlayItem(idx, {
-                                          storage_id: e.target.value ? Number(e.target.value) : null,
+                                          storage_id: val ? Number(val) : null,
                                         })
                                       }
-                                      disabled={isVideoCopy}
-                                    >
-                                      <option value="" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('filters.selectMediaStorage')}</option>
-                                      {storages
-                                        .filter((s: any) => s.type === 'media')
-                                        .map((s: any) => (
-                                          <option key={s.id} value={s.id} className="bg-[var(--bg-dark)] text-[var(--text-primary)]">
-                                            {s.name} ({s.path})
-                                          </option>
-                                        ))}
-                                    </select>
+                                      options={[
+                                        { value: '', label: t('filters.selectMediaStorage') },
+                                        ...storages
+                                          .filter((s: any) => s.type === 'media')
+                                          .map((s: any) => ({
+                                            value: String(s.id),
+                                            label: `${s.name} (${s.path})`,
+                                          })),
+                                      ]}
+                                    />
                                   </div>
 
                                   <div>

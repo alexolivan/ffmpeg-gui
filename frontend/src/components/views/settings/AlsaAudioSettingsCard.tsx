@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { copyToClipboard } from '../../../utils/clipboard';
+import { SearchableSelect } from '../../common/SearchableSelect';
 
 interface AlsaControl {
   numid: number;
@@ -608,17 +609,18 @@ const AlsaMatrixRoutingModal: React.FC<{
                       </div>
 
                       {isEnum && ctrl.items ? (
-                        <select
-                          value={currentVal}
-                          onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                          className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs font-bold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-brand-lime cursor-pointer"
-                        >
-                          {ctrl.items.map((item: string, idx: number) => (
-                            <option key={idx} value={idx}>
-                              {item}
-                            </option>
-                          ))}
-                        </select>
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={380}
+                          buttonClassName="!bg-[var(--bg-card)] px-2.5 py-1.5 font-bold"
+                          value={String(currentVal)}
+                          onChange={(val) => onControlChange(ctrl.numid, [parseInt(val, 10)])}
+                          options={ctrl.items.map((item: string, idx: number) => ({
+                            value: String(idx),
+                            label: item,
+                          }))}
+                        />
                       ) : (
                         <button
                           onClick={() => onControlChange(ctrl.numid, [currentVal === 1 || currentVal === true ? 0 : 1])}
@@ -1143,17 +1145,19 @@ export const AlsaAudioSettingsCard: React.FC<{ canOperate?: boolean; canManage?:
           <label className="text-xs font-bold text-text-secondary uppercase tracking-wider whitespace-nowrap shrink-0">
             {t('settings.alsa.selectCard', 'Sound Card:')}
           </label>
-          <select
-            value={selectedCardIdx}
-            onChange={(e) => setSelectedCardIdx(parseInt(e.target.value, 10))}
-            className="bg-[var(--input-bg)] text-text-primary border border-[var(--glass-border)] rounded-lg px-3 py-1.5 text-xs font-bold focus:outline-none focus:border-brand-lime shadow-sm min-w-0 truncate max-w-xs sm:max-w-md"
-          >
-            {cards.map((c) => (
-              <option key={c.card_index} value={c.card_index}>
-                Card {c.card_index}: {c.name || c.card_id} ({c.driver || 'ALSA'})
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            accent="lime"
+            wrapLabels
+            maxDropdownWidth={420}
+            className="min-w-[200px] max-w-xs sm:max-w-md"
+            buttonClassName="px-3 py-1.5 font-bold shadow-sm"
+            value={String(selectedCardIdx)}
+            onChange={(val) => setSelectedCardIdx(parseInt(val, 10))}
+            options={cards.map((c) => ({
+              value: String(c.card_index),
+              label: `Card ${c.card_index}: ${c.name || c.card_id} (${c.driver || 'ALSA'})`,
+            }))}
+          />
         </div>
       </div>
 
@@ -1580,12 +1584,14 @@ export const AlsaAudioSettingsCard: React.FC<{ canOperate?: boolean; canManage?:
                       return (
                         <div key={ctrl.numid} className="flex flex-col gap-1 w-full text-[10px]">
                           <span className="text-text-secondary font-bold truncate">{ctrl.name}</span>
-                          <select
-                            value={currentVal}
-                            onChange={(e) => handleControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                            className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-brand-lime cursor-pointer w-full"
-                          >
-                            {ctrl.items.map((item: string, idx: number) => {
+                          <SearchableSelect
+                            accent="lime"
+                            wrapLabels
+                            maxDropdownWidth={380}
+                            buttonClassName="!bg-[var(--bg-card)] px-2 py-1.5 text-[11px] font-bold"
+                            value={String(currentVal)}
+                            onChange={(val) => handleControlChange(ctrl.numid, [parseInt(val, 10)])}
+                            options={ctrl.items.map((item: string, idx: number) => {
                               let displayLabel = item;
                               const cName = (ctrl.name || '').toLowerCase();
                               if (cName.includes('auto-mute') || cName.includes('automute')) {
@@ -1594,13 +1600,12 @@ export const AlsaAudioSettingsCard: React.FC<{ canOperate?: boolean; canManage?:
                                 else if (item.toLowerCase().includes('line out')) displayLabel = 'Line Out Only (Mute Rear Line Out Only)';
                                 else if (item.toLowerCase().includes('speaker')) displayLabel = 'All Speaker Out (Mute All Rear Speakers)';
                               }
-                              return (
-                                <option key={idx} value={idx}>
-                                  {displayLabel}
-                                </option>
-                              );
+                              return {
+                                value: String(idx),
+                                label: displayLabel,
+                              };
                             })}
-                          </select>
+                          />
                         </div>
                       );
                     }
@@ -2382,17 +2387,18 @@ const AlsaSkewerChannelStrip: React.FC<ChannelStripProps> = React.memo(({
                               ✕
                             </button>
                           </div>
-                          <select
-                            value={currentVal}
-                            onChange={(e) => onControlChange(ctrl.numid, [parseInt(e.target.value, 10)])}
-                            className="bg-[var(--input-bg)] border border-[var(--glass-border)] text-text-primary text-[11px] font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-brand-lime w-full cursor-pointer"
-                          >
-                            {ctrl.items.map((item, idx) => (
-                              <option key={idx} value={idx}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
+                          <SearchableSelect
+                            accent="lime"
+                            wrapLabels
+                            maxDropdownWidth={380}
+                            buttonClassName="px-3 py-2 text-[11px] font-bold"
+                            value={String(currentVal)}
+                            onChange={(val) => onControlChange(ctrl.numid, [parseInt(val, 10)])}
+                            options={ctrl.items.map((item, idx) => ({
+                              value: String(idx),
+                              label: item,
+                            }))}
+                          />
                         </div>
                       </div>,
                       document.body
