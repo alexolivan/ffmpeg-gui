@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.74.0] - 2026-11-25
+
+### Added
+- **Live Audio Clock Sync & Icecast AVIO Packet Flushing (`-flush_packets 1`, `aresample` `first_pts`, Live Audio Sync Banner)**:
+  - **Automatic & Configurable AVIO Packet Flushing (`ffmpeg_builder.py`, `AdvancedFlagsFormSection.tsx`)**: Emits `-flush_packets 1` automatically for `icecast` outputs (preventing TCP burst batching and playout buffer starvation on low-bitrate audio streams) while exposing a 3-state `Auto / ON / OFF` selector in `AdvancedFlagsFormSection` (`filter_config.advanced.flush_packets`) so operators can also enable packet flushing on other live outputs (`srt`, `rtmp`, `udp`, `rtsp`, `whip`, `hls`) or override Icecast defaults.
+  - **`first_pts` Support in `aresample` (`filter_graph.py`, `FiltersFormSection.tsx`)**: Added optional `first_pts` parameter handling (`mode == 'advanced'`) in `FilterGraphBuilder.build_audio_filters` and exposed it alongside `osr`, `min_comp`, and `min_hard_comp` in `FiltersFormSection` (pre-filling `0` when switching to Advanced Sync on new configs without altering existing DB configs).
+  - **One-Click Live Audio Sync Recommendation (`ProcessConfigForm.tsx`)**: Displays a non-destructive recommendation banner when a live capture input (`alsa`, `pipewire`, `decklink`) feeds a live network output (`icecast`, `rtmp`, `srt`, `rtsp`, `whip`, `udp`, `hls`) with re-encoding enabled but without full clock-drift/buffer protection, applying `aresample=async=1:min_comp=0.01:min_hard_comp=0.1:first_pts=0` and boosting `thread_queue_size` to `4096` (on FFmpeg `< 9` builds) in one click.
+  - Added EN/ES/CA localization keys under `forge` and `filters` and unit tests in `test_filter_graph.py` and `test_command_generator.py`.
+
 ## [2.73.0] - 2026-11-25
 
 ### Changed

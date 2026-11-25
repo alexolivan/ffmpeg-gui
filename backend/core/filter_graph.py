@@ -275,6 +275,12 @@ class FilterGraphBuilder:
                     min_hard_comp = aresample.get('min_hard_comp')
                     if min_hard_comp is not None:
                         params.append(f"min_hard_comp={min_hard_comp}")
+                    first_pts = aresample.get('first_pts')
+                    if first_pts is not None and str(first_pts).strip() != "":
+                        try:
+                            params.append(f"first_pts={int(float(first_pts))}")
+                        except (ValueError, TypeError):
+                            pass
                     af.append(f"aresample={':'.join(params)}")
             elif aresample is True:
                 af.append("aresample=async=1")

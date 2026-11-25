@@ -71,5 +71,32 @@ class TestFilterGraphBuilder(unittest.TestCase):
         self.assertIn("volume=1.5", af)
         self.assertIn("aresample=async=1", af)
 
+    def test_aresample_advanced_with_first_pts_zero(self):
+        filter_cfg = {
+            'aresample': {
+                'enabled': True,
+                'mode': 'advanced',
+                'osr': '44100',
+                'min_comp': 0.01,
+                'min_hard_comp': 0.1,
+                'first_pts': 0,
+            }
+        }
+        af = FilterGraphBuilder.build_audio_filters(filter_cfg)
+        self.assertEqual(af, "aresample=async=1:osr=44100:min_comp=0.01:min_hard_comp=0.1:first_pts=0")
+
+    def test_aresample_advanced_without_first_pts_stays_compatible(self):
+        filter_cfg = {
+            'aresample': {
+                'enabled': True,
+                'mode': 'advanced',
+                'osr': '',
+                'min_comp': 0.01,
+                'min_hard_comp': 0.1,
+            }
+        }
+        af = FilterGraphBuilder.build_audio_filters(filter_cfg)
+        self.assertEqual(af, "aresample=async=1:min_comp=0.01:min_hard_comp=0.1")
+
 if __name__ == '__main__':
     unittest.main()

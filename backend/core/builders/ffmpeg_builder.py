@@ -781,7 +781,7 @@ class FFmpegCommandBuilder:
                 cmd += [f"-vbr:a:{idx}", params['vbr']]
 
     @classmethod
-    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg", media_proc=None):
+    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg", media_proc=None, filter_cfg: dict = None):
         output_type = output_cfg.get('type')
         
         is_mpegts = (
@@ -842,6 +842,14 @@ class FFmpegCommandBuilder:
         # when a stream becomes desynchronized or drops out (e.g. PipeWire restart)
         if "-max_muxing_queue_size" not in cmd:
             cmd += ["-max_muxing_queue_size", "1024"]
+
+        # Flush each AVIO packet immediately for Icecast (by default) or when explicitly enabled,
+        # preventing TCP burst stalls / playout buffer starvation on low-bitrate audio streams.
+        flush_packets = (filter_cfg or {}).get('advanced', {}).get('flush_packets')
+        if flush_packets is None:
+            flush_packets = (output_type == 'icecast')
+        if flush_packets is True and "-flush_packets" not in cmd:
+            cmd += ["-flush_packets", "1"]
 
         if output_type == 'file':
             path = output_cfg.get('path', 'output.mp4')
@@ -1295,6 +1303,8 @@ class FFmpegCommandBuilder:
             headers = output_cfg.get('headers', '')
             
             cls._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
+            if (filter_cfg or {}).get('advanced', {}).get('flush_packets') is True and "-flush_packets" not in cmd:
+                cmd += ["-flush_packets", "1"]
             
             cmd += ["-f", "hls"]
             cmd += ["-hls_time", str(hls_time)]
@@ -1532,7 +1542,7 @@ class FFmpegCommandBuilder:
                     cls._append_audio_codec_params(cmd, acodec, audio_params)
 
             cls._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
-            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin, media_proc=media_proc)
+            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin, media_proc=media_proc, filter_cfg=filter_cfg)
             
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         

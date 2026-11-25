@@ -10,6 +10,7 @@ interface AdvancedFlagsFormSectionProps {
   probesize: string;
   thread_queue_size: number;
   enable_preview?: boolean | null;
+  flush_packets?: boolean | null;
   inputThreadQueueUnsupported?: boolean;
   onChange: (updates: {
     realtime?: boolean | null;
@@ -18,6 +19,7 @@ interface AdvancedFlagsFormSectionProps {
     probesize?: string;
     thread_queue_size?: number;
     enable_preview?: boolean | null;
+    flush_packets?: boolean | null;
   }) => void;
 }
 
@@ -30,6 +32,7 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
   probesize,
   thread_queue_size,
   enable_preview,
+  flush_packets,
   inputThreadQueueUnsupported = false,
   onChange,
 }) => {
@@ -92,6 +95,35 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
           onChange={e => {
             const val = e.target.value;
             onChange({ enable_preview: val === 'auto' ? null : val === 'on' });
+          }}
+        >
+          <option value="auto">Auto</option>
+          <option value="on">{t('common.enabled', 'ON')}</option>
+          <option value="off">{t('common.disabled', 'OFF')}</option>
+        </select>
+      </div>
+
+      {/* Flush AVIO Packets (-flush_packets 1) */}
+      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
+        <div className="flex flex-col gap-0.5 pr-3">
+          <span className="text-xs font-semibold text-[var(--text-primary)]">
+            {t('filters.advanced.flushPackets', 'Flush AVIO Packets')} <code className="text-[9px] text-brand-orange bg-white/5 px-1.5 py-0.5 rounded ml-1">-flush_packets 1</code>
+          </span>
+          <span className="text-[10px] text-[var(--text-secondary)] leading-snug">
+            {t('filters.advanced.flushPacketsDesc', 'Flushes each encoded packet immediately (-flush_packets 1) without RAM batching, preventing TCP burst stalls in low-bitrate live audio streams (Icecast/SRT/RTMP).')}
+            {(flush_packets === null || flush_packets === undefined) && (
+              <span className="text-brand-lime ml-1">
+                (auto: {outputType === 'icecast' ? 'ON (Icecast)' : 'OFF'})
+              </span>
+            )}
+          </span>
+        </div>
+        <select
+          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-24 text-center text-[var(--text-primary)]"
+          value={flush_packets === null || flush_packets === undefined ? 'auto' : flush_packets ? 'on' : 'off'}
+          onChange={e => {
+            const val = e.target.value;
+            onChange({ flush_packets: val === 'auto' ? null : val === 'on' });
           }}
         >
           <option value="auto">Auto</option>

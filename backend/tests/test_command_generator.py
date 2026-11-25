@@ -1239,6 +1239,34 @@ class TestCommandGenerator(unittest.TestCase):
         self.assertNotIn("blackdetect", cmd_str)
         self.assertNotIn("freezedetect", cmd_str)
 
+    def test_flush_packets_auto_on_icecast_and_override_controls(self):
+        from core.builders.ffmpeg_builder import FFmpegCommandBuilder
+        # 1. Icecast auto-enables -flush_packets 1 even when filter_config.advanced omits flush_packets
+        icecast_proc = {
+            "input_config": {"has_video": False, "has_audio": True, "input1": {"type": "alsa", "device": "hw:0,0"}},
+            "codec_config": {"vcodec": "none", "acodec": "libmp3lame", "b:a": "128k"},
+            "filter_config": {},
+            "output_config": {"type": "icecast", "icecast_host": "localhost", "icecast_port": 8000, "icecast_mount": "/live.mp3", "icecast_format": "mp3"},
+        }
+        cmd_auto = FFmpegCommandBuilder.build_cmd(icecast_proc, "ffmpeg")
+        self.assertIn("-flush_packets 1", " ".join(cmd_auto))
+
+        # 2. Explicit flush_packets=False disables it on Icecast
+        icecast_proc_off = {**icecast_proc, "filter_config": {"advanced": {"flush_packets": False}}}
+        cmd_off = FFmpegCommandBuilder.build_cmd(icecast_proc_off, "ffmpeg")
+        self.assertNotIn("-flush_packets", " ".join(cmd_off))
+
+        # 3. UDP/SRT/RTMP leave it off by default (auto), unless explicitly enabled
+        srt_proc = {
+            "input_config": {"has_video": False, "has_audio": True, "input1": {"type": "alsa", "device": "hw:0,0"}},
+            "codec_config": {"vcodec": "none", "acodec": "aac", "b:a": "128k"},
+            "filter_config": {},
+            "output_config": {"type": "srt", "url": "srt://127.0.0.1:9000"},
+        }
+        self.assertNotIn("-flush_packets", " ".join(FFmpegCommandBuilder.build_cmd(srt_proc, "ffmpeg")))
+        srt_proc_on = {**srt_proc, "filter_config": {"advanced": {"flush_packets": True}}}
+        self.assertIn("-flush_packets 1", " ".join(FFmpegCommandBuilder.build_cmd(srt_proc_on, "ffmpeg")))
+
 
 if __name__ == '__main__':
     unittest.main()

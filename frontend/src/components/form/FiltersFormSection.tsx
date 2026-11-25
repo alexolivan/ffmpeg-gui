@@ -74,6 +74,7 @@ interface FiltersFormSectionProps {
     osr?: string;
     min_comp?: number;
     min_hard_comp?: number;
+    first_pts?: number | null;
   };
 
   // Overlays
@@ -104,7 +105,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   compressor = { enabled: false, attack: 0.3, release: 0.3, gate: -60, gate_ratio: 4, threshold: -30, ratio: 4, gain: 0 },
   limiter = { enabled: false, ceiling: -0.1, release: 50 },
   volume = '',
-  aresample = { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 },
+  aresample = { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: null },
   overlays = [],
   onChange,
   hwaccel = 'none',
@@ -527,11 +528,11 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                       onChange={e => {
                         const val = e.target.value;
                         if (val === 'off') {
-                          onChange({ aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 } });
+                          onChange({ aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: null } });
                         } else if (val === 'basic') {
-                          onChange({ aresample: { enabled: true, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 } });
+                          onChange({ aresample: { enabled: true, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: null } });
                         } else {
-                          onChange({ aresample: { enabled: true, mode: 'advanced', osr: aresample?.osr || '', min_comp: aresample?.min_comp ?? 0.01, min_hard_comp: aresample?.min_hard_comp ?? 0.1 } });
+                          onChange({ aresample: { enabled: true, mode: 'advanced', osr: aresample?.osr || '', min_comp: aresample?.min_comp ?? 0.01, min_hard_comp: aresample?.min_hard_comp ?? 0.1, first_pts: aresample?.first_pts ?? 0 } });
                         }
                       }}
                       disabled={isAudioCopy}
@@ -542,13 +543,13 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                     </select>
                   </div>
                   {aresample?.enabled && aresample?.mode === 'advanced' && (
-                    <div className="col-span-2 grid grid-cols-3 gap-2 bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)] mt-1">
+                    <div className="col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2 bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)] mt-1">
                       <div>
                         <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
                           {t('filters.sampleRateOsr')}
                         </label>
                         <select
-                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1 text-[10px] outline-none text-white"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)]"
                           value={aresample?.osr || ''}
                           onChange={e => onChange({ aresample: { ...aresample, osr: e.target.value } })}
                         >
@@ -565,7 +566,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                         <input
                           type="number"
                           step="0.001"
-                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1 text-[10px] outline-none text-white font-mono"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
                           value={aresample?.min_comp ?? 0.01}
                           onChange={e => onChange({ aresample: { ...aresample, min_comp: Number(e.target.value) } })}
                         />
@@ -577,9 +578,22 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                         <input
                           type="number"
                           step="0.01"
-                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1 text-[10px] outline-none text-white font-mono"
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
                           value={aresample?.min_hard_comp ?? 0.1}
                           onChange={e => onChange({ aresample: { ...aresample, min_hard_comp: Number(e.target.value) } })}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                          {t('filters.firstPts', 'First PTS (samples)')}
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          placeholder={t('filters.firstPtsPlaceholder', 'Auto (empty) or 0')}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
+                          value={aresample?.first_pts === null || aresample?.first_pts === undefined ? '' : aresample.first_pts}
+                          onChange={e => onChange({ aresample: { ...aresample, first_pts: e.target.value === '' ? null : Number(e.target.value) } })}
                         />
                       </div>
                     </div>
