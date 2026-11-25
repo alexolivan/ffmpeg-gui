@@ -513,38 +513,34 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
 
       {/* SUB-TAB: Audio Settings */}
       {activeSubTab === 'audio' && hasAudio && (
-        <div className="glass-card p-2.5 !rounded-lg space-y-2">
+        <div className="space-y-2.5">
           {isAudioCopy && (
             <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
               {t('filters.audioCodecCopyNotice')}
             </div>
           )}
 
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-            <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('filters.audioDspLevels')}</h4>
-          </div>
-
-          {/* Card 0: Audio Clock / AV Sync (aresample) */}
-          <div className="glass-card p-3 rounded-lg border border-[var(--glass-border)] space-y-2">
-            <div className="flex items-center justify-between mb-1">
+          {/* Standalone Block: Audio Sync (aresample) */}
+          <div className="glass-card p-2.5 !rounded-lg space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                <h5 className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
+                <h4 className="text-brand-orange font-bold text-xs uppercase tracking-wider">
                   {t('filters.audioVideoSync')}
-                </h5>
+                </h4>
+                <code className="text-[9px] text-[var(--text-secondary)] bg-[var(--input-bg)] px-1.5 py-0.5 rounded border border-[var(--glass-border)] font-mono">
+                  aresample
+                </code>
+                {aresample?.enabled && (
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">{t('filters.active')}</span>
+                )}
               </div>
-              {aresample?.enabled && (
-                <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">{t('filters.active')}</span>
-              )}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              <div>
-                <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">
+              <div className="flex items-center gap-2">
+                <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider">
                   {t('filters.syncMode')}
                 </label>
                 <select
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs outline-none font-mono text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed"
+                  className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs outline-none font-mono text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed min-w-[155px]"
                   value={!aresample?.enabled ? 'off' : aresample?.mode || 'basic'}
                   onChange={e => {
                     const val = e.target.value;
@@ -563,64 +559,71 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                   <option value="advanced">{t('filters.advancedSync')}</option>
                 </select>
               </div>
-              {aresample?.enabled && aresample?.mode === 'advanced' && (
-                <div className="md:col-span-2 grid grid-cols-2 md:grid-cols-4 gap-2 bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)] mt-1">
-                  <div>
-                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                      {t('filters.sampleRateOsr')}
-                    </label>
-                    <select
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)]"
-                      value={aresample?.osr || ''}
-                      onChange={e => onChange({ aresample: { ...aresample, osr: e.target.value } })}
-                    >
-                      <option value="">{t('filters.keepOriginal')}</option>
-                      <option value="48000">48000 Hz</option>
-                      <option value="44100">44100 Hz</option>
-                      <option value="32000">32000 Hz</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                      {t('filters.minSyncSec')}
-                    </label>
-                    <input
-                      type="number"
-                      step="0.001"
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
-                      value={aresample?.min_comp ?? 0.01}
-                      onChange={e => onChange({ aresample: { ...aresample, min_comp: Number(e.target.value) } })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                      {t('filters.hardSyncSec')}
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
-                      value={aresample?.min_hard_comp ?? 0.1}
-                      onChange={e => onChange({ aresample: { ...aresample, min_hard_comp: Number(e.target.value) } })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                      {t('filters.firstPts', 'First PTS (samples)')}
-                    </label>
-                    <input
-                      type="number"
-                      step="1"
-                      placeholder={t('filters.firstPtsPlaceholder', 'Auto (empty) or 0')}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
-                      value={aresample?.first_pts === null || aresample?.first_pts === undefined ? '' : aresample.first_pts}
-                      onChange={e => onChange({ aresample: { ...aresample, first_pts: e.target.value === '' ? null : Number(e.target.value) } })}
-                    />
-                  </div>
-                </div>
-              )}
             </div>
+            {aresample?.enabled && aresample?.mode === 'advanced' && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)]">
+                <div>
+                  <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                    {t('filters.sampleRateOsr')}
+                  </label>
+                  <select
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)]"
+                    value={aresample?.osr || ''}
+                    onChange={e => onChange({ aresample: { ...aresample, osr: e.target.value } })}
+                  >
+                    <option value="">{t('filters.keepOriginal')}</option>
+                    <option value="48000">48000 Hz</option>
+                    <option value="44100">44100 Hz</option>
+                    <option value="32000">32000 Hz</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                    {t('filters.minSyncSec')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
+                    value={aresample?.min_comp ?? 0.01}
+                    onChange={e => onChange({ aresample: { ...aresample, min_comp: Number(e.target.value) } })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                    {t('filters.hardSyncSec')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
+                    value={aresample?.min_hard_comp ?? 0.1}
+                    onChange={e => onChange({ aresample: { ...aresample, min_hard_comp: Number(e.target.value) } })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                    {t('filters.firstPts', 'Initial PTS (samples)')}
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    placeholder={t('filters.firstPtsPlaceholder', 'Auto / 0')}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
+                    value={aresample?.first_pts === null || aresample?.first_pts === undefined ? '' : aresample.first_pts}
+                    onChange={e => onChange({ aresample: { ...aresample, first_pts: e.target.value === '' ? null : Number(e.target.value) } })}
+                  />
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Standalone Block: Audio DSP & Levels */}
+          <div className="glass-card p-2.5 !rounded-lg space-y-2">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+              <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('filters.audioDspLevels')}</h4>
+            </div>
 
           {/* Card 1: Input Level & Clean Filters */}
           <div className="glass-card p-3 rounded-lg border border-[var(--glass-border)] space-y-2">
@@ -1038,6 +1041,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 </div>
               </div>
             )}
+          </div>
           </div>
         </div>
       )}
