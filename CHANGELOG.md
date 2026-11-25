@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.70.1] - 2026-11-25
+
+### Fixed
+- **Forge Version & Tag Selectors Overflow/Collapse Fix (`frontend/src/components/common/SearchableSelect.tsx`, `frontend/src/utils/searchableSelectHelper.ts`, `frontend/src/components/BuildFormModal.tsx`, `frontend/src/components/views/settings/SoftwareEngineCard.tsx`, `frontend/src/index.css`)**:
+  - Replaced native `<select>` dropdowns in Forge (`BuildFormModal`: FFmpeg/engine tags, LibSRT tags, `ffnvcodec` headers, SDKs, build storage, NDI patches) and Settings (`SoftwareEngineCard`: MediaMTX official release tags) with a new portal-rendered `<SearchableSelect />` component.
+  - Added viewport-aware auto-flip and `maxHeight` clamping (`computeDropdownPlacement`) via `createPortal(..., document.body)` so long tag lists never clip inside blurred/scrolling modals or collapse prematurely when opening near viewport edges, while providing live substring search and full keyboard navigation.
+  - Removed legacy hardcoded `select option` styling (`padding: 12px`, `#1a1a1a`) from `frontend/src/index.css` so native `<select>` elements respect theme variables cleanly.
+
 ## [2.70.0] - 2026-11-25
 
 ### Added
