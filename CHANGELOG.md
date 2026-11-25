@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.70.0] - 2026-11-25
+
+### Added
+- **Forge Build Recipe Cloning (`frontend/src/components/BuildProfileCard.tsx`, `frontend/src/components/views/ForgeView.tsx`, `frontend/src/components/BuildFormModal.tsx`)**:
+  - Added a **Clone Recipe** action button on compiled build profile cards (restricted to Forge `admin` permission, aligned with RBAC create/import/export controls).
+  - Clicking **Clone Recipe** opens `BuildFormModal` pre-populated with all options, version tags, SDK selections, storage target, and auto-clean preferences from the source profile and a unique default name (`<name> (Copy)`), submitting via `POST /builds` to create a fresh `pending` profile without modifying or overwriting the source binary.
+  - Preserved cloned non-FFmpeg engine version tags (`icecast2`, `pipewire`, `mediamtx`, `kiosk_cog`) when initializing `BuildFormModal`, and added `en`, `es`, and `ca` translations (`forge.cloneRecipe`, `forge.cloneProfile`).
+
 ## [2.69.1] - 2026-11-25
 
 ### Fixed
