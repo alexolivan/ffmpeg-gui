@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SearchableSelect } from './common/SearchableSelect';
 
 interface BatchJobFormProps {
   onCancel: () => void;
@@ -45,18 +46,21 @@ const BatchJobForm: React.FC<BatchJobFormProps> = ({ onCancel, onSubmit }) => {
       {availableBuilds.length > 0 && (
         <div className="space-y-2">
           <label className="text-xs font-bold text-text-secondary uppercase">FFmpeg Build</label>
-          <select
-            className="w-full bg-white/5 border border-white/10 rounded-xl p-3 outline-none focus:border-brand-orange transition-all"
-            value={config.ffmpeg_build_id ?? ''}
-            onChange={e => setConfig({...config, ffmpeg_build_id: e.target.value ? Number(e.target.value) : null})}
-          >
-            <option value="">Use default build</option>
-            {availableBuilds.map(b => (
-              <option key={b.id} value={b.id}>
-                {b.name} — FFmpeg {b.ffmpeg_version}{b.is_default ? ' ★' : ''}
-              </option>
-            ))}
-          </select>
+          <SearchableSelect
+            accent="orange"
+            wrapLabels
+            maxDropdownWidth={440}
+            buttonClassName="p-3 text-sm rounded-xl"
+            value={config.ffmpeg_build_id ? String(config.ffmpeg_build_id) : ''}
+            onChange={val => setConfig({...config, ffmpeg_build_id: val ? Number(val) : null})}
+            options={[
+              { value: '', label: 'Use default build' },
+              ...availableBuilds.map(b => ({
+                value: String(b.id),
+                label: `${b.name} — FFmpeg ${b.ffmpeg_version}${b.is_default ? ' ★' : ''}`,
+              })),
+            ]}
+          />
         </div>
       )}
 
@@ -86,15 +90,18 @@ const BatchJobForm: React.FC<BatchJobFormProps> = ({ onCancel, onSubmit }) => {
       <div className="glass-card p-4 bg-white/5 border-white/5">
         <label className="text-xs font-bold text-text-secondary uppercase block mb-4">Target Format</label>
         <div className="grid grid-cols-2 gap-4">
-          <select 
-            className="bg-white/5 border border-white/10 rounded-xl p-3 outline-none"
+          <SearchableSelect
+            accent="lime"
+            searchable={false}
+            buttonClassName="p-3 text-sm rounded-xl"
             value={config.codec.vcodec}
-            onChange={e => setConfig({...config, codec: {...config.codec, vcodec: e.target.value}})}
-          >
-            <option value="libx264">H.264 (High Compatibility)</option>
-            <option value="libx265">H.265 (HEVC - High Quality)</option>
-            <option value="copy">Copy (No Transcode)</option>
-          </select>
+            onChange={val => setConfig({...config, codec: {...config.codec, vcodec: val}})}
+            options={[
+              { value: 'libx264', label: 'H.264 (High Compatibility)' },
+              { value: 'libx265', label: 'H.265 (HEVC - High Quality)' },
+              { value: 'copy', label: 'Copy (No Transcode)' },
+            ]}
+          />
           <input 
             type="text" 
             className="bg-white/5 border border-white/10 rounded-xl p-3 outline-none"

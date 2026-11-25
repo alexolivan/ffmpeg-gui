@@ -147,13 +147,13 @@ export function canCreateService(
   const procs = permissions.scopes?.processes || {};
   if (serviceType) {
     if (procs.by_type && serviceType in procs.by_type) {
-      return hasMinLevel(procs.by_type[serviceType], 'manage');
+      return hasMinLevel(procs.by_type[serviceType], 'admin');
     }
-    return hasMinLevel(procs.default, 'manage');
+    return hasMinLevel(procs.default, 'admin');
   }
-  if (hasMinLevel(procs.default, 'manage')) return true;
+  if (hasMinLevel(procs.default, 'admin')) return true;
   return Object.entries(procs.by_type || {}).some(
-    ([k, lvl]) => k !== 'task' && hasMinLevel(lvl, 'manage')
+    ([k, lvl]) => k !== 'task' && hasMinLevel(lvl, 'admin')
   );
 }
 
@@ -161,7 +161,7 @@ export function canCreateTask(permissions: EdgePermissionsSummary | undefined | 
   if (!permissions || permissions.is_owner !== false) return true;
   const procs = permissions.scopes?.processes || {};
   if (procs.by_type && 'task' in procs.by_type) {
-    return hasMinLevel(procs.by_type.task, 'manage');
+    return hasMinLevel(procs.by_type.task, 'admin');
   }
-  return hasMinLevel(procs.default, 'manage');
+  return hasMinLevel(procs.default, 'admin');
 }

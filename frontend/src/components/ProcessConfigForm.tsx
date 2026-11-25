@@ -18,6 +18,7 @@ import AdvancedFlagsFormSection from './form/AdvancedFlagsFormSection';
 import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
 import { AliasField } from './common/AliasField';
+import { SearchableSelect } from './common/SearchableSelect';
 
 const VIDEO_ALLOWED_TYPES = ['file', 'desktop', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
 const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls', 'pipewire'];
@@ -51,6 +52,7 @@ interface ProcessConfig {
       probesize: string;
       thread_queue_size: number;
       enable_preview?: boolean | null;
+      flush_packets?: boolean | null;
     };
     highpass?: string;
     lowpass?: string;
@@ -80,6 +82,7 @@ interface ProcessConfig {
       osr?: string;
       min_comp?: number;
       min_hard_comp?: number;
+      first_pts?: number | null;
     };
     overlays?: any[];
   };
@@ -120,6 +123,7 @@ interface ProcessConfigFormProps {
   onSaveAs?: (config: any) => void;
   initialConfig?: any;
   isTask?: boolean;
+  canChangeStreamMode?: boolean;
   validationErrors?: Record<string, string>;
 }
 
@@ -131,6 +135,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   onSaveAs,
   initialConfig,
   isTask = false,
+  canChangeStreamMode = true,
   validationErrors: propsValidationErrors,
 }) => {
   const { t } = useTranslation();
@@ -417,6 +422,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             probesize: filterCfg.advanced?.probesize ?? '',
             thread_queue_size: filterCfg.advanced?.thread_queue_size ?? 0,
             enable_preview: filterCfg.advanced?.enable_preview ?? null,
+            flush_packets: filterCfg.advanced?.flush_packets ?? null,
           },
           highpass: filterCfg.highpass || '',
           lowpass: filterCfg.lowpass || '',
@@ -473,12 +479,14 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
             osr: filterCfg.aresample.osr || '',
             min_comp: filterCfg.aresample.min_comp ?? 0.01,
             min_hard_comp: filterCfg.aresample.min_hard_comp ?? 0.1,
+            first_pts: filterCfg.aresample.first_pts ?? null,
           } : {
             enabled: !!filterCfg.aresample,
             mode: 'basic',
             osr: '',
             min_comp: 0.01,
             min_hard_comp: 0.1,
+            first_pts: null,
           },
           overlays: filterCfg.overlays || [],
         },
@@ -531,7 +539,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         advanced: {
           realtime: null, stream_loop: null, threads: 0,
           hwaccel: 'none', hwaccel_output_format: '', probesize: '', thread_queue_size: 0,
-          enable_preview: null,
+          enable_preview: null, flush_packets: null,
         },
         highpass: '',
         lowpass: '',
@@ -539,7 +547,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         compressor: { enabled: false, attack: 0.3, release: 0.3, gate: -60, gate_ratio: 4, threshold: -30, ratio: 4, gain: 0 },
         limiter: { enabled: false, ceiling: -0.1, release: 50 },
         volume: '',
-        aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 },
+        aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: 0 },
         overlays: [],
       },
       output: { type: 'udp', host: '239.0.0.1', port: getNextAvailablePort(1234) },
@@ -673,6 +681,16 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   );
 
   const selectedBuild = availableBuilds.find(b => b.id === config.ffmpeg_build_id);
+  const activeBuild = selectedBuild || availableBuilds.find(b => b.is_default);
+  const isFfmpeg9Plus = Boolean(activeBuild && (() => {
+    const tag = activeBuild.ffmpeg_version || activeBuild.version_tag || '';
+    const tagMatch = tag.match(/(?:^|[^\d])n?(\d+)(?:\.(\d+)|$)/);
+    if (tagMatch) {
+      return parseInt(tagMatch[1], 10) >= 9;
+    }
+    const outMatch = (activeBuild.version_output || '').match(/ffmpeg\s+version\s+n?(\d+)\.(\d+)/i);
+    return outMatch ? parseInt(outMatch[1], 10) >= 9 : false;
+  })());
 
   // Pre-flight check: WHIP compatibility (requires FFmpeg >= 8.0)
   const isWHIPOutput = config.output.type === 'whip';
@@ -838,6 +856,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   const handleInput1Change = useCallback((input1: InputSourceConfig) => {
     const isPureAudio = input1.type === 'alsa' || input1.type === 'lavfi_audio' || input1.type === 'http_audio' || input1.type === 'pipewire';
     if (isPureAudio && config.has_video) {
+      if (!canChangeStreamMode) {
+        alert(t('services.streamModeLockedAlert', 'This selection would change the audio/video stream mode, which requires Admin permission.'));
+        return;
+      }
       const label = input1.type === 'http_audio' 
         ? 'Icecast/HTTP Audio' 
         : input1.type === 'lavfi_audio' 
@@ -892,7 +914,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         audio_codec_params: finalAudioCodecParams,
       };
     });
-  }, [config.has_video]);
+  }, [config.has_video, canChangeStreamMode, t]);
 
   const handleInput2Change = useCallback((input2: InputSourceConfig) => {
     setConfig(prev => {
@@ -959,7 +981,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
             compressor: { enabled: false, attack: 0.3, release: 0.3, gate: -60, gate_ratio: 4, threshold: -30, ratio: 4, gain: 0 },
             limiter: { enabled: false, ceiling: -0.1, release: 50 },
             volume: '',
-            aresample: { enabled: false, mode: 'basic' as 'basic' | 'advanced', osr: '', min_comp: 0.01, min_hard_comp: 0.1 }
+            aresample: { enabled: false, mode: 'basic' as 'basic' | 'advanced', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: null }
           }
         : prev.filters;
       return {
@@ -997,6 +1019,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
     const newType = output.type;
 
     if (oldType !== newType && (newType === 'icecast' || newType === 'alsa' || newType === 'pipewire') && config.has_video) {
+      if (!canChangeStreamMode) {
+        alert(t('services.streamModeLockedAlert', 'This selection would change the audio/video stream mode, which requires Admin permission.'));
+        return;
+      }
       const label = newType === 'icecast' ? 'Icecast' : newType === 'alsa' ? 'ALSA' : 'PipeWire Audio Hub';
       const proceed = window.confirm(
         `La salida seleccionada (${label}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
@@ -1104,7 +1130,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         audio_codec_params: isPcmViable ? {} : prev.audio_codec_params,
       }));
     }
-  }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort]);
+  }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort, canChangeStreamMode, t]);
 
   const handleLifecycleOrSchedulingChange = useCallback((updates: any) => {
     setConfig(prev => ({
@@ -1127,6 +1153,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   }, []);
 
   const handleHasVideoChange = useCallback((val: boolean) => {
+    if (!canChangeStreamMode) return;
     const isPureAudioInput = config.input1.type === 'alsa' || config.input1.type === 'lavfi_audio' || config.input1.type === 'http_audio' || config.input1.type === 'pipewire';
     const isPureAudioOutput = config.output.type === 'icecast' || config.output.type === 'alsa' || config.output.type === 'pipewire';
 
@@ -1198,9 +1225,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         input1: nextInput1
       };
     });
-  }, [config.input1, config.output, config.has_video, config.has_audio, getNextAvailablePort]);
+  }, [config.input1, config.output, config.has_video, config.has_audio, getNextAvailablePort, canChangeStreamMode]);
 
   const handleHasAudioChange = useCallback((val: boolean) => {
+    if (!canChangeStreamMode) return;
     setConfig(prev => {
       const nextSecondary = prev.has_video && val ? prev.use_secondary_input : false;
       let nextInput1 = prev.input1;
@@ -1220,7 +1248,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         input1: nextInput1
       };
     });
-  }, []);
+  }, [canChangeStreamMode]);
 
   const handleUseSecondaryInputChange = useCallback((val: boolean) => {
     setConfig(prev => {
@@ -1327,44 +1355,54 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         </div>
         <div className="flex gap-2 items-center">
           {availableBuilds.length > 0 && (
-            <select
+            <SearchableSelect
               id="process-build"
-              name="ffmpeg_build_id"
-              className="flex-1 min-w-0 bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] rounded-lg p-2 text-xs outline-none focus:border-brand-orange transition-all truncate"
-              value={config.ffmpeg_build_id ?? ''}
-              onChange={e => handleBuildChange(e.target.value ? Number(e.target.value) : null)}
-            >
-              <option value="">Default FFmpeg build</option>
-              {availableBuilds.map(b => (
-                <option key={b.id} value={b.id}>
-                  {b.name} — FFmpeg {b.ffmpeg_version}{b.is_default ? ' ★' : ''}
-                </option>
-              ))}
-            </select>
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={440}
+              className="flex-1 min-w-0"
+              value={config.ffmpeg_build_id ? String(config.ffmpeg_build_id) : ''}
+              onChange={val => handleBuildChange(val ? Number(val) : null)}
+              options={[
+                { value: '', label: 'Default FFmpeg build' },
+                ...availableBuilds.map(b => ({
+                  value: String(b.id),
+                  label: `${b.name} — FFmpeg ${b.ffmpeg_version}${b.is_default ? ' ★' : ''}`,
+                })),
+              ]}
+            />
           )}
           {/* Stream toggles */}
-          <div className="flex items-center gap-3 bg-[var(--input-bg)] rounded-lg px-2.5 py-1.5 border border-[var(--glass-border)] flex-shrink-0">
-            <label htmlFor="process-has-video" className="flex items-center gap-1.5 cursor-pointer">
+          <div
+            className={`flex items-center gap-3 bg-[var(--input-bg)] rounded-lg px-2.5 py-1.5 border border-[var(--glass-border)] flex-shrink-0 ${!canChangeStreamMode ? 'opacity-65' : ''}`}
+            title={!canChangeStreamMode ? t('services.streamModeLockedTooltip', 'Changing audio/video stream mode requires Admin permission on this resource.') : undefined}
+          >
+            <label htmlFor="process-has-video" className={`flex items-center gap-1.5 ${canChangeStreamMode ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
               <input
                 type="checkbox" id="process-has-video" name="has_video" checked={config.has_video}
+                disabled={!canChangeStreamMode}
                 onChange={e => handleHasVideoChange(e.target.checked)}
-                className="w-3.5 h-3.5 accent-brand-orange"
+                className="w-3.5 h-3.5 accent-brand-orange disabled:cursor-not-allowed"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
                 Video
               </span>
             </label>
             <span className="w-px h-3 bg-white/10" />
-            <label htmlFor="process-has-audio" className="flex items-center gap-1.5 cursor-pointer">
+            <label htmlFor="process-has-audio" className={`flex items-center gap-1.5 ${canChangeStreamMode ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
               <input
                 type="checkbox" id="process-has-audio" name="has_audio" checked={config.has_audio}
+                disabled={!canChangeStreamMode}
                 onChange={e => handleHasAudioChange(e.target.checked)}
-                className="w-3.5 h-3.5 accent-blue-400"
+                className="w-3.5 h-3.5 accent-blue-400 disabled:cursor-not-allowed"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>
                 Audio
               </span>
             </label>
+            {!canChangeStreamMode && (
+              <span className="text-[10px] text-[var(--text-secondary)]" aria-hidden="true">🔒</span>
+            )}
           </div>
         </div>
       </div>
@@ -1522,6 +1560,77 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                 className="flex-shrink-0 flex items-center gap-1.5 bg-brand-lime hover:bg-brand-lime/80 text-black font-black px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
               >
                 {t('forge.useStreamCopy', '⚡ Use Stream Copy')}
+              </button>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
+      {/* Live Audio Sync Recommendation Banner */}
+      {(() => {
+        const effectiveAudioInput = config.use_secondary_input ? config.input2?.type : config.input1?.type;
+        const isLiveAudioInput = ['alsa', 'pipewire', 'decklink'].includes(effectiveAudioInput || '');
+        const isLiveOutput = ['icecast', 'rtmp', 'srt', 'rtsp', 'whip', 'udp', 'hls'].includes(config.output?.type || '');
+        const isPcmViable = isPcmPassthroughViable(effectiveAudioInput, config.output?.type);
+        const needsAresampleSync = !config.filters.aresample?.enabled;
+        const needsIcecastPtsReset =
+          config.output?.type === 'icecast' &&
+          (config.filters.aresample?.mode !== 'advanced' ||
+            config.filters.aresample?.first_pts === null ||
+            config.filters.aresample?.first_pts === undefined);
+        const needsThreadQueueBoost =
+          !isFfmpeg9Plus &&
+          ['alsa', 'pipewire'].includes(effectiveAudioInput || '') &&
+          (!config.filters.advanced?.thread_queue_size || config.filters.advanced.thread_queue_size < 1024);
+
+        if (
+          config.has_audio &&
+          config.audio_codec_id !== 'copy' &&
+          !isPcmViable &&
+          isLiveAudioInput &&
+          isLiveOutput &&
+          (needsAresampleSync || needsIcecastPtsReset || needsThreadQueueBoost)
+        ) {
+          return (
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 p-3.5 bg-brand-orange/10 border border-brand-orange/30 rounded-2xl text-xs text-[var(--text-primary)] mb-3 animate-in fade-in slide-in-from-top-1 duration-200">
+              <div className="flex items-start gap-2.5">
+                <span className="text-sm mt-0.5 text-brand-orange font-bold">
+                  ⏱
+                </span>
+                <div>
+                  <strong className="text-brand-orange">{t('forge.liveAudioSyncRecommendationTitle')}</strong>{' '}
+                  <span className="text-[var(--text-secondary)]">{t('forge.liveAudioSyncRecommendationText')}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfig(prev => ({
+                    ...prev,
+                    filters: {
+                      ...prev.filters,
+                      aresample: {
+                        enabled: true,
+                        mode: 'advanced',
+                        osr: prev.filters.aresample?.osr || '',
+                        min_comp: prev.filters.aresample?.min_comp ?? 0.01,
+                        min_hard_comp: prev.filters.aresample?.min_hard_comp ?? 0.1,
+                        first_pts: 0,
+                      },
+                      advanced: {
+                        ...prev.filters.advanced,
+                        thread_queue_size:
+                          !isFfmpeg9Plus && (!prev.filters.advanced?.thread_queue_size || prev.filters.advanced.thread_queue_size < 1024)
+                            ? 4096
+                            : prev.filters.advanced?.thread_queue_size ?? 0,
+                      },
+                    },
+                  }));
+                }}
+                className="flex-shrink-0 flex items-center gap-1.5 bg-brand-orange hover:bg-brand-orange/80 text-black font-black px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-xs"
+              >
+                {t('forge.applyLiveAudioSync')}
               </button>
             </div>
           );
@@ -1832,6 +1941,8 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                 probesize={config.filters.advanced.probesize}
                 thread_queue_size={config.filters.advanced.thread_queue_size}
                 enable_preview={config.filters.advanced.enable_preview}
+                flush_packets={config.filters.advanced.flush_packets}
+                inputThreadQueueUnsupported={isFfmpeg9Plus}
                 onChange={handleAdvancedFlagsChange}
               />
             </div>

@@ -1,6 +1,8 @@
 import os
 import copy
 import logging
+import shutil
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +12,53 @@ class FFmpegCommandBuilder:
     Stateless builder that converts a media process or scheduled task config
     into an executable FFmpeg command-line argument list.
     """
+    _THREAD_QUEUE_SIZE_INPUT_CACHE = {}
+
+    @classmethod
+    def supports_input_thread_queue_size(cls, ffmpeg_bin: str) -> bool:
+        """Probe whether ffmpeg_bin supports -thread_queue_size as an input option.
+
+        FFmpeg 9.0+ removed -thread_queue_size from input options (upstream commit
+        8d8c3fd8), leaving it only as an output/muxer option. Inspecting '-h long'
+        keeps demuxer queueing active on FFmpeg <= 8.1 while preventing startup
+        failures on FFmpeg 9.x+.
+        """
+        if not ffmpeg_bin:
+            return True
+
+        resolved = ffmpeg_bin if os.path.isfile(ffmpeg_bin) else shutil.which(ffmpeg_bin)
+        if not resolved:
+            return True
+
+        try:
+            mtime = os.path.getmtime(resolved)
+        except OSError:
+            return True
+
+        cached = cls._THREAD_QUEUE_SIZE_INPUT_CACHE.get(resolved)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+
+        try:
+            res = subprocess.run(
+                [resolved, "-hide_banner", "-h", "long"],
+                capture_output=True,
+                text=True,
+                timeout=3.0,
+            )
+            help_out = (res.stdout or "") + "\n" + (res.stderr or "")
+            if "queued packets from the demuxer" in help_out:
+                supported = True
+            elif "queued packets per stream on the muxer" in help_out:
+                supported = False
+            else:
+                supported = True
+        except Exception as exc:
+            logger.debug("Failed to probe -thread_queue_size support for %s: %s", resolved, exc)
+            return True
+
+        cls._THREAD_QUEUE_SIZE_INPUT_CACHE[resolved] = (mtime, supported)
+        return supported
 
     @staticmethod
     def _is_real_value(val):
@@ -732,7 +781,7 @@ class FFmpegCommandBuilder:
                 cmd += [f"-vbr:a:{idx}", params['vbr']]
 
     @classmethod
-    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg", media_proc=None):
+    def _append_output(cls, cmd: list, output_cfg: dict, codec_cfg: dict, limit_sec=None, ffmpeg_bin: str = "ffmpeg", media_proc=None, filter_cfg: dict = None):
         output_type = output_cfg.get('type')
         
         is_mpegts = (
@@ -793,6 +842,14 @@ class FFmpegCommandBuilder:
         # when a stream becomes desynchronized or drops out (e.g. PipeWire restart)
         if "-max_muxing_queue_size" not in cmd:
             cmd += ["-max_muxing_queue_size", "1024"]
+
+        # Flush each AVIO packet immediately for Icecast (by default) or when explicitly enabled,
+        # preventing TCP burst stalls / playout buffer starvation on low-bitrate audio streams.
+        flush_packets = (filter_cfg or {}).get('advanced', {}).get('flush_packets')
+        if flush_packets is None:
+            flush_packets = (output_type == 'icecast')
+        if flush_packets is True and "-flush_packets" not in cmd:
+            cmd += ["-flush_packets", "1"]
 
         if output_type == 'file':
             path = output_cfg.get('path', 'output.mp4')
@@ -1083,8 +1140,17 @@ class FFmpegCommandBuilder:
             cmd += ["-probesize", str(probesize)]
 
         tqs = advanced.get('thread_queue_size', 0)
+        allow_input_tqs = False
         if tqs and int(tqs) > 0:
-            cmd += ["-thread_queue_size", str(int(tqs))]
+            allow_input_tqs = cls.supports_input_thread_queue_size(ffmpeg_bin)
+            if allow_input_tqs:
+                cmd += ["-thread_queue_size", str(int(tqs))]
+            else:
+                logger.info(
+                    "Omitting -thread_queue_size=%s on inputs: FFmpeg binary %s does not support it as an input option (FFmpeg 9+).",
+                    int(tqs),
+                    ffmpeg_bin,
+                )
 
         _SELF_PACED_INPUTS = {'file', 'lavfi_video', 'lavfi_audio'}
         is_service = getattr(media_proc, 'type', 'service') == 'service'
@@ -1105,7 +1171,7 @@ class FFmpegCommandBuilder:
             
             cls._append_input(cmd, input_cfg['input1'], ffmpeg_bin, media_proc=media_proc)
             if use_secondary and 'input2' in input_cfg:
-                if tqs and int(tqs) > 0:
+                if allow_input_tqs:
                     cmd += ["-thread_queue_size", str(int(tqs))]
                 cls._append_input(cmd, input_cfg['input2'], ffmpeg_bin, media_proc=media_proc)
         else:
@@ -1237,6 +1303,8 @@ class FFmpegCommandBuilder:
             headers = output_cfg.get('headers', '')
             
             cls._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
+            if (filter_cfg or {}).get('advanced', {}).get('flush_packets') is True and "-flush_packets" not in cmd:
+                cmd += ["-flush_packets", "1"]
             
             cmd += ["-f", "hls"]
             cmd += ["-hls_time", str(hls_time)]
@@ -1474,7 +1542,7 @@ class FFmpegCommandBuilder:
                     cls._append_audio_codec_params(cmd, acodec, audio_params)
 
             cls._append_fps_mode(cmd, codec_cfg, output_cfg, filter_cfg, ffmpeg_bin)
-            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin, media_proc=media_proc)
+            cls._append_output(cmd, output_cfg, codec_cfg, limit_sec=limit_sec, ffmpeg_bin=ffmpeg_bin, media_proc=media_proc, filter_cfg=filter_cfg)
             
         is_service = getattr(media_proc, 'type', 'service') == 'service'
         

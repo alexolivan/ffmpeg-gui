@@ -68,6 +68,7 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
   const svcLevel = getServiceLevel(permissions, currentProcess);
   const canOperate = hasMinLevel(svcLevel, 'operate');
   const canManage = hasMinLevel(svcLevel, 'manage');
+  const canAdmin = hasMinLevel(svcLevel, 'admin');
 
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copiedLogs, setCopiedLogs] = useState(false);
@@ -235,7 +236,7 @@ export const KioskPreviewModal: React.FC<KioskPreviewModalProps> = ({
               </button>
             )}
 
-            {canManage && onCloneProcess && (
+            {canAdmin && onCloneProcess && (
               <button
                 onClick={() => {
                   onClose();

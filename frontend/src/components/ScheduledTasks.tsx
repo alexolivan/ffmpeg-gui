@@ -438,6 +438,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 const taskLvl = getTaskLevel(permissions, task);
                 const canOperateTask = hasMinLevel(taskLvl, 'operate');
                 const canManageTask = hasMinLevel(taskLvl, 'manage');
+                const canAdminTask = hasMinLevel(taskLvl, 'admin');
                 return (
                   <div 
                     key={task.id} 
@@ -692,7 +693,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         </button>
                       ))}
 
-                      {!task.is_system && canManageTask && (
+                      {!task.is_system && canAdminTask && (
                         <>
                           <button 
                             disabled={taskTriggerPending[task.id]}
@@ -731,25 +732,29 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           >
                             <ExportIcon size={16} />
                           </button>
-
-                          <button 
-                            disabled={taskTriggerPending[task.id]}
-                            onClick={() => handleEditClick(task)}
-                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                            title="Edit Task"
-                          >
-                            <PencilIcon size={16} />
-                          </button>
-
-                          <button 
-                            disabled={taskTriggerPending[task.id]}
-                            onClick={() => handleDeleteTask(task.id)}
-                            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                            title="Delete Task"
-                          >
-                            <TrashIcon size={16} />
-                          </button>
                         </>
+                      )}
+
+                      {!task.is_system && canManageTask && (
+                        <button 
+                          disabled={taskTriggerPending[task.id]}
+                          onClick={() => handleEditClick(task)}
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                          title="Edit Task"
+                        >
+                          <PencilIcon size={16} />
+                        </button>
+                      )}
+
+                      {!task.is_system && canAdminTask && (
+                        <button 
+                          disabled={taskTriggerPending[task.id]}
+                          onClick={() => handleDeleteTask(task.id)}
+                          className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                          title="Delete Task"
+                        >
+                          <TrashIcon size={16} />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -778,6 +783,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 const taskLvl = getTaskLevel(permissions, task);
                 const canOperateTask = hasMinLevel(taskLvl, 'operate');
                 const canManageTask = hasMinLevel(taskLvl, 'manage');
+                const canAdminTask = hasMinLevel(taskLvl, 'admin');
                 return (
                   <div 
                     key={task.id} 
@@ -1007,7 +1013,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         </button>
                       ))}
 
-                      {!task.is_system && canManageTask && (
+                      {!task.is_system && canAdminTask && (
                         <>
                           <button 
                             disabled={taskTriggerPending[task.id]}
@@ -1046,25 +1052,29 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           >
                             <ExportIcon size={16} />
                           </button>
-
-                          <button 
-                            disabled={taskTriggerPending[task.id]}
-                            onClick={() => handleEditClick(task)}
-                            className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                            title="Edit Task"
-                          >
-                            <PencilIcon size={16} />
-                          </button>
-
-                          <button 
-                            disabled={taskTriggerPending[task.id]}
-                            onClick={() => handleDeleteTask(task.id)}
-                            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
-                            title="Delete Task"
-                          >
-                            <TrashIcon size={16} />
-                          </button>
                         </>
+                      )}
+
+                      {!task.is_system && canManageTask && (
+                        <button 
+                          disabled={taskTriggerPending[task.id]}
+                          onClick={() => handleEditClick(task)}
+                          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                          title="Edit Task"
+                        >
+                          <PencilIcon size={16} />
+                        </button>
+                      )}
+
+                      {!task.is_system && canAdminTask && (
+                        <button 
+                          disabled={taskTriggerPending[task.id]}
+                          onClick={() => handleDeleteTask(task.id)}
+                          className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center border border-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:pointer-events-none"
+                          title="Delete Task"
+                        >
+                          <TrashIcon size={16} />
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1098,7 +1108,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 <p className="text-text-secondary text-sm">Execution History & Diagnostics</p>
               </div>
 
-              {hasMinLevel(getTaskLevel(permissions, selectedTaskDetails.task), 'manage') && selectedTaskDetails.executions.length > 0 && (
+              {hasMinLevel(getTaskLevel(permissions, selectedTaskDetails.task), 'admin') && selectedTaskDetails.executions.length > 0 && (
                 <button
                   onClick={() => handleClearTaskHistory(selectedTaskDetails.task.id)}
                   className="px-3.5 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-bold border border-red-500/20 flex items-center gap-2 transition-all self-start sm:self-auto"
@@ -1717,6 +1727,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 <ProcessConfigForm
                   isTask={true}
                   initialConfig={editingTask}
+                  canChangeStreamMode={editingTask ? hasMinLevel(getTaskLevel(permissions, editingTask), 'admin') : true}
                   onCancel={() => {
                     setShowAddModal(false);
                     setEditingTask(null);

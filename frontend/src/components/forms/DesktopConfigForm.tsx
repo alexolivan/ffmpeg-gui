@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RefreshIcon, ShieldIcon } from '../Icons';
 import { AliasField } from '../common/AliasField';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 interface DesktopConfigFormProps {
   initialConfig?: any;
@@ -468,33 +469,37 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
                 <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                   {t('desktop.alsa_subdevice_label', 'ALSA Subdevice (Loopback Playout)')}
                 </label>
-                <select
-                  value={alsaSubdevice}
-                  onChange={(e) => setAlsaSubdevice(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none font-mono cursor-pointer"
-                >
-                  <option value="">
-                    {t('desktop.alsa_subdevice_auto', 'Auto-Assign: Subdevice {{sub}} [Available]', {
-                      sub: nextAvailableSubdevice,
-                    })}
-                  </option>
-                  {[0, 1, 2, 3, 4, 5, 6, 7].map((s) => {
-                    const isOccupied = occupiedSubdevices[s] !== undefined;
-                    const occupantName = occupiedSubdevices[s];
-                    const isCurrent = initialConfig?.id && deskCfg.alsa_subdevice === s;
-                    let statusBadge = `[${t('desktop.subdevice_available', 'Available')}]`;
-                    if (isCurrent) {
-                      statusBadge = `[${t('desktop.subdevice_current', 'Current')}]`;
-                    } else if (isOccupied) {
-                      statusBadge = `[${t('desktop.subdevice_in_use', 'In Use')}: ${occupantName}]`;
-                    }
-                    return (
-                      <option key={s} value={s}>
-                        Subdevice {s} — {statusBadge} (hw:Loopback,0,{s})
-                      </option>
-                    );
-                  })}
-                </select>
+                <SearchableSelect
+                  accent="lime"
+                  wrapLabels
+                  maxDropdownWidth={460}
+                  buttonClassName="px-3 py-2 text-sm font-mono"
+                  value={alsaSubdevice === '' ? '' : String(alsaSubdevice)}
+                  onChange={(val) => setAlsaSubdevice(val === '' ? '' : Number(val))}
+                  options={[
+                    {
+                      value: '',
+                      label: t('desktop.alsa_subdevice_auto', 'Auto-Assign: Subdevice {{sub}} [Available]', {
+                        sub: nextAvailableSubdevice,
+                      }),
+                    },
+                    ...[0, 1, 2, 3, 4, 5, 6, 7].map((s) => {
+                      const isOccupied = occupiedSubdevices[s] !== undefined;
+                      const occupantName = occupiedSubdevices[s];
+                      const isCurrent = initialConfig?.id && deskCfg.alsa_subdevice === s;
+                      let statusBadge = `[${t('desktop.subdevice_available', 'Available')}]`;
+                      if (isCurrent) {
+                        statusBadge = `[${t('desktop.subdevice_current', 'Current')}]`;
+                      } else if (isOccupied) {
+                        statusBadge = `[${t('desktop.subdevice_in_use', 'In Use')}: ${occupantName}]`;
+                      }
+                      return {
+                        value: String(s),
+                        label: `Subdevice ${s} — ${statusBadge} (hw:Loopback,0,${s})`,
+                      };
+                    }),
+                  ]}
+                />
                 <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                   {t(
                     'desktop.alsa_subdevice_help',
@@ -532,18 +537,18 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
                       <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                         {t('desktop.pipewire_hub_label', 'PipeWire Hub Service')} <span className="text-red-400">*</span>
                       </label>
-                      <select
-                        value={pipewireServiceId}
-                        onChange={(e) => handlePipewireHubChange(e.target.value === '' ? '' : Number(e.target.value))}
-                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none cursor-pointer"
-                        required
-                      >
-                        {availablePipewireHubs.map((hub) => (
-                          <option key={hub.id} value={hub.id}>
-                            {hub.name} ({hub.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        accent="lime"
+                        wrapLabels
+                        maxDropdownWidth={420}
+                        buttonClassName="px-3 py-2 text-sm"
+                        value={pipewireServiceId === '' ? '' : String(pipewireServiceId)}
+                        onChange={(val) => handlePipewireHubChange(val === '' ? '' : Number(val))}
+                        options={availablePipewireHubs.map((hub) => ({
+                          value: String(hub.id),
+                          label: `${hub.name} (${hub.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})`,
+                        }))}
+                      />
                     </div>
 
                     {/* Target Virtual Audio Sink Selector */}
@@ -551,23 +556,19 @@ export const DesktopConfigForm: React.FC<DesktopConfigFormProps> = ({
                       <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                         {t('desktop.pipewire_sink_label', 'Target Virtual Audio Sink')} <span className="text-red-400">*</span>
                       </label>
-                      <select
+                      <SearchableSelect
+                        accent="lime"
+                        wrapLabels
+                        maxDropdownWidth={460}
+                        buttonClassName="px-3 py-2 text-sm font-mono"
                         value={pipewireSinkId}
-                        onChange={(e) => setPipewireSinkId(e.target.value)}
-                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none font-mono cursor-pointer"
-                        required
-                      >
-                        {currentHubSinks.length === 0 && (
-                          <option value="">
-                            {t('desktop.pipewire_sink_select', 'Select Virtual Sink...')}
-                          </option>
-                        )}
-                        {currentHubSinks.map((sink: any) => (
-                          <option key={sink.id} value={sink.id}>
-                            {sink.name || sink.id} ({sink.channels || 2}ch){sink.aes67_enabled ? ' [AES67 Tx]' : ''}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(val) => setPipewireSinkId(val)}
+                        placeholder={t('desktop.pipewire_sink_select', 'Select Virtual Sink...')}
+                        options={currentHubSinks.map((sink: any) => ({
+                          value: sink.id,
+                          label: `${sink.name || sink.id} (${sink.channels || 2}ch)${sink.aes67_enabled ? ' [AES67 Tx]' : ''}`,
+                        }))}
+                      />
                     </div>
                   </div>
 

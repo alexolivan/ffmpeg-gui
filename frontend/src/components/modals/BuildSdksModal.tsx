@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 interface StorageItem {
   id: number;
@@ -310,18 +311,21 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
                 <label className="block text-xs font-bold text-text-secondary uppercase mb-1">
                   {t('sdks.sdkType')}
                 </label>
-                <select
+                <SearchableSelect
+                  searchable={false}
+                  accent="orange"
                   value={uploadType}
-                  onChange={(e) => setUploadType(e.target.value)}
-                  className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-brand-orange"
-                >
-                  {(!filterSdkTypes || filterSdkTypes.includes('decklink')) && (
-                    <option value="decklink">DeckLink (Blackmagic)</option>
-                  )}
-                  {(!filterSdkTypes || filterSdkTypes.includes('ndi')) && (
-                    <option value="ndi">NDI (NewTek)</option>
-                  )}
-                </select>
+                  onChange={(val) => setUploadType(val)}
+                  buttonClassName="rounded-xl px-3 py-2 font-bold"
+                  options={[
+                    ...(!filterSdkTypes || filterSdkTypes.includes('decklink')
+                      ? [{ value: 'decklink', label: 'DeckLink (Blackmagic)' }]
+                      : []),
+                    ...(!filterSdkTypes || filterSdkTypes.includes('ndi')
+                      ? [{ value: 'ndi', label: 'NDI (NewTek)' }]
+                      : []),
+                  ]}
+                />
               </div>
 
               {/* Storage selector (filtered to type === 'sdk') */}
@@ -329,18 +333,22 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
                 <label className="block text-xs font-bold text-text-secondary uppercase mb-1">
                   {t('sdks.storage')}
                 </label>
-                <select
-                  value={uploadStorageId}
-                  onChange={(e) => setUploadStorageId(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-brand-orange"
-                >
-                  <option value="">{t('sdks.defaultStorage')}</option>
-                  {sdkStorages.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.path})
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  searchable={sdkStorages.length > 6}
+                  accent="orange"
+                  wrapLabels
+                  maxDropdownWidth={420}
+                  value={uploadStorageId === '' ? '' : String(uploadStorageId)}
+                  onChange={(val) => setUploadStorageId(val ? Number(val) : '')}
+                  buttonClassName="rounded-xl px-3 py-2 font-bold"
+                  options={[
+                    { value: '', label: t('sdks.defaultStorage') },
+                    ...sdkStorages.map((s) => ({
+                      value: String(s.id),
+                      label: `${s.name} (${s.path})`,
+                    })),
+                  ]}
+                />
               </div>
             </div>
 
@@ -524,20 +532,24 @@ export const BuildSdksModal: React.FC<BuildSdksModalProps> = ({
                 <label className="block text-xs font-bold text-text-secondary uppercase mb-1">
                   {t('sdks.targetStorage')}
                 </label>
-                <select
-                  value={targetStorageId}
-                  onChange={(e) => setTargetStorageId(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full bg-black/60 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-brand-orange"
-                >
-                  <option value="">{t('sdks.selectStorage')}</option>
-                  {sdkStorages
-                    .filter((s) => s.id !== migrateSdk.storage_id)
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.path})
-                      </option>
-                    ))}
-                </select>
+                <SearchableSelect
+                  searchable={sdkStorages.length > 6}
+                  accent="orange"
+                  wrapLabels
+                  maxDropdownWidth={420}
+                  value={targetStorageId === '' ? '' : String(targetStorageId)}
+                  onChange={(val) => setTargetStorageId(val ? Number(val) : '')}
+                  buttonClassName="rounded-xl px-3 py-2 font-bold"
+                  options={[
+                    { value: '', label: t('sdks.selectStorage') },
+                    ...sdkStorages
+                      .filter((s) => s.id !== migrateSdk.storage_id)
+                      .map((s) => ({
+                        value: String(s.id),
+                        label: `${s.name} (${s.path})`,
+                      })),
+                  ]}
+                />
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

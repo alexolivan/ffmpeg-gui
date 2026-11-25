@@ -67,6 +67,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
   const svcLevel = getServiceLevel(permissions, currentProcess);
   const canOperate = hasMinLevel(svcLevel, 'operate');
   const canManage = hasMinLevel(svcLevel, 'manage');
+  const canAdmin = hasMinLevel(svcLevel, 'admin');
 
   const isKiosk = selectedProcess.service_type === 'kiosk_browser';
   const kioskCfg = isKiosk ? (currentProcess.config?.kiosk_config || currentProcess.config || {}) : null;
@@ -349,7 +350,7 @@ export const DesktopPreviewModal: React.FC<DesktopPreviewModalProps> = ({
               </button>
             )}
 
-            {canManage && onCloneProcess && (
+            {canAdmin && onCloneProcess && (
               <button
                 onClick={() => {
                   onClose();

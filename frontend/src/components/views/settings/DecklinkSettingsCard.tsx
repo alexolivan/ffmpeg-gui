@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SearchableSelect } from '../../common/SearchableSelect';
 
 export interface DecklinkActiveProcess {
   process_id: number;
@@ -421,20 +422,22 @@ export const DecklinkSettingsCard: React.FC<{
               <span className="text-xs font-bold uppercase tracking-wider text-text-secondary">
                 {t('settings.decklink.selectCard', 'Physical Card:')}
               </span>
-              <select
-                value={selectedCardIdx}
-                onChange={(e) => {
-                  setSelectedCardIdx(Number(e.target.value));
+              <SearchableSelect
+                accent="lime"
+                wrapLabels
+                maxDropdownWidth={440}
+                className="min-w-[220px]"
+                buttonClassName="!bg-[var(--bg-card)] rounded-xl px-3 py-1.5 font-bold font-mono"
+                value={String(selectedCardIdx)}
+                onChange={(val) => {
+                  setSelectedCardIdx(Number(val));
                   setSelectedChannelIdx(0);
                 }}
-                className="bg-[var(--bg-card)] border border-[var(--glass-border)] text-[var(--text-primary)] text-xs font-bold rounded-xl px-3 py-1.5 focus:outline-none focus:border-brand-lime cursor-pointer font-mono"
-              >
-                {physicalCards.map((c, idx) => (
-                  <option key={c.id} value={idx}>
-                    [{idx + 1}] {c.display_name} ({c.channels.length} {c.channels.length === 1 ? 'Channel' : 'Channels'})
-                  </option>
-                ))}
-              </select>
+                options={physicalCards.map((c, idx) => ({
+                  value: String(idx),
+                  label: `[${idx + 1}] ${c.display_name} (${c.channels.length} ${c.channels.length === 1 ? 'Channel' : 'Channels'})`,
+                }))}
+              />
             </div>
 
             {activeChannel && (

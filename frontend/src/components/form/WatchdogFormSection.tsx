@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 export interface SignalWatchdogConfig {
   silence_enabled: boolean;
@@ -515,36 +516,41 @@ export const WatchdogFormSection: React.FC<WatchdogFormSectionProps> = ({
                   <label className="text-[10px] font-bold uppercase text-[var(--text-secondary)] block mb-1">
                     {t('watchdog.backupService', 'Backup Service')}
                   </label>
-                  <select
-                    value={sw.backup_service_id ?? ''}
-                    onChange={e =>
+                  <SearchableSelect
+                    accent="lime"
+                    wrapLabels
+                    maxDropdownWidth={420}
+                    buttonClassName="px-2 py-1.5"
+                    value={sw.backup_service_id !== null && sw.backup_service_id !== undefined ? String(sw.backup_service_id) : ''}
+                    onChange={val =>
                       onSignalWatchdogChange({
-                        backup_service_id: e.target.value ? parseInt(e.target.value, 10) : null,
+                        backup_service_id: val ? parseInt(val, 10) : null,
                       })
                     }
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-                  >
-                    <option value="">
-                      {backupCandidates.length === 0
-                        ? t('watchdog.noBackupServices', 'No other services available')
-                        : t('watchdog.selectBackupService', 'Select a backup service...')}
-                    </option>
-                    {backupCandidates.map(svc => {
-                      const bSw = svc.signal_watchdog || svc.config?.signal_watchdog;
-                      const createsLoop =
-                        currentProcessId !== null &&
-                        currentProcessId !== undefined &&
-                        bSw?.reaction_mode === 'activate_backup' &&
-                        Number(bSw?.backup_service_id) === Number(currentProcessId);
-                      return (
-                        <option key={svc.id} value={svc.id} disabled={createsLoop}>
-                          {createsLoop
+                    options={[
+                      {
+                        value: '',
+                        label: backupCandidates.length === 0
+                          ? t('watchdog.noBackupServices', 'No other services available')
+                          : t('watchdog.selectBackupService', 'Select a backup service...'),
+                      },
+                      ...backupCandidates.map(svc => {
+                        const bSw = svc.signal_watchdog || svc.config?.signal_watchdog;
+                        const createsLoop =
+                          currentProcessId !== null &&
+                          currentProcessId !== undefined &&
+                          bSw?.reaction_mode === 'activate_backup' &&
+                          Number(bSw?.backup_service_id) === Number(currentProcessId);
+                        return {
+                          value: String(svc.id),
+                          disabled: createsLoop,
+                          label: createsLoop
                             ? `${svc.name} (${t('watchdog.backupLoopBlocked', 'uses this service as backup')})`
-                            : svc.name}
-                        </option>
-                      );
-                    })}
-                  </select>
+                            : svc.name,
+                        };
+                      }),
+                    ]}
+                  />
                 </div>
               )}
             </div>

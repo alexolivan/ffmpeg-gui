@@ -64,6 +64,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   const svcLevel = getServiceLevel(permissions, currentProcess);
   const canOperate = hasMinLevel(svcLevel, 'operate');
   const canManage = hasMinLevel(svcLevel, 'manage');
+  const canAdmin = hasMinLevel(svcLevel, 'admin');
 
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -1321,7 +1322,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
         {/* Footer */}
         <div className="p-4 border-t border-[var(--glass-border)] flex-shrink-0 bg-white/2 flex justify-between items-center flex-wrap gap-3">
           <div>
-            {canManage && (
+            {canAdmin && (
               <button
                 onClick={() => {
                   fetch(`${API}/processes/${currentProcess.id}/export`)
@@ -1343,29 +1344,29 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
 
           <div className="flex gap-2">
             {canManage && (
-              <>
-                <button
-                  disabled={!!actionPending[currentProcess.id]}
-                  onClick={() => {
-                    onEditProcess(currentProcess);
-                    onClose();
-                  }}
-                  className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-1.5 px-4 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                >
-                  {t('common.editConfig', 'EDIT CONFIG')}
-                </button>
+              <button
+                disabled={!!actionPending[currentProcess.id]}
+                onClick={() => {
+                  onEditProcess(currentProcess);
+                  onClose();
+                }}
+                className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-1.5 px-4 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+              >
+                {t('common.editConfig', 'EDIT CONFIG')}
+              </button>
+            )}
 
-                <button
-                  disabled={!!actionPending[currentProcess.id]}
-                  onClick={() => {
-                    onCloneProcess(currentProcess);
-                    onClose();
-                  }}
-                  className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 disabled:opacity-50 disabled:pointer-events-none cursor-pointer text-[var(--text-primary)]"
-                >
-                  {t('services.cloneService', 'CLONE SERVICE')}
-                </button>
-              </>
+            {canAdmin && (
+              <button
+                disabled={!!actionPending[currentProcess.id]}
+                onClick={() => {
+                  onCloneProcess(currentProcess);
+                  onClose();
+                }}
+                className="pill-button bg-white/10 hover:bg-white/15 text-xs py-1.5 px-4 disabled:opacity-50 disabled:pointer-events-none cursor-pointer text-[var(--text-primary)]"
+              >
+                {t('services.cloneService', 'CLONE SERVICE')}
+              </button>
             )}
 
             {canOperate && (currentProcess.status === 'running' ? (

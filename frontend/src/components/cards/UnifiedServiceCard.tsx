@@ -174,6 +174,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
   const [isRrdExpanded, setIsRrdExpanded] = useState(false);
   const canOperate = hasMinLevel(serviceLevel, 'operate');
   const canManage = hasMinLevel(serviceLevel, 'manage');
+  const canAdmin = hasMinLevel(serviceLevel, 'admin');
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
   const isPending = !!actionPending;
@@ -463,7 +464,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         )}
 
         {/* Clone Service Button */}
-        {canManage && onCloneProcess && (
+        {canAdmin && onCloneProcess && (
           <button
             disabled={isPending}
             onClick={() => onCloneProcess(service)}
@@ -475,7 +476,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         )}
 
         {/* Clone as Task Button (Conditional for FFmpeg Streams Only) */}
-        {canManage && isFfmpegStream && onCloneAsTask && (
+        {canAdmin && isFfmpegStream && onCloneAsTask && (
           <button
             disabled={isPending}
             onClick={() => onCloneAsTask(service)}
@@ -487,7 +488,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         )}
 
         {/* Export Button */}
-        {canManage && onExportProcess && (
+        {canAdmin && onExportProcess && (
           <button
             disabled={isPending}
             onClick={() => onExportProcess(service)}
@@ -575,7 +576,7 @@ export const UnifiedServiceCard: React.FC<UnifiedServiceCardProps> = ({
         ))}
 
         {/* Delete Button */}
-        {canManage && (
+        {canAdmin && (
           <button
             disabled={isRunning || isRetrying || isPending}
             onClick={() => onDeleteProcess(service)}

@@ -69,6 +69,7 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
   const [isRrdExpanded, setIsRrdExpanded] = useState(false);
   const canOperate = hasMinLevel(serviceLevel, 'operate');
   const canManage = hasMinLevel(serviceLevel, 'manage');
+  const canAdmin = hasMinLevel(serviceLevel, 'admin');
 
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
@@ -261,7 +262,7 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
         )}
 
         {/* Clone Service Button */}
-        {canManage && onCloneProcess && (
+        {canAdmin && onCloneProcess && (
           <button
             disabled={isPending}
             onClick={() => onCloneProcess(service)}
@@ -273,7 +274,7 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
         )}
 
         {/* Export Button */}
-        {canManage && onExportProcess && (
+        {canAdmin && onExportProcess && (
           <button
             disabled={isPending}
             onClick={() => onExportProcess(service)}
@@ -334,7 +335,7 @@ export const DesktopServiceCard: React.FC<DesktopServiceCardProps> = ({
         ))}
 
         {/* Delete Service */}
-        {canManage && (
+        {canAdmin && (
           <button
             disabled={isPending || isRunning || isRetrying}
             onClick={() => onDeleteProcess(service)}

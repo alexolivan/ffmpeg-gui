@@ -5,6 +5,88 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.74.2] - 2026-11-25
+
+### Changed
+- **Audio Sync Card Separation & Terminology (`FiltersFormSection.tsx`, EN/ES/CA locales)**:
+  - Separated **Audio Sync (`aresample`)** into its own standalone card above **Audio DSP & Levels** inside the Audio sub-tab so sound operators keep DSP controls cleanly isolated from FFmpeg clock/resampling settings.
+  - Simplified labels to avoid redundant wording (`Audio Sync` / `Sincronización de Audio`, `Mode`, `Sample Rate (osr)`, `Min Drift (s)`, `Hard Trim (s)`, `Initial PTS (samples)`).
+
+## [2.74.1] - 2026-11-25
+
+### Fixed
+- **Audio / Video Sync (`aresample`) Hidden on Audio-Only Services (`FiltersFormSection.tsx`)**:
+  - Moved the **Audio / Video Sync (`aresample`)** configuration card (`Sync Mode`, `osr`, `min_comp`, `min_hard_comp`, `first_pts`) from the `video` sub-tab (`activeSubTab === 'video' && hasVideo`) to the top of the `audio` sub-tab (`activeSubTab === 'audio' && hasAudio`), making it accessible and revertible for audio-only services (such as `ALSA / PipeWire -> Icecast`) as well as video+audio services.
+
+## [2.74.0] - 2026-11-25
+
+### Added
+- **Live Audio Clock Sync & Icecast AVIO Packet Flushing (`-flush_packets 1`, `aresample` `first_pts`, Live Audio Sync Banner)**:
+  - **Automatic & Configurable AVIO Packet Flushing (`ffmpeg_builder.py`, `AdvancedFlagsFormSection.tsx`)**: Emits `-flush_packets 1` automatically for `icecast` outputs (preventing TCP burst batching and playout buffer starvation on low-bitrate audio streams) while exposing a 3-state `Auto / ON / OFF` selector in `AdvancedFlagsFormSection` (`filter_config.advanced.flush_packets`) so operators can also enable packet flushing on other live outputs (`srt`, `rtmp`, `udp`, `rtsp`, `whip`, `hls`) or override Icecast defaults.
+  - **`first_pts` Support in `aresample` (`filter_graph.py`, `FiltersFormSection.tsx`)**: Added optional `first_pts` parameter handling (`mode == 'advanced'`) in `FilterGraphBuilder.build_audio_filters` and exposed it alongside `osr`, `min_comp`, and `min_hard_comp` in `FiltersFormSection` (pre-filling `0` when switching to Advanced Sync on new configs without altering existing DB configs).
+  - **One-Click Live Audio Sync Recommendation (`ProcessConfigForm.tsx`)**: Displays a non-destructive recommendation banner when a live capture input (`alsa`, `pipewire`, `decklink`) feeds a live network output (`icecast`, `rtmp`, `srt`, `rtsp`, `whip`, `udp`, `hls`) with re-encoding enabled but without full clock-drift/buffer protection, applying `aresample=async=1:min_comp=0.01:min_hard_comp=0.1:first_pts=0` and boosting `thread_queue_size` to `4096` (on FFmpeg `< 9` builds) in one click.
+  - Added EN/ES/CA localization keys under `forge` and `filters` and unit tests in `test_filter_graph.py` and `test_command_generator.py`.
+
+## [2.73.0] - 2026-11-25
+
+### Changed
+- **Portal `<SearchableSelect />` Rollout — Phase 3 (`DesktopConfigForm`, `KioskConfigForm`, `FiltersFormSection`, `SettingsView`, Hardware & ALSA Mixer Cards)**:
+  - Migrated the remaining dynamic service/storage/hardware selectors across the GUI for uniform portal dropdown behavior:
+    - `DesktopConfigForm` (ALSA loopback subdevice with occupancy badges, PipeWire hub and target sink) and `KioskConfigForm` (virtual desktop service, browser build/binary, cache storage).
+    - `FiltersFormSection` (overlay media storage) and `SettingsView` (log storage).
+    - `AlsaAudioSettingsCard` (sound card selector and enumerated mixer/routing controls), `DecklinkSettingsCard` (physical card selector), `MagewellSettingsCard` (physical card selector), and `InboundKeysCard` (endpoint candidate selector).
+  - Raised `SearchableSelect` portal `zIndex` to `10050` so dropdowns inside nested portal popups stack cleanly above parent overlays.
+
+## [2.72.0] - 2026-11-25
+
+### Changed
+- **Portal `<SearchableSelect />` Rollout — Phase 2 (`frontend/src/components/source/InputSourcePanel.tsx`, `frontend/src/components/destination/DestinationPanel.tsx`)**:
+  - Migrated dynamic input/output selectors in `InputSourcePanel` and `DestinationPanel` to `<SearchableSelect />` with `wrapLabels`, `maxDropdownWidth`, and `brand-lime` focus accents:
+    - MediaMTX (SRT, RTSP, RTMP, HLS, WebRTC/WHIP) and Icecast local/federated remote peer selectors and stream path / mountpoint selectors (preserving resource lock badges and custom slug/mountpoint fallbacks).
+    - PipeWire hub selectors and grouped monitor/virtual/remote AoIP sink selectors.
+    - ALSA card and subdevice selectors, DeckLink device and format selectors, V4L2 device and resolution selectors, NDI source selector, Virtual Desktop selector, and Media/HLS storage volume selectors.
+
+## [2.71.0] - 2026-11-25
+
+### Changed
+- **Portal `<SearchableSelect />` Rollout — Phase 1 (`SearchableSelect.tsx`, `searchableSelectHelper.ts`, Service/Task Modals, Engine Forms & Network Selectors)**:
+  - Extended `SearchableSelect` with `wrapLabels`, `maxDropdownWidth` (dynamic viewport-clamped expansion for long descriptions/badges), `accent` (`orange` / `lime`), and native hover `title` tooltips on options.
+  - Migrated Phase 1 dynamic/modal selectors: `BuildSdksModal`, `ProcessConfigForm` (FFmpeg build), `IcecastConfigForm` (engine build & log storage), `MediaMtxConfigForm` (release, HLS/log storages), `PipeWireConfigForm` (engine build, AES67 NIC with disabled/PTP badges, log storage), `BatchJobForm`, `ServiceRestartTaskForm`, `WatchdogFormSection` (backup service with loop-disabled items), `LifecycleFormSection` (log storage), and `NetworkInterfaceSelector`.
+
+## [2.70.1] - 2026-11-25
+
+### Fixed
+- **Forge Version & Tag Selectors Overflow/Collapse Fix (`frontend/src/components/common/SearchableSelect.tsx`, `frontend/src/utils/searchableSelectHelper.ts`, `frontend/src/components/BuildFormModal.tsx`, `frontend/src/components/views/settings/SoftwareEngineCard.tsx`, `frontend/src/index.css`)**:
+  - Replaced native `<select>` dropdowns in Forge (`BuildFormModal`: FFmpeg/engine tags, LibSRT tags, `ffnvcodec` headers, SDKs, build storage, NDI patches) and Settings (`SoftwareEngineCard`: MediaMTX official release tags) with a new portal-rendered `<SearchableSelect />` component.
+  - Added viewport-aware auto-flip and `maxHeight` clamping (`computeDropdownPlacement`) via `createPortal(..., document.body)` so long tag lists never clip inside blurred/scrolling modals or collapse prematurely when opening near viewport edges, while providing live substring search and full keyboard navigation.
+  - Removed legacy hardcoded `select option` styling (`padding: 12px`, `#1a1a1a`) from `frontend/src/index.css` so native `<select>` elements respect theme variables cleanly.
+
+## [2.70.0] - 2026-11-25
+
+### Added
+- **Forge Build Recipe Cloning (`frontend/src/components/BuildProfileCard.tsx`, `frontend/src/components/views/ForgeView.tsx`, `frontend/src/components/BuildFormModal.tsx`)**:
+  - Added a **Clone Recipe** action button on compiled build profile cards (restricted to Forge `admin` permission, aligned with RBAC create/import/export controls).
+  - Clicking **Clone Recipe** opens `BuildFormModal` pre-populated with all options, version tags, SDK selections, storage target, and auto-clean preferences from the source profile and a unique default name (`<name> (Copy)`), submitting via `POST /builds` to create a fresh `pending` profile without modifying or overwriting the source binary.
+  - Preserved cloned non-FFmpeg engine version tags (`icecast2`, `pipewire`, `mediamtx`, `kiosk_cog`) when initializing `BuildFormModal`, and added `en`, `es`, and `ca` translations (`forge.cloneRecipe`, `forge.cloneProfile`).
+
+## [2.69.1] - 2026-11-25
+
+### Fixed
+- **FFmpeg 9+ `-thread_queue_size` Input Option Compatibility (`backend/core/builders/ffmpeg_builder.py`, `frontend/src/components/form/AdvancedFlagsFormSection.tsx`, `frontend/src/components/ProcessConfigForm.tsx`)**:
+  - Probed `ffmpeg -hide_banner -h long` per binary `(path, mtime)` in `FFmpegCommandBuilder.supports_input_thread_queue_size` to detect FFmpeg 9.0+ builds where `-thread_queue_size` was removed as an input option (upstream commit `8d8c3fd8`).
+  - Automatically omitted `-thread_queue_size` before inputs when running FFmpeg 9+ while preserving the configured setting on FFmpeg `<= 8.1` and in the database.
+  - Displayed a localized informational notice under Queue Size (`-thread_queue_size`) in `AdvancedFlagsFormSection` when an FFmpeg 9+ build is active.
+
+## [2.69.0] - 2026-11-25
+
+### Changed
+- **RBAC `manage` vs `admin` Capability Separation (`backend/core/authz.py`, `backend/main.py`, `frontend/src/utils/permissions.ts`, cards, views & modals)**:
+  - Separated **`manage`** (*tune and edit existing resources*) from **`admin`** (*full lifecycle and structural control*) across Services, Scheduled Tasks, and Forge:
+    - **Services & Scheduled Tasks**: `manage` allows editing parameters on existing services/tasks (audio/video filters, EQ, compression, gain, bitrates, destinations, cron schedules, and command preview) while blocking lifecycle mutations (**create**, **clone**, **copy as task/service**, **import**, **export**, **delete**, **clear task history**) and structural changes (**changing `service_type`**, **changing task type**, or **toggling audio-only ↔ video mode** via `has_video`/`has_audio` or `vcodec: 'none'`). Those operations now require **`admin`**.
+    - **Forge**: `manage` allows editing existing build profiles, validating builds, and cleaning build sources; creating/importing/exporting/deleting profiles, setting the default build, managing SDKs, and managing system patches/dependencies now require **`admin`**.
+  - Updated `ProcessConfigForm` to lock audio/video stream mode toggles with a localized tooltip when editing an existing service or task without `admin` permission, and updated all service cards, preview modals, `ScheduledTasks`, `ForgeView`, and `BuildProfileCard` to hide lifecycle/destructive controls below `admin`.
+  - Added comprehensive backend authorization tests in `backend/tests/test_edge_authz.py` covering `manage` vs `admin` lifecycle routes and structural guards.
+
 ## [2.68.1] - 2026-11-24
 
 ### Fixed

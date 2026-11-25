@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { OverlayCanvasPreview } from './OverlayCanvasPreview';
+import { SearchableSelect } from '../common/SearchableSelect';
 import {
   generateAnchorExpressions,
   parseAnchorFromExpressions,
@@ -73,6 +74,7 @@ interface FiltersFormSectionProps {
     osr?: string;
     min_comp?: number;
     min_hard_comp?: number;
+    first_pts?: number | null;
   };
 
   // Overlays
@@ -103,7 +105,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
   compressor = { enabled: false, attack: 0.3, release: 0.3, gate: -60, gate_ratio: 4, threshold: -30, ratio: 4, gain: 0 },
   limiter = { enabled: false, ceiling: -0.1, release: 50 },
   volume = '',
-  aresample = { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 },
+  aresample = { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: null },
   overlays = [],
   onChange,
   hwaccel = 'none',
@@ -505,104 +507,123 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                 {t('filters.noVppQsvSupport')}
               </div>
             )}
-            
-            {/* Audio / Video Sync (aresample) - Conditional on hasAudio */}
-            {hasAudio && (
-              <div className="col-span-2 border-t border-white/5 pt-2 mt-1 space-y-2">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-                  <h5 className="text-[10px] uppercase font-bold text-text-secondary tracking-wider">
-                    {t('filters.audioVideoSync')}
-                  </h5>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider block mb-0.5">
-                      {t('filters.syncMode')}
-                    </label>
-                    <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono text-white disabled:opacity-35 disabled:cursor-not-allowed"
-                      value={!aresample?.enabled ? 'off' : aresample?.mode || 'basic'}
-                      onChange={e => {
-                        const val = e.target.value;
-                        if (val === 'off') {
-                          onChange({ aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 } });
-                        } else if (val === 'basic') {
-                          onChange({ aresample: { enabled: true, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1 } });
-                        } else {
-                          onChange({ aresample: { enabled: true, mode: 'advanced', osr: aresample?.osr || '', min_comp: aresample?.min_comp ?? 0.01, min_hard_comp: aresample?.min_hard_comp ?? 0.1 } });
-                        }
-                      }}
-                      disabled={isAudioCopy}
-                    >
-                      <option value="off">{t('filters.offDisabled')}</option>
-                      <option value="basic">{t('filters.basicSync')}</option>
-                      <option value="advanced">{t('filters.advancedSync')}</option>
-                    </select>
-                  </div>
-                  {aresample?.enabled && aresample?.mode === 'advanced' && (
-                    <div className="col-span-2 grid grid-cols-3 gap-2 bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)] mt-1">
-                      <div>
-                        <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                          {t('filters.sampleRateOsr')}
-                        </label>
-                        <select
-                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1 text-[10px] outline-none text-white"
-                          value={aresample?.osr || ''}
-                          onChange={e => onChange({ aresample: { ...aresample, osr: e.target.value } })}
-                        >
-                          <option value="">{t('filters.keepOriginal')}</option>
-                          <option value="48000">48000 Hz</option>
-                          <option value="44100">44100 Hz</option>
-                          <option value="32000">32000 Hz</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                          {t('filters.minSyncSec')}
-                        </label>
-                        <input
-                          type="number"
-                          step="0.001"
-                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1 text-[10px] outline-none text-white font-mono"
-                          value={aresample?.min_comp ?? 0.01}
-                          onChange={e => onChange({ aresample: { ...aresample, min_comp: Number(e.target.value) } })}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
-                          {t('filters.hardSyncSec')}
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1 text-[10px] outline-none text-white font-mono"
-                          value={aresample?.min_hard_comp ?? 0.1}
-                          onChange={e => onChange({ aresample: { ...aresample, min_hard_comp: Number(e.target.value) } })}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
 
       {/* SUB-TAB: Audio Settings */}
       {activeSubTab === 'audio' && hasAudio && (
-        <div className="glass-card p-2.5 !rounded-lg space-y-2">
+        <div className="space-y-2.5">
           {isAudioCopy && (
             <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[10px] p-2 rounded-lg leading-snug font-bold">
               {t('filters.audioCodecCopyNotice')}
             </div>
           )}
 
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
-            <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('filters.audioDspLevels')}</h4>
+          {/* Standalone Block: Audio Sync (aresample) */}
+          <div className="glass-card p-2.5 !rounded-lg space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-brand-orange" />
+                <h4 className="text-brand-orange font-bold text-xs uppercase tracking-wider">
+                  {t('filters.audioVideoSync')}
+                </h4>
+                <code className="text-[9px] text-[var(--text-secondary)] bg-[var(--input-bg)] px-1.5 py-0.5 rounded border border-[var(--glass-border)] font-mono">
+                  aresample
+                </code>
+                {aresample?.enabled && (
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded bg-brand-lime/10 text-brand-lime">{t('filters.active')}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-[9px] uppercase font-bold text-text-secondary tracking-wider">
+                  {t('filters.syncMode')}
+                </label>
+                <select
+                  className="bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs outline-none font-mono text-[var(--text-primary)] disabled:opacity-35 disabled:cursor-not-allowed min-w-[155px]"
+                  value={!aresample?.enabled ? 'off' : aresample?.mode || 'basic'}
+                  onChange={e => {
+                    const val = e.target.value;
+                    if (val === 'off') {
+                      onChange({ aresample: { enabled: false, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: null } });
+                    } else if (val === 'basic') {
+                      onChange({ aresample: { enabled: true, mode: 'basic', osr: '', min_comp: 0.01, min_hard_comp: 0.1, first_pts: null } });
+                    } else {
+                      onChange({ aresample: { enabled: true, mode: 'advanced', osr: aresample?.osr || '', min_comp: aresample?.min_comp ?? 0.01, min_hard_comp: aresample?.min_hard_comp ?? 0.1, first_pts: aresample?.first_pts ?? 0 } });
+                    }
+                  }}
+                  disabled={isAudioCopy}
+                >
+                  <option value="off">{t('filters.offDisabled')}</option>
+                  <option value="basic">{t('filters.basicSync')}</option>
+                  <option value="advanced">{t('filters.advancedSync')}</option>
+                </select>
+              </div>
+            </div>
+            {aresample?.enabled && aresample?.mode === 'advanced' && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 bg-[var(--input-bg)] p-2 rounded-lg border border-[var(--glass-border)]">
+                <div>
+                  <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                    {t('filters.sampleRateOsr')}
+                  </label>
+                  <select
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)]"
+                    value={aresample?.osr || ''}
+                    onChange={e => onChange({ aresample: { ...aresample, osr: e.target.value } })}
+                  >
+                    <option value="">{t('filters.keepOriginal')}</option>
+                    <option value="48000">48000 Hz</option>
+                    <option value="44100">44100 Hz</option>
+                    <option value="32000">32000 Hz</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                    {t('filters.minSyncSec')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
+                    value={aresample?.min_comp ?? 0.01}
+                    onChange={e => onChange({ aresample: { ...aresample, min_comp: Number(e.target.value) } })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                    {t('filters.hardSyncSec')}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
+                    value={aresample?.min_hard_comp ?? 0.1}
+                    onChange={e => onChange({ aresample: { ...aresample, min_hard_comp: Number(e.target.value) } })}
+                  />
+                </div>
+                <div>
+                  <label className="text-[8px] uppercase font-bold text-text-secondary block mb-0.5">
+                    {t('filters.firstPts', 'Initial PTS (samples)')}
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    placeholder={t('filters.firstPtsPlaceholder', 'Auto / 0')}
+                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1 text-[10px] outline-none text-[var(--text-primary)] font-mono"
+                    value={aresample?.first_pts === null || aresample?.first_pts === undefined ? '' : aresample.first_pts}
+                    onChange={e => onChange({ aresample: { ...aresample, first_pts: e.target.value === '' ? null : Number(e.target.value) } })}
+                  />
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Standalone Block: Audio DSP & Levels */}
+          <div className="glass-card p-2.5 !rounded-lg space-y-2">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-brand-lime" />
+              <h4 className="text-brand-lime font-bold text-xs uppercase tracking-wider">{t('filters.audioDspLevels')}</h4>
+            </div>
 
           {/* Card 1: Input Level & Clean Filters */}
           <div className="glass-card p-3 rounded-lg border border-[var(--glass-border)] space-y-2">
@@ -1021,6 +1042,7 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
               </div>
             )}
           </div>
+          </div>
         </div>
       )}
 
@@ -1345,25 +1367,27 @@ export const FiltersFormSection: React.FC<FiltersFormSectionProps> = ({
                                     <label className="text-[9px] uppercase font-bold text-text-secondary block mb-1">
                                       {t('filters.mediaStorageSelector')}
                                     </label>
-                                    <select
-                                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs outline-none text-white focus:border-brand-lime disabled:opacity-35"
-                                      value={overlay.storage_id || ''}
-                                      onChange={(e) =>
+                                    <SearchableSelect
+                                      accent="lime"
+                                      wrapLabels
+                                      maxDropdownWidth={440}
+                                      disabled={isVideoCopy}
+                                      value={overlay.storage_id ? String(overlay.storage_id) : ''}
+                                      onChange={(val) =>
                                         updateOverlayItem(idx, {
-                                          storage_id: e.target.value ? Number(e.target.value) : null,
+                                          storage_id: val ? Number(val) : null,
                                         })
                                       }
-                                      disabled={isVideoCopy}
-                                    >
-                                      <option value="" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('filters.selectMediaStorage')}</option>
-                                      {storages
-                                        .filter((s: any) => s.type === 'media')
-                                        .map((s: any) => (
-                                          <option key={s.id} value={s.id} className="bg-[var(--bg-dark)] text-[var(--text-primary)]">
-                                            {s.name} ({s.path})
-                                          </option>
-                                        ))}
-                                    </select>
+                                      options={[
+                                        { value: '', label: t('filters.selectMediaStorage') },
+                                        ...storages
+                                          .filter((s: any) => s.type === 'media')
+                                          .map((s: any) => ({
+                                            value: String(s.id),
+                                            label: `${s.name} (${s.path})`,
+                                          })),
+                                      ]}
+                                    />
                                   </div>
 
                                   <div>

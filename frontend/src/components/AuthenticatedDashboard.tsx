@@ -8,9 +8,11 @@ import { useProcesses } from '../hooks/useProcesses';
 import {
   canAccessDomain,
   getDomainLevel,
+  getServiceLevel,
   hasAnyProcessAccess,
   hasAnyServiceAccess,
   hasAnyTaskAccess,
+  hasMinLevel,
   type EdgePermissionsSummary,
 } from '../utils/permissions';
 import { DashboardView } from './views/DashboardView';
@@ -639,6 +641,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             ) : (
               <ProcessConfigForm
                 initialConfig={editingProcess}
+                canChangeStreamMode={hasMinLevel(getServiceLevel(permissions, editingProcess), 'admin')}
                 onCancel={() => setEditingProcess(null)}
                 onSubmit={async (config) => {
                   try {

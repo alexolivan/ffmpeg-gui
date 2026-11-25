@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { BuildProfile } from './BuildProfileCard'
+import { SearchableSelect } from './common/SearchableSelect'
 
 interface BuildFormModalProps {
   editBuild: BuildProfile | null
+  cloneBuild?: BuildProfile | null
   onClose: () => void
   onSubmit: (data: BuildFormData) => void
   buildDeps: any
@@ -24,28 +26,31 @@ export interface BuildFormData {
 
 const API_BASE = '';
 
-export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps, onOpenSdksModal, initialSoftwareType }: BuildFormModalProps) {
+export default function BuildFormModal({ editBuild, cloneBuild = null, onClose, onSubmit, buildDeps, onOpenSdksModal, initialSoftwareType }: BuildFormModalProps) {
   const { t } = useTranslation()
-  const defaultSoftwareType = editBuild?.software_type || initialSoftwareType || 'ffmpeg'
+  const templateBuild = editBuild || cloneBuild || null
+  const isEditing = editBuild !== null
+  const isCloning = !isEditing && cloneBuild !== null
+  const defaultSoftwareType = templateBuild?.software_type || initialSoftwareType || 'ffmpeg'
   const [softwareType] = useState(defaultSoftwareType)
-  const [name, setName] = useState(editBuild?.name || (
+  const [name, setName] = useState(templateBuild?.name || (
     defaultSoftwareType === 'decklink_tools' ? 'DeckLink Tools (Production)' :
     defaultSoftwareType === 'icecast2' ? 'Icecast Server (Production)' :
     defaultSoftwareType === 'pipewire' ? t('forge.pipewireProfileDefault', 'PipeWire Standard (Meson/Ninja)') : ''
   ))
-  const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || (
+  const [ffmpegVersion, setFfmpegVersion] = useState(templateBuild?.ffmpeg_version || templateBuild?.version_tag || (
     defaultSoftwareType === 'decklink_tools' ? '1.0.0' :
     defaultSoftwareType === 'icecast2' ? '2.4.4' :
     defaultSoftwareType === 'pipewire' ? '1.6.9' : ''
   ))
-  const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || (editBuild?.build_options as any)?.srt_version || '')
-  const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
+  const [srtVersion, setSrtVersion] = useState(templateBuild?.srt_version || (templateBuild?.build_options as any)?.srt_version || '')
+  const [autoClean, setAutoClean] = useState(templateBuild?.auto_clean || false)
   const [activeTab, setActiveTab] = useState<'general' | 'gpu' | 'sdks'>('general')
   const [storages, setStorages] = useState<{ id: number; name: string; path: string; type: string }[]>([])
-  const [storageId, setStorageId] = useState<number | null>(editBuild?.storage_id || null)
+  const [storageId, setStorageId] = useState<number | null>(templateBuild?.storage_id || null)
   const [softwareTags, setSoftwareTags] = useState<string[]>([])
 
-  const [options, setOptions] = useState<Record<string, any>>(editBuild?.build_options || { 
+  const [options, setOptions] = useState<Record<string, any>>(templateBuild?.build_options ? { ...templateBuild.build_options } : { 
     libsrt: true, 
     vaapi: false, 
     ndi: false,
@@ -56,7 +61,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     whip: false
   })
   
-  const [sdkPaths, setSdkPaths] = useState<Record<string, string>>(editBuild?.sdk_paths || { 
+  const [sdkPaths, setSdkPaths] = useState<Record<string, string>>(templateBuild?.sdk_paths ? { ...templateBuild.sdk_paths } : { 
     decklink: '', 
     ndi: '',
     ndi_patch_file: '',
@@ -87,8 +92,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
 
   // Ref for patch file input
   const patchInputRef = useRef<HTMLInputElement>(null)
-
-  const isEditing = editBuild !== null
 
   const decklinkSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
   const ndiSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
@@ -135,7 +138,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   }
 
   useEffect(() => {
-    if (!isEditing && installedSdks.length > 0) {
+    if (!isEditing && !isCloning && installedSdks.length > 0) {
       const dSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
       const nSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
       setSdkPaths(prev => ({
@@ -144,7 +147,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
         ndi: prev.ndi || (nSdks.length > 0 ? nSdks[0].version : ''),
       }))
     }
-  }, [installedSdks, isEditing])
+  }, [installedSdks, isEditing, isCloning])
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -180,7 +183,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
           const data = await res.json()
           setSoftwareTags(data.tags || [])
-          if (!isEditing && data.tags?.length > 0) {
+          if (!isEditing && !ffmpegVersion && data.tags?.length > 0) {
             setFfmpegVersion(data.tags[0])
           }
         }
@@ -306,7 +309,11 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
         {/* Header - Sticky */}
         <div className="flex justify-between items-center px-4 py-3 border-b border-white/10 bg-white/5">
           <h3 className="text-sm font-bold tracking-wide">
-            {isEditing ? t('forge.editProfile', 'EDIT PROFILE') : t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
+            {isEditing
+              ? t('forge.editProfile', 'EDIT PROFILE')
+              : isCloning
+                ? t('forge.cloneProfile', 'CLONE PROFILE')
+                : t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
           </h3>
           <button onClick={onClose}
             className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-text-secondary hover:text-white text-xs">✕</button>
@@ -359,17 +366,16 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     )}
                   </div>
                   {decklinkSdks.length > 0 ? (
-                    <select
-                      className="w-full bg-black/60 border border-white/10 rounded-lg p-2 text-xs font-mono font-bold text-white focus:border-brand-orange outline-none cursor-pointer"
+                    <SearchableSelect
+                      searchable={decklinkSdks.length > 6}
                       value={sdkPaths.decklink || (decklinkSdks[0]?.version || '')}
-                      onChange={e => setSdkPaths({ ...sdkPaths, decklink: e.target.value })}
-                    >
-                      {decklinkSdks.map((sdk: any) => (
-                        <option key={sdk.id} value={sdk.version} className="text-black">
-                          Blackmagic DeckLink SDK v{sdk.version} ({sdk.path})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={val => setSdkPaths({ ...sdkPaths, decklink: val })}
+                      buttonClassName="font-mono font-bold"
+                      options={decklinkSdks.map((sdk: any) => ({
+                        value: sdk.version,
+                        label: `Blackmagic DeckLink SDK v${sdk.version} (${sdk.path})`,
+                      }))}
+                    />
                   ) : (
                     <div className="p-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400 font-bold flex items-center justify-between">
                       <span>⚠️ {t('forge.noDecklinkSdkUploaded', 'No DeckLink SDK uploaded yet.')}</span>
@@ -416,15 +422,18 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">
                       {softwareType === 'ffmpeg' ? t('forge.ffmpegTag', 'FFmpeg Tag') : t('forge.versionTag', 'Version Tag')}
                     </label>
-                    <select
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none text-[var(--text-primary)]"
+                    <SearchableSelect
+                      searchable={true}
                       value={ffmpegVersion}
-                      onChange={e => setFfmpegVersion(e.target.value)}
-                    >
-                      {softwareTags.map(tag => (
-                        <option key={tag} value={tag} className="text-black">{tag}</option>
-                      ))}
-                    </select>
+                      onChange={val => setFfmpegVersion(val)}
+                      buttonClassName="font-mono"
+                      options={[
+                        ...(ffmpegVersion && !softwareTags.includes(ffmpegVersion)
+                          ? [{ value: ffmpegVersion, label: ffmpegVersion }]
+                          : []),
+                        ...softwareTags.map(tag => ({ value: tag, label: tag })),
+                      ]}
+                    />
                   </div>
                 ) : (
                   <div>
@@ -470,18 +479,18 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
               {/* Build Storage Selector */}
               <div>
                 <label className="text-[9px] text-text-secondary uppercase tracking-widest mb-1 block font-bold">{t('forge.buildStorage', 'Build Storage')}</label>
-                <select
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-xs focus:border-brand-orange outline-none"
-                  value={storageId || ''}
-                  onChange={e => setStorageId(e.target.value ? Number(e.target.value) : null)}
-                >
-                  <option value="" className="text-black">{t('forge.defaultBuildStorage', 'Default (Default Build Storage)')}</option>
-                  {storages.map(s => (
-                    <option key={s.id} value={s.id} className="text-black">
-                      {s.name} ({s.path})
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  searchable={storages.length > 6}
+                  value={storageId ? String(storageId) : ''}
+                  onChange={val => setStorageId(val ? Number(val) : null)}
+                  options={[
+                    { value: '', label: t('forge.defaultBuildStorage', 'Default (Default Build Storage)') },
+                    ...storages.map(s => ({
+                      value: String(s.id),
+                      label: `${s.name} (${s.path})`,
+                    })),
+                  ]}
+                />
               </div>
 
               {/* Auto Clean Option */}
@@ -544,15 +553,18 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   {options.nvenc && (
                     <div className="space-y-1.5 mt-1.5 pt-1.5 border-t border-white/5 animate-in slide-in-from-top-2 duration-300">
                       <label className="text-[8px] text-text-secondary uppercase tracking-widest block font-bold">{t('forge.ffnvcodecHeaders', 'ffnvcodec headers (SDK Version)')}</label>
-                      <select
-                        className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
+                      <SearchableSelect
+                        searchable={true}
                         value={sdkPaths.nvenc_headers || ''}
-                        onChange={e => setSdkPaths({ ...sdkPaths, nvenc_headers: e.target.value })}
-                      >
-                        {nvencTags.map(tag => (
-                          <option key={tag} value={tag}>{tag}</option>
-                        ))}
-                      </select>
+                        onChange={val => setSdkPaths({ ...sdkPaths, nvenc_headers: val })}
+                        buttonClassName="p-1.5 font-mono"
+                        options={[
+                          ...(sdkPaths.nvenc_headers && !nvencTags.includes(sdkPaths.nvenc_headers)
+                            ? [{ value: sdkPaths.nvenc_headers, label: sdkPaths.nvenc_headers }]
+                            : []),
+                          ...nvencTags.map(tag => ({ value: tag, label: tag })),
+                        ]}
+                      />
 
                       {/* Indented NVIDIA CUDA Filters Checkbox */}
                       <div className="pt-1.5 mt-1.5 border-t border-white/5 space-y-1.5 pl-3">
@@ -614,22 +626,21 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                   </div>
                   {options.libsrt && (
                     <div className="space-y-1.5">
-                      <select
-                        className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none animate-in fade-in duration-300"
+                      <SearchableSelect
+                        searchable={true}
                         value={srtVersion || ''}
-                        onChange={e => {
-                          const newVer = e.target.value
+                        onChange={newVer => {
                           setSrtVersion(newVer)
                           setOptions(prev => ({ ...prev, srt_version: newVer }))
                         }}
-                      >
-                        {srtVersion && !srtTags.includes(srtVersion) && (
-                          <option value={srtVersion}>{srtVersion}</option>
-                        )}
-                        {srtTags.map(tag => (
-                          <option key={tag} value={tag}>{tag}</option>
-                        ))}
-                      </select>
+                        buttonClassName="p-1.5 font-mono"
+                        options={[
+                          ...(srtVersion && !srtTags.includes(srtVersion)
+                            ? [{ value: srtVersion, label: srtVersion }]
+                            : []),
+                          ...srtTags.map(tag => ({ value: tag, label: tag })),
+                        ]}
+                      />
                     </div>
                   )}
                 </div>
@@ -659,18 +670,19 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                     <div className="space-y-2 mt-1 animate-in slide-in-from-top-2 duration-300">
                       <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">{t('forge.chooseSdkVersion', 'Choose SDK Version')}</label>
                       {decklinkSdks.length > 0 ? (
-                        <select
-                          className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
+                        <SearchableSelect
+                          searchable={decklinkSdks.length > 6}
                           value={sdkPaths.decklink || ''}
-                          onChange={e => setSdkPaths({ ...sdkPaths, decklink: e.target.value })}
-                        >
-                          <option value="">{t('forge.selectInstalledSdk', '-- Select installed SDK --')}</option>
-                          {decklinkSdks.map((sdk: any) => (
-                            <option key={sdk.id || sdk.version} value={sdk.version}>
-                              {t('forge.version', 'Version')} {sdk.version} {sdk.status === 'missing' ? `(${t('sdks.missingOnDisk', 'Missing on disk')})` : ''}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={val => setSdkPaths({ ...sdkPaths, decklink: val })}
+                          buttonClassName="p-1.5"
+                          options={[
+                            { value: '', label: t('forge.selectInstalledSdk', '-- Select installed SDK --') },
+                            ...decklinkSdks.map((sdk: any) => ({
+                              value: sdk.version,
+                              label: `${t('forge.version', 'Version')} ${sdk.version}${sdk.status === 'missing' ? ` (${t('sdks.missingOnDisk', 'Missing on disk')})` : ''}`,
+                            })),
+                          ]}
+                        />
                       ) : (
                         <div className="bg-brand-orange/10 border border-brand-orange/20 rounded-lg p-2.5 flex items-center justify-between">
                           <span className="text-[10px] text-brand-orange font-bold">
@@ -715,18 +727,19 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                       <div>
                         <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">{t('forge.chooseSdkVersion', 'Choose SDK Version')}</label>
                         {ndiSdks.length > 0 ? (
-                          <select
-                            className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
+                          <SearchableSelect
+                            searchable={ndiSdks.length > 6}
                             value={sdkPaths.ndi || ''}
-                            onChange={e => setSdkPaths({ ...sdkPaths, ndi: e.target.value })}
-                          >
-                            <option value="">{t('forge.selectInstalledSdk', '-- Select installed SDK --')}</option>
-                            {ndiSdks.map((sdk: any) => (
-                              <option key={sdk.id || sdk.version} value={sdk.version}>
-                                {t('forge.version', 'Version')} {sdk.version} {sdk.status === 'missing' ? `(${t('sdks.missingOnDisk', 'Missing on disk')})` : ''}
-                              </option>
-                            ))}
-                          </select>
+                            onChange={val => setSdkPaths({ ...sdkPaths, ndi: val })}
+                            buttonClassName="p-1.5"
+                            options={[
+                              { value: '', label: t('forge.selectInstalledSdk', '-- Select installed SDK --') },
+                              ...ndiSdks.map((sdk: any) => ({
+                                value: sdk.version,
+                                label: `${t('forge.version', 'Version')} ${sdk.version}${sdk.status === 'missing' ? ` (${t('sdks.missingOnDisk', 'Missing on disk')})` : ''}`,
+                              })),
+                            ]}
+                          />
                         ) : (
                           <div className="bg-brand-orange/10 border border-brand-orange/20 rounded-lg p-2.5 flex items-center justify-between">
                             <span className="text-[10px] text-brand-orange font-bold">
@@ -775,16 +788,18 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                               </div>
                               <div>
                                 <label className="text-[8px] text-text-secondary uppercase tracking-widest block mb-0.5 font-bold">{t('forge.patchFfmpegVersion', 'FFmpeg version')}</label>
-                                <select
-                                  className="w-full bg-black/50 border border-white/5 rounded p-1 text-[9px] outline-none focus:border-brand-orange text-white"
+                                <SearchableSelect
+                                  searchable={false}
                                   value={newPatchFfmpegVersion}
-                                  onChange={e => setNewPatchFfmpegVersion(e.target.value)}
-                                >
-                                  <option value="7">FFmpeg 7.x</option>
-                                  <option value="6">FFmpeg 6.x</option>
-                                  <option value="5">FFmpeg 5.x</option>
-                                  <option value="any">{t('forge.anyFfmpegVersion', 'Any / Other')}</option>
-                                </select>
+                                  onChange={val => setNewPatchFfmpegVersion(val)}
+                                  buttonClassName="!p-1 !text-[9px] rounded"
+                                  options={[
+                                    { value: '7', label: 'FFmpeg 7.x' },
+                                    { value: '6', label: 'FFmpeg 6.x' },
+                                    { value: '5', label: 'FFmpeg 5.x' },
+                                    { value: 'any', label: t('forge.anyFfmpegVersion', 'Any / Other') },
+                                  ]}
+                                />
                               </div>
                             </div>
 
@@ -835,35 +850,29 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
                             </button>
                           </div>
                         ) : (
-                          <select
-                            className="w-full bg-black/40 border border-white/10 rounded-lg p-1.5 text-xs focus:border-brand-orange outline-none"
+                          <SearchableSelect
+                            searchable={patches.length > 6}
                             value={sdkPaths.ndi_patch_file || ''}
-                            onChange={e => setSdkPaths({ ...sdkPaths, ndi_patch_file: e.target.value })}
-                          >
-                            <option value="">{t('forge.autodetectRecommendedPatch', '-- Autodetect recommended patch (System) --')}</option>
-                            
-                            {/* Recomendados */}
-                            <optgroup label={t('forge.recommendedForFfmpeg', 'Recommended for FFmpeg {{version}}.x', { version: ffmpegVersion.replace(/^n/, '').split('.')[0] })}>
-                              {patches
+                            onChange={val => setSdkPaths({ ...sdkPaths, ndi_patch_file: val })}
+                            buttonClassName="p-1.5"
+                            options={[
+                              { value: '', label: t('forge.autodetectRecommendedPatch', '-- Autodetect recommended patch (System) --') },
+                              ...patches
                                 .filter(p => p.ffmpeg_version_major === ffmpegVersion.replace(/^n/, '').split('.')[0])
-                                .map(p => (
-                                  <option key={p.filename} value={p.filename}>
-                                    {p.display_name} {p.source === 'system' ? `(${t('common.system', 'System')})` : `(${t('common.user', 'User')})`}
-                                  </option>
-                                ))}
-                            </optgroup>
-
-                            {/* Otros */}
-                            <optgroup label={t('forge.otherPatchesAvailable', 'Other available patches')}>
-                              {patches
+                                .map(p => ({
+                                  value: p.filename,
+                                  label: `${p.display_name} (${p.source === 'system' ? t('common.system', 'System') : t('common.user', 'User')})`,
+                                  group: t('forge.recommendedForFfmpeg', 'Recommended for FFmpeg {{version}}.x', { version: ffmpegVersion.replace(/^n/, '').split('.')[0] }),
+                                })),
+                              ...patches
                                 .filter(p => p.ffmpeg_version_major !== ffmpegVersion.replace(/^n/, '').split('.')[0])
-                                .map(p => (
-                                  <option key={p.filename} value={p.filename}>
-                                    {p.display_name} ({p.ffmpeg_version_major === 'any' ? t('common.universal', 'Universal') : `v${p.ffmpeg_version_major}.x`})
-                                  </option>
-                                ))}
-                            </optgroup>
-                          </select>
+                                .map(p => ({
+                                  value: p.filename,
+                                  label: `${p.display_name} (${p.ffmpeg_version_major === 'any' ? t('common.universal', 'Universal') : `v${p.ffmpeg_version_major}.x`})`,
+                                  group: t('forge.otherPatchesAvailable', 'Other available patches'),
+                                })),
+                            ]}
+                          />
                         )}
                       </div>
 
