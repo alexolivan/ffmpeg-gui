@@ -9,6 +9,7 @@ import {
 } from '../Icons';
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 import { AliasField } from '../common/AliasField';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 interface IcecastConfigFormProps {
   initialConfig?: any;
@@ -321,18 +322,21 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
               {t('services.icecast.engineBuild', 'Motor Software Icecast')}
             </label>
-            <select
-              value={buildId || ''}
-              onChange={(e) => setBuildId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-brand-lime"
-            >
-              <option value="">{t('services.icecast.systemDefault', 'Binario del Sistema Host ($PATH / icecast2)')}</option>
-              {availableBuilds.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} (v{b.version_tag || 'custom'}) {b.is_default ? `[${t('common.default', 'Default')}]` : ''}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={420}
+              value={buildId ? String(buildId) : ''}
+              onChange={(val) => setBuildId(val ? Number(val) : null)}
+              buttonClassName="px-2.5 py-1.5"
+              options={[
+                { value: '', label: t('services.icecast.systemDefault', 'Binario del Sistema Host ($PATH / icecast2)') },
+                ...availableBuilds.map((b) => ({
+                  value: String(b.id),
+                  label: `${b.name} (v${b.version_tag || 'custom'})${b.is_default ? ` [${t('common.default', 'Default')}]` : ''}`,
+                })),
+              ]}
+            />
             <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">
               {t('services.icecast.engineHint', 'Si no seleccionas un build de la Forja, el panel utilizará automáticamente el binario instalado en el sistema.')}
             </p>
@@ -703,18 +707,21 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
               {t('services.icecast.logStorage', 'Volumen de Almacenamiento de Logs')}
             </label>
-            <select
-              value={logStorageId || ''}
-              onChange={(e) => setLogStorageId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs focus:border-brand-lime outline-none"
-            >
-              <option value="">{t('common.default', 'Por Defecto (Volumen de Logs del Sistema)')}</option>
-              {logStorages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.path}) {s.is_default ? `[${t('common.default', 'Default')}]` : ''}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={420}
+              value={logStorageId ? String(logStorageId) : ''}
+              onChange={(val) => setLogStorageId(val ? Number(val) : null)}
+              buttonClassName="px-2.5 py-1.5"
+              options={[
+                { value: '', label: t('common.default', 'Por Defecto (Volumen de Logs del Sistema)') },
+                ...logStorages.map((s) => ({
+                  value: String(s.id),
+                  label: `${s.name} (${s.path})${s.is_default ? ` [${t('common.default', 'Default')}]` : ''}`,
+                })),
+              ]}
+            />
             <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
               {t('services.icecast.logStorageDesc', 'Almacena los ficheros access.log, error.log y stdout/stderr de Icecast con rotación automática.')}
             </span>

@@ -9,6 +9,7 @@ import {
 } from '../Icons';
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 import { AliasField } from '../common/AliasField';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 interface MediaMtxConfigFormProps {
   initialConfig?: any;
@@ -584,17 +585,18 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
               {t('services.mediamtx.selectBinary', 'MediaMTX Binary Release')} *
             </label>
             {availableBuilds.length > 0 ? (
-              <select
-                value={buildId || ''}
-                onChange={(e) => setBuildId(Number(e.target.value))}
-                className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 focus:border-brand-lime outline-none text-xs font-mono"
-              >
-                {availableBuilds.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name} (v{b.version_tag}) {b.is_default ? '★ Default' : ''}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                accent="lime"
+                wrapLabels
+                maxDropdownWidth={420}
+                value={buildId ? String(buildId) : ''}
+                onChange={(val) => setBuildId(Number(val))}
+                buttonClassName="px-3 py-1.5 font-mono"
+                options={availableBuilds.map((b) => ({
+                  value: String(b.id),
+                  label: `${b.name} (v${b.version_tag})${b.is_default ? ' ★ Default' : ''}`,
+                }))}
+              />
             ) : (
               <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
                 {t('services.mediamtx.noBuildsWarning', 'No MediaMTX release found. Please go to Settings -> Software to download an official release or register your system binary.')}
@@ -784,19 +786,22 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
                   <label className="text-[10px] text-[var(--text-secondary)] block mb-0.5">
                     {t('services.mediamtx.hlsStorage', 'Almacenamiento Grabación (Opcional)')}
                   </label>
-                  <select
-                    value={hlsStorageId || ''}
+                  <SearchableSelect
+                    accent="lime"
+                    wrapLabels
+                    maxDropdownWidth={420}
                     disabled={hlsStorages.length === 0}
-                    onChange={(e) => setHlsStorageId(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">{t('services.mediamtx.hlsStorageRamDefault', '⚡ Desactivado / RAM (Sin persistencia)')}</option>
-                    {hlsStorages.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.path})
-                      </option>
-                    ))}
-                  </select>
+                    value={hlsStorageId ? String(hlsStorageId) : ''}
+                    onChange={(val) => setHlsStorageId(val ? Number(val) : null)}
+                    buttonClassName="px-2 py-1 rounded"
+                    options={[
+                      { value: '', label: t('services.mediamtx.hlsStorageRamDefault', '⚡ Desactivado / RAM (Sin persistencia)') },
+                      ...hlsStorages.map((s) => ({
+                        value: String(s.id),
+                        label: `${s.name} (${s.path})`,
+                      })),
+                    ]}
+                  />
                   {hlsStorages.length === 0 && (
                     <span className="text-[9px] text-[var(--text-secondary)] block mt-0.5">
                       {t('services.mediamtx.noHlsStorageNotice', 'Requiere configurar un volumen tipo HLS en Ajustes → Almacenamiento.')}
@@ -1472,17 +1477,18 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             </label>
             {hlsStorages.length > 0 ? (
               <>
-                <select
-                  value={hlsStorageId || hlsStorages[0].id}
-                  onChange={(e) => setHlsStorageId(Number(e.target.value))}
-                  className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 focus:border-brand-lime outline-none text-xs font-mono"
-                >
-                  {hlsStorages.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.path})
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  accent="lime"
+                  wrapLabels
+                  maxDropdownWidth={420}
+                  value={String(hlsStorageId || hlsStorages[0].id)}
+                  onChange={(val) => setHlsStorageId(Number(val))}
+                  buttonClassName="px-3 py-1.5 font-mono"
+                  options={hlsStorages.map((s) => ({
+                    value: String(s.id),
+                    label: `${s.name} (${s.path})`,
+                  }))}
+                />
                 <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                   {t('services.mediamtx.hlsStorageDesc', 'HLS chunks use circular ring retention (5 segments of 2s) to protect root storage.')}
                 </span>
@@ -1501,18 +1507,21 @@ export const MediaMtxConfigForm: React.FC<MediaMtxConfigFormProps> = ({
             <label className="block text-[11px] font-bold text-[var(--text-secondary)] uppercase mb-1">
               {t('services.mediamtx.logStorage', 'Dedicated Log Storage Volume')}
             </label>
-            <select
-              value={logStorageId || ''}
-              onChange={(e) => setLogStorageId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-1.5 focus:border-brand-lime outline-none text-xs"
-            >
-              <option value="">{t('common.default', 'Default (System logs volume)')}</option>
-              {logStorages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.path})
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={420}
+              value={logStorageId ? String(logStorageId) : ''}
+              onChange={(val) => setLogStorageId(val ? Number(val) : null)}
+              buttonClassName="px-3 py-1.5"
+              options={[
+                { value: '', label: t('common.default', 'Default (System logs volume)') },
+                ...logStorages.map((s) => ({
+                  value: String(s.id),
+                  label: `${s.name} (${s.path})`,
+                })),
+              ]}
+            />
             <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
               {t('services.mediamtx.logStorageDesc', 'High-volume daemon stdout/stderr covered by automatic log rotation.')}
             </span>

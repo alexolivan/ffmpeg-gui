@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 interface LifecycleFormSectionProps {
   auto_start: boolean;
@@ -164,19 +165,22 @@ export const LifecycleFormSection: React.FC<LifecycleFormSectionProps> = ({
         <label htmlFor="log-storage-select" className="text-[10px] font-bold uppercase tracking-wider text-text-secondary block">
           {t('lifecycle.logStorage', 'Log Storage')}
         </label>
-        <select
+        <SearchableSelect
           id="log-storage-select"
-          className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime text-white"
-          value={log_storage_id || ''}
-          onChange={e => onChange({ log_storage_id: e.target.value ? parseInt(e.target.value) : null })}
-        >
-          <option value="" className="bg-[#1e1e24] text-white">{t('lifecycle.defaultLogStorage', 'Default (Use Default Log Storage)')}</option>
-          {logsStorages.map((s: any) => (
-            <option key={s.id} value={s.id} className="bg-[#1e1e24] text-white">
-              {s.name} ({s.path}) {s.is_default ? `[${t('common.default', 'Default')}]` : ''}
-            </option>
-          ))}
-        </select>
+          accent="lime"
+          wrapLabels
+          maxDropdownWidth={420}
+          buttonClassName="p-1.5"
+          value={log_storage_id ? String(log_storage_id) : ''}
+          onChange={val => onChange({ log_storage_id: val ? parseInt(val, 10) : null })}
+          options={[
+            { value: '', label: t('lifecycle.defaultLogStorage', 'Default (Use Default Log Storage)') },
+            ...logsStorages.map((s: any) => ({
+              value: String(s.id),
+              label: `${s.name} (${s.path})${s.is_default ? ` [${t('common.default', 'Default')}]` : ''}`,
+            })),
+          ]}
+        />
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlusIcon, TrashIcon } from '../Icons';
 import { AliasField } from '../common/AliasField';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 export interface VirtualSinkConfig {
   id: string;
@@ -764,18 +765,21 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
             <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
               {t('services.pipewire.engineBuild', 'PipeWire Software Engine')}
             </label>
-            <select
-              value={buildId || ''}
-              onChange={(e) => setBuildId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-medium text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
-            >
-              <option value="">{t('services.pipewire.systemDefault', 'Host System Binary ($PATH / pipewire)')}</option>
-              {availableBuilds.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name} (v{b.version_tag || 'custom'}) {b.is_default ? `[${t('common.default', 'Default')}]` : ''}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={420}
+              value={buildId ? String(buildId) : ''}
+              onChange={(val) => setBuildId(val ? Number(val) : null)}
+              buttonClassName="px-3 py-2 font-medium"
+              options={[
+                { value: '', label: t('services.pipewire.systemDefault', 'Host System Binary ($PATH / pipewire)') },
+                ...availableBuilds.map((b) => ({
+                  value: String(b.id),
+                  label: `${b.name} (v${b.version_tag || 'custom'})${b.is_default ? ` [${t('common.default', 'Default')}]` : ''}`,
+                })),
+              ]}
+            />
             <p className="text-[10px] text-[var(--text-secondary)] mt-1">
               {t('services.pipewire.engineHint', 'If you do not select a compiled build from Forge, the panel will use the system PipeWire binary.')}
             </p>
@@ -952,29 +956,33 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
                 ) : auditError ? (
                   <div className="text-xs text-red-400 py-1">{auditError}</div>
                 ) : (
-                  <select
+                  <SearchableSelect
+                    accent="lime"
+                    wrapLabels
+                    maxDropdownWidth={520}
                     value={selectedInterface}
-                    onChange={(e) => handleInterfaceChange(e.target.value)}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
-                  >
-                    {networkAudit?.interfaces && networkAudit.interfaces.length > 0 ? (
-                      networkAudit.interfaces.map((iface) => {
-                        const inUseBy = reservedNics[iface.name];
-                        const ptpBadge = (iface.ptp_support === 'hardware' || iface.ptp_hardware_capable)
-                          ? `🟢 ${t('services.pipewire.nicPtpHardware', 'PTP HW')}`
-                          : (iface.ptp_support === 'software' || iface.ptp_software_capable)
-                          ? `⚠️ ${t('services.pipewire.nicPtpSoftware', 'Software Clock')}`
-                          : `🔴 ${t('services.pipewire.nicPtpNone', 'No PTP')}`;
-                        return (
-                          <option key={iface.name} value={iface.name} disabled={Boolean(inUseBy)}>
-                            {iface.name} ({iface.ip || 'No IPv4'}) · [{ptpBadge}] {inUseBy ? `— [${t('services.pipewire.nicReservedBy', 'Reserved by: {{name}}', { name: inUseBy.serviceName })}]` : ''}
-                          </option>
-                        );
-                      })
-                    ) : (
-                      <option value="">{t('services.pipewire.noInterfaces', 'No physical interfaces detected')}</option>
-                    )}
-                  </select>
+                    onChange={(val) => handleInterfaceChange(val)}
+                    disabled={!networkAudit?.interfaces || networkAudit.interfaces.length === 0}
+                    buttonClassName="px-3 py-2 font-mono"
+                    placeholder={t('services.pipewire.noInterfaces', 'No physical interfaces detected')}
+                    options={
+                      networkAudit?.interfaces && networkAudit.interfaces.length > 0
+                        ? networkAudit.interfaces.map((iface) => {
+                            const inUseBy = reservedNics[iface.name];
+                            const ptpBadge = (iface.ptp_support === 'hardware' || iface.ptp_hardware_capable)
+                              ? `🟢 ${t('services.pipewire.nicPtpHardware', 'PTP HW')}`
+                              : (iface.ptp_support === 'software' || iface.ptp_software_capable)
+                              ? `⚠️ ${t('services.pipewire.nicPtpSoftware', 'Software Clock')}`
+                              : `🔴 ${t('services.pipewire.nicPtpNone', 'No PTP')}`;
+                            return {
+                              value: iface.name,
+                              disabled: Boolean(inUseBy),
+                              label: `${iface.name} (${iface.ip || 'No IPv4'}) · [${ptpBadge}]${inUseBy ? ` — [${t('services.pipewire.nicReservedBy', 'Reserved by: {{name}}', { name: inUseBy.serviceName })}]` : ''}`,
+                            };
+                          })
+                        : []
+                    }
+                  />
                 )}
                 <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                   {t('services.pipewire.nicHelp', 'Select the physical LAN port connected to the Dante/AES67 audio subnet.')}
@@ -1937,18 +1945,21 @@ export const PipeWireConfigForm: React.FC<PipeWireConfigFormProps> = ({
             <label className="block text-[11px] font-bold uppercase text-[var(--text-secondary)] mb-1">
               {t('services.pipewire.logStorage', 'Log Storage Drive')}
             </label>
-            <select
-              value={logStorageId || ''}
-              onChange={(e) => setLogStorageId(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-lime transition-colors cursor-pointer"
-            >
-              <option value="">{t('common.default', 'Default (Host / data/logs)')}</option>
-              {storages.filter((s: any) => s.type === 'logs').map((s: any) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} ({s.path}) {s.is_default ? `[${t('common.default', 'Default')}]` : ''}
-                </option>
-              ))}
-            </select>
+            <SearchableSelect
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={420}
+              value={logStorageId ? String(logStorageId) : ''}
+              onChange={(val) => setLogStorageId(val ? Number(val) : null)}
+              buttonClassName="px-3 py-2"
+              options={[
+                { value: '', label: t('common.default', 'Default (Host / data/logs)') },
+                ...storages.filter((s: any) => s.type === 'logs').map((s: any) => ({
+                  value: String(s.id),
+                  label: `${s.name} (${s.path})${s.is_default ? ` [${t('common.default', 'Default')}]` : ''}`,
+                })),
+              ]}
+            />
             <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
               {t('services.pipewire.logStorageDesc', 'Stores PipeWire process logs and stdout/stderr with automated log rotation.')}
             </span>
