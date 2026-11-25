@@ -1936,7 +1936,8 @@
     "anchorBottomRight": "Bottom Right",
     "advanced": {
       "enablePreview": "Video Preview Monitor",
-      "enablePreviewDesc": "Generates periodic frame thumbnails in memory/disk for the GUI. Disable on CPU-constrained systems or demanding real-time streams to prevent xruns."
+      "enablePreviewDesc": "Generates periodic frame thumbnails in memory/disk for the GUI. Disable on CPU-constrained systems or demanding real-time streams to prevent xruns.",
+      "threadQueueFfmpeg9Note": "FFmpeg 9+ removed -thread_queue_size for inputs; this value is ignored automatically for FFmpeg 9+ builds."
     }
   },
   "codecs": {

@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.69.1] - 2026-11-25
+
+### Fixed
+- **FFmpeg 9+ `-thread_queue_size` Input Option Compatibility (`backend/core/builders/ffmpeg_builder.py`, `frontend/src/components/form/AdvancedFlagsFormSection.tsx`, `frontend/src/components/ProcessConfigForm.tsx`)**:
+  - Probed `ffmpeg -hide_banner -h long` per binary `(path, mtime)` in `FFmpegCommandBuilder.supports_input_thread_queue_size` to detect FFmpeg 9.0+ builds where `-thread_queue_size` was removed as an input option (upstream commit `8d8c3fd8`).
+  - Automatically omitted `-thread_queue_size` before inputs when running FFmpeg 9+ while preserving the configured setting on FFmpeg `<= 8.1` and in the database.
+  - Displayed a localized informational notice under Queue Size (`-thread_queue_size`) in `AdvancedFlagsFormSection` when an FFmpeg 9+ build is active.
+
 ## [2.69.0] - 2026-11-25
 
 ### Changed

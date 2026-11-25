@@ -10,6 +10,7 @@ interface AdvancedFlagsFormSectionProps {
   probesize: string;
   thread_queue_size: number;
   enable_preview?: boolean | null;
+  inputThreadQueueUnsupported?: boolean;
   onChange: (updates: {
     realtime?: boolean | null;
     stream_loop?: number | null;
@@ -29,6 +30,7 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
   probesize,
   thread_queue_size,
   enable_preview,
+  inputThreadQueueUnsupported = false,
   onChange,
 }) => {
   const { t } = useTranslation();
@@ -145,6 +147,11 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
               thread_queue_size: parseInt(e.target.value) || 0,
             })}
           />
+          {inputThreadQueueUnsupported && thread_queue_size > 0 && (
+            <p className="text-[10px] text-brand-orange mt-1 leading-snug">
+              {t('filters.advanced.threadQueueFfmpeg9Note')}
+            </p>
+          )}
         </div>
       </div>
 

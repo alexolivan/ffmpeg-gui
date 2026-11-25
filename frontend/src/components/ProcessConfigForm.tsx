@@ -675,6 +675,16 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   );
 
   const selectedBuild = availableBuilds.find(b => b.id === config.ffmpeg_build_id);
+  const activeBuild = selectedBuild || availableBuilds.find(b => b.is_default);
+  const isFfmpeg9Plus = Boolean(activeBuild && (() => {
+    const tag = activeBuild.ffmpeg_version || activeBuild.version_tag || '';
+    const tagMatch = tag.match(/(?:^|[^\d])n?(\d+)(?:\.(\d+)|$)/);
+    if (tagMatch) {
+      return parseInt(tagMatch[1], 10) >= 9;
+    }
+    const outMatch = (activeBuild.version_output || '').match(/ffmpeg\s+version\s+n?(\d+)\.(\d+)/i);
+    return outMatch ? parseInt(outMatch[1], 10) >= 9 : false;
+  })());
 
   // Pre-flight check: WHIP compatibility (requires FFmpeg >= 8.0)
   const isWHIPOutput = config.output.type === 'whip';
@@ -1852,6 +1862,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
                 probesize={config.filters.advanced.probesize}
                 thread_queue_size={config.filters.advanced.thread_queue_size}
                 enable_preview={config.filters.advanced.enable_preview}
+                inputThreadQueueUnsupported={isFfmpeg9Plus}
                 onChange={handleAdvancedFlagsChange}
               />
             </div>
