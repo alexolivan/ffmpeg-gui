@@ -4,6 +4,7 @@ import type { BuildProfile } from './BuildProfileCard'
 
 interface BuildFormModalProps {
   editBuild: BuildProfile | null
+  cloneBuild?: BuildProfile | null
   onClose: () => void
   onSubmit: (data: BuildFormData) => void
   buildDeps: any
@@ -24,28 +25,31 @@ export interface BuildFormData {
 
 const API_BASE = '';
 
-export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps, onOpenSdksModal, initialSoftwareType }: BuildFormModalProps) {
+export default function BuildFormModal({ editBuild, cloneBuild = null, onClose, onSubmit, buildDeps, onOpenSdksModal, initialSoftwareType }: BuildFormModalProps) {
   const { t } = useTranslation()
-  const defaultSoftwareType = editBuild?.software_type || initialSoftwareType || 'ffmpeg'
+  const templateBuild = editBuild || cloneBuild || null
+  const isEditing = editBuild !== null
+  const isCloning = !isEditing && cloneBuild !== null
+  const defaultSoftwareType = templateBuild?.software_type || initialSoftwareType || 'ffmpeg'
   const [softwareType] = useState(defaultSoftwareType)
-  const [name, setName] = useState(editBuild?.name || (
+  const [name, setName] = useState(templateBuild?.name || (
     defaultSoftwareType === 'decklink_tools' ? 'DeckLink Tools (Production)' :
     defaultSoftwareType === 'icecast2' ? 'Icecast Server (Production)' :
     defaultSoftwareType === 'pipewire' ? t('forge.pipewireProfileDefault', 'PipeWire Standard (Meson/Ninja)') : ''
   ))
-  const [ffmpegVersion, setFfmpegVersion] = useState(editBuild?.ffmpeg_version || (
+  const [ffmpegVersion, setFfmpegVersion] = useState(templateBuild?.ffmpeg_version || templateBuild?.version_tag || (
     defaultSoftwareType === 'decklink_tools' ? '1.0.0' :
     defaultSoftwareType === 'icecast2' ? '2.4.4' :
     defaultSoftwareType === 'pipewire' ? '1.6.9' : ''
   ))
-  const [srtVersion, setSrtVersion] = useState(editBuild?.srt_version || (editBuild?.build_options as any)?.srt_version || '')
-  const [autoClean, setAutoClean] = useState(editBuild?.auto_clean || false)
+  const [srtVersion, setSrtVersion] = useState(templateBuild?.srt_version || (templateBuild?.build_options as any)?.srt_version || '')
+  const [autoClean, setAutoClean] = useState(templateBuild?.auto_clean || false)
   const [activeTab, setActiveTab] = useState<'general' | 'gpu' | 'sdks'>('general')
   const [storages, setStorages] = useState<{ id: number; name: string; path: string; type: string }[]>([])
-  const [storageId, setStorageId] = useState<number | null>(editBuild?.storage_id || null)
+  const [storageId, setStorageId] = useState<number | null>(templateBuild?.storage_id || null)
   const [softwareTags, setSoftwareTags] = useState<string[]>([])
 
-  const [options, setOptions] = useState<Record<string, any>>(editBuild?.build_options || { 
+  const [options, setOptions] = useState<Record<string, any>>(templateBuild?.build_options ? { ...templateBuild.build_options } : { 
     libsrt: true, 
     vaapi: false, 
     ndi: false,
@@ -56,7 +60,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
     whip: false
   })
   
-  const [sdkPaths, setSdkPaths] = useState<Record<string, string>>(editBuild?.sdk_paths || { 
+  const [sdkPaths, setSdkPaths] = useState<Record<string, string>>(templateBuild?.sdk_paths ? { ...templateBuild.sdk_paths } : { 
     decklink: '', 
     ndi: '',
     ndi_patch_file: '',
@@ -87,8 +91,6 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
 
   // Ref for patch file input
   const patchInputRef = useRef<HTMLInputElement>(null)
-
-  const isEditing = editBuild !== null
 
   const decklinkSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
   const ndiSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
@@ -135,7 +137,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
   }
 
   useEffect(() => {
-    if (!isEditing && installedSdks.length > 0) {
+    if (!isEditing && !isCloning && installedSdks.length > 0) {
       const dSdks = installedSdks.filter((s: any) => s.sdk_type === 'decklink')
       const nSdks = installedSdks.filter((s: any) => s.sdk_type === 'ndi')
       setSdkPaths(prev => ({
@@ -144,7 +146,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
         ndi: prev.ndi || (nSdks.length > 0 ? nSdks[0].version : ''),
       }))
     }
-  }, [installedSdks, isEditing])
+  }, [installedSdks, isEditing, isCloning])
 
   useEffect(() => {
     const fetchTags = async () => {
@@ -180,7 +182,7 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
           const res = await fetch(`${API_BASE}/builds/tags/${softwareType}`)
           const data = await res.json()
           setSoftwareTags(data.tags || [])
-          if (!isEditing && data.tags?.length > 0) {
+          if (!isEditing && !ffmpegVersion && data.tags?.length > 0) {
             setFfmpegVersion(data.tags[0])
           }
         }
@@ -306,7 +308,11 @@ export default function BuildFormModal({ editBuild, onClose, onSubmit, buildDeps
         {/* Header - Sticky */}
         <div className="flex justify-between items-center px-4 py-3 border-b border-white/10 bg-white/5">
           <h3 className="text-sm font-bold tracking-wide">
-            {isEditing ? t('forge.editProfile', 'EDIT PROFILE') : t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
+            {isEditing
+              ? t('forge.editProfile', 'EDIT PROFILE')
+              : isCloning
+                ? t('forge.cloneProfile', 'CLONE PROFILE')
+                : t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
           </h3>
           <button onClick={onClose}
             className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors text-text-secondary hover:text-white text-xs">✕</button>

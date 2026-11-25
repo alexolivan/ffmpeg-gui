@@ -234,7 +234,14 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   const canAdminForge = hasMinLevel(forgeLevel, 'admin');
   const canReadSettings = canAccessDomain(permissions, 'settings', 'monitor');
   const [showSdksModal, setShowSdksModal] = React.useState(false);
+  const [cloningBuild, setCloningBuild] = React.useState<BuildProfile | null>(null);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
+
+  useEffect(() => {
+    if (!showBuildForm) {
+      setCloningBuild(null);
+    }
+  }, [showBuildForm]);
   const [installedSdks, setInstalledSdks] = React.useState<any[]>([]);
   const [activeEngineTab, setActiveEngineTab] = React.useState<'ffmpeg' | 'decklink_tools' | 'icecast2' | 'mediamtx' | 'kiosk_cog' | 'pipewire'>(initialSoftwareType);
   const [softwareEngines, setSoftwareEngines] = React.useState<Record<string, any>>({});
@@ -292,6 +299,22 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 
   const fallbackCopy = (text: string) => {
     copyToClipboard(text);
+  };
+
+  const getUniqueCloneName = (source: BuildProfile) => {
+    const targetType = source.software_type || 'ffmpeg';
+    const existing = new Set(
+      builds
+        .filter(b => (b.software_type || 'ffmpeg') === targetType)
+        .map(b => b.name.toLowerCase())
+    );
+    const base = `${source.name} (Copy)`;
+    if (!existing.has(base.toLowerCase())) return base;
+    let idx = 2;
+    while (existing.has(`${source.name} (Copy ${idx})`.toLowerCase())) {
+      idx += 1;
+    }
+    return `${source.name} (Copy ${idx})`;
   };
 
   const filteredBuilds = builds.filter(
@@ -390,7 +413,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
               accept=".json" 
               onChange={handleImportRecipeChange} 
               />
-            <button onClick={() => { setEditingBuild(null); setShowBuildForm(true) }}
+            <button onClick={() => { setEditingBuild(null); setCloningBuild(null); setShowBuildForm(true) }}
               className="pill-button bg-brand-orange text-black font-black hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
               <PlusIcon size={14} /> {t('forge.newBuildProfile', 'NEW BUILD PROFILE')}
             </button>
@@ -481,7 +504,12 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 onCleanSources={handleCleanSources}
                 onDelete={handleDeleteBuild}
                 onSetDefault={handleSetDefault}
-                onEdit={(b) => { setEditingBuild(b); setShowBuildForm(true) }}
+                onEdit={(b) => { setCloningBuild(null); setEditingBuild(b); setShowBuildForm(true) }}
+                onClone={(b) => {
+                  setEditingBuild(null);
+                  setCloningBuild({ ...b, name: getUniqueCloneName(b) });
+                  setShowBuildForm(true);
+                }}
                 onViewLogs={(id) => {
                   const b = builds.find(x => x.id === id)
                   if (b) setTerminalBuild({ id, name: b.name })
@@ -499,7 +527,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
       {showBuildForm && (
         <BuildFormModal
           editBuild={editingBuild}
-          onClose={() => { setShowBuildForm(false); setEditingBuild(null) }}
+          cloneBuild={cloningBuild}
+          onClose={() => { setShowBuildForm(false); setEditingBuild(null); setCloningBuild(null); }}
           onSubmit={editingBuild ? handleUpdateBuild : handleCreateBuild}
           buildDeps={buildDeps}
           onOpenSdksModal={() => { setShowBuildForm(false); setShowSdksModal(true); }}
