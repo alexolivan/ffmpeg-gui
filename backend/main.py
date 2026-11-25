@@ -39,6 +39,8 @@ try:
         AuthzContext,
         authorize_http_request,
         has_min_level,
+        is_video_stream_enabled,
+        is_audio_stream_enabled,
         redact_service_dict,
         redact_task_dict,
         redact_settings_dict,
@@ -50,6 +52,8 @@ except ImportError:
         AuthzContext,
         authorize_http_request,
         has_min_level,
+        is_video_stream_enabled,
+        is_audio_stream_enabled,
         redact_service_dict,
         redact_task_dict,
         redact_settings_dict,
@@ -6063,6 +6067,25 @@ def update_process(process_id: int, proc_in: ProcessUpdate, request: Request, db
     if not db_proc:
         raise HTTPException(status_code=404, detail="Process not found")
 
+    ctx = AuthzContext.from_request(request)
+    is_service_admin = ctx.is_owner or has_min_level(ctx.service_level(db, db_proc), "admin")
+    if not is_service_admin:
+        if proc_in.service_type is not None and proc_in.service_type != db_proc.service_type:
+            raise HTTPException(status_code=403, detail="Changing service_type requires 'admin' permission")
+        if (db_proc.service_type or "ffmpeg_stream") == "ffmpeg_stream":
+            old_has_video = is_video_stream_enabled(db_proc.input_config, db_proc.codec_config)
+            old_has_audio = is_audio_stream_enabled(db_proc.input_config, db_proc.codec_config)
+            eff_input_cfg = proc_in.input_config if proc_in.input_config is not None else db_proc.input_config
+            eff_codec_cfg = proc_in.codec_config if proc_in.codec_config is not None else db_proc.codec_config
+            if (
+                is_video_stream_enabled(eff_input_cfg, eff_codec_cfg) != old_has_video
+                or is_audio_stream_enabled(eff_input_cfg, eff_codec_cfg) != old_has_audio
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Changing audio/video stream mode requires 'admin' permission",
+                )
+
     import copy
     old_state = {
         "name": db_proc.name,
@@ -7633,6 +7656,11 @@ def update_service(service_id: int, svc_in: ServiceUpdate, request: Request, db:
     if not svc:
         raise HTTPException(status_code=404, detail="Service not found")
 
+    ctx = AuthzContext.from_request(request)
+    if not ctx.is_owner and not has_min_level(ctx.service_level(db, svc), "admin"):
+        if svc_in.service_type is not None and svc_in.service_type != svc.service_type:
+            raise HTTPException(status_code=403, detail="Changing service_type requires 'admin' permission")
+
     old_state = {
         "name": svc.name,
         "service_type": svc.service_type,
@@ -8716,12 +8744,28 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db
     # Validate service maintenance restart inputs if applicable
     effective_cmd = update_data.get('command', task.command)
     in_cfg = update_data.get('input_config', task.input_config or {})
-    if effective_cmd == "system://service_restart" or in_cfg.get("type") == "service_restart":
+    ctx = AuthzContext.from_request(request)
+    is_task_admin = ctx.is_owner or has_min_level(ctx.task_level(task), "admin")
+    old_is_restart = task.command == "system://service_restart" or (task.input_config or {}).get("type") == "service_restart"
+    new_is_restart = effective_cmd == "system://service_restart" or (in_cfg or {}).get("type") == "service_restart"
+    if not is_task_admin:
+        if old_is_restart != new_is_restart:
+            raise HTTPException(status_code=403, detail="Changing task type requires 'admin' permission")
+        if not old_is_restart:
+            eff_codec_cfg = update_data.get('codec_config', task.codec_config)
+            if (
+                is_video_stream_enabled(in_cfg, eff_codec_cfg) != is_video_stream_enabled(task.input_config, task.codec_config)
+                or is_audio_stream_enabled(in_cfg, eff_codec_cfg) != is_audio_stream_enabled(task.input_config, task.codec_config)
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Changing audio/video stream mode requires 'admin' permission",
+                )
+    if new_is_restart:
         sids = in_cfg.get("service_ids")
         if 'input_config' in update_data:
             if not sids or not isinstance(sids, list):
                 raise HTTPException(status_code=400, detail="service_ids must be a non-empty list of service IDs")
-        ctx = AuthzContext.from_request(request)
         if not ctx.is_owner and isinstance(sids, list):
             for raw_sid in sids:
                 if not str(raw_sid).isdigit() or not has_min_level(ctx.service_level(db, int(raw_sid)), "operate"):

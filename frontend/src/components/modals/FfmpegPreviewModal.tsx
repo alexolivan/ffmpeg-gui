@@ -49,7 +49,8 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
   const svcLevel = getServiceLevel(permissions, currentProcess);
   const canOperate = hasMinLevel(svcLevel, 'operate');
   const canManage = hasMinLevel(svcLevel, 'manage');
-  const canCloneAsTask = canManage && canCreateTask(permissions);
+  const canAdmin = hasMinLevel(svcLevel, 'admin');
+  const canCloneAsTask = canAdmin && canCreateTask(permissions);
   const isVideoProcess = hasVideoHelper(currentProcess);
   const isRunning = currentProcess.status === 'running';
 
@@ -618,7 +619,7 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
         {/* Footer */}
         <div className="p-4 border-t border-[var(--glass-border)] flex-shrink-0 bg-white/2 flex justify-between items-center flex-wrap gap-3">
           <div>
-            {canManage && (
+            {canAdmin && (
               <button
                 onClick={() => {
                   fetch(`${API}/processes/${currentProcess.id}/export`)
@@ -640,18 +641,20 @@ export const FfmpegPreviewModal: React.FC<FfmpegPreviewModalProps> = ({
 
           <div className="flex gap-2">
             {canManage && (
-              <>
-                <button
-                  disabled={!!actionPending[currentProcess.id]}
-                  onClick={() => {
-                    onEditProcess(currentProcess);
-                    onClose();
-                  }}
-                  className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-1.5 px-4 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
-                >
-                  EDIT CONFIG
-                </button>
+              <button
+                disabled={!!actionPending[currentProcess.id]}
+                onClick={() => {
+                  onEditProcess(currentProcess);
+                  onClose();
+                }}
+                className="pill-button bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 text-xs font-bold py-1.5 px-4 border border-blue-500/25 disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+              >
+                EDIT CONFIG
+              </button>
+            )}
 
+            {canAdmin && (
+              <>
                 <button
                   disabled={!!actionPending[currentProcess.id]}
                   onClick={() => {

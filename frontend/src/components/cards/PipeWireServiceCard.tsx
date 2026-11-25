@@ -69,6 +69,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
   const [isRrdExpanded, setIsRrdExpanded] = useState(false);
   const canOperate = hasMinLevel(serviceLevel, 'operate');
   const canManage = hasMinLevel(serviceLevel, 'manage');
+  const canAdmin = hasMinLevel(serviceLevel, 'admin');
   const isRunning = service.status === 'running';
   const isPending = !!actionPending;
   const restartCount = service.restart_count || 0;
@@ -327,7 +328,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         )}
 
         {/* Clone Service Button */}
-        {canManage && onCloneProcess && (
+        {canAdmin && onCloneProcess && (
           <button
             disabled={isPending}
             onClick={() => onCloneProcess(service)}
@@ -339,7 +340,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         )}
 
         {/* Export Button */}
-        {canManage && onExportProcess && (
+        {canAdmin && onExportProcess && (
           <button
             disabled={isPending}
             onClick={() => onExportProcess(service)}
@@ -400,7 +401,7 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
         ))}
 
         {/* Delete Process Button */}
-        {canManage && (
+        {canAdmin && (
           <button
             disabled={isRunning || isPending}
             onClick={() => onDeleteProcess(service)}

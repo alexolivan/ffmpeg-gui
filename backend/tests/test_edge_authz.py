@@ -293,20 +293,10 @@ class TestEdgeAuthz(unittest.TestCase):
         self.assertTrue(any(s["id"] == self.ffmpeg.id and self.icecast.id in s["dependencies"] for s in cat_data["services"]))
 
         # 7. service_restart task guard blocks targeting hidden/monitor service, allows operate service
+        #    (Creating a new task requires task 'admin'; 'manage' is rejected with 403)
         scopes_task_mgr = dict(scopes)
         scopes_task_mgr["processes"] = dict(scopes["processes"], by_type={"task": "manage"})
-        mgr_token = _sign_authz(self.node_id, "op_carlos", self.secret, scopes_task_mgr)
-
-        bad_restart_payload = json.dumps({
-            "name": "Authz Test Restart Blocked",
-            "command": "system://service_restart",
-            "input_config": {"type": "service_restart", "service_ids": [self.icecast.id]},
-            "output_config": {},
-            "codec_config": {},
-            "schedule_type": "manual",
-        }).encode("utf-8")
-        c_bad, _ = self._tunnel_http("POST", "/tasks", mgr_token, body=bad_restart_payload, extra_headers={"content-type": "application/json"})
-        self.assertEqual(c_bad, 403)
+        mgr_only_token = _sign_authz(self.node_id, "op_carlos", self.secret, scopes_task_mgr)
 
         ok_restart_payload = json.dumps({
             "name": "Authz Test Restart Allowed",
@@ -316,7 +306,25 @@ class TestEdgeAuthz(unittest.TestCase):
             "codec_config": {},
             "schedule_type": "manual",
         }).encode("utf-8")
-        c_ok, _ = self._tunnel_http("POST", "/tasks", mgr_token, body=ok_restart_payload, extra_headers={"content-type": "application/json"})
+        c_mgr_create, _ = self._tunnel_http("POST", "/tasks", mgr_only_token, body=ok_restart_payload, extra_headers={"content-type": "application/json"})
+        self.assertEqual(c_mgr_create, 403)
+
+        scopes_task_admin = dict(scopes)
+        scopes_task_admin["processes"] = dict(scopes["processes"], by_type={"task": "admin"})
+        admin_task_token = _sign_authz(self.node_id, "op_carlos", self.secret, scopes_task_admin)
+
+        bad_restart_payload = json.dumps({
+            "name": "Authz Test Restart Blocked",
+            "command": "system://service_restart",
+            "input_config": {"type": "service_restart", "service_ids": [self.icecast.id]},
+            "output_config": {},
+            "codec_config": {},
+            "schedule_type": "manual",
+        }).encode("utf-8")
+        c_bad, _ = self._tunnel_http("POST", "/tasks", admin_task_token, body=bad_restart_payload, extra_headers={"content-type": "application/json"})
+        self.assertEqual(c_bad, 403)
+
+        c_ok, _ = self._tunnel_http("POST", "/tasks", admin_task_token, body=ok_restart_payload, extra_headers={"content-type": "application/json"})
         self.assertEqual(c_ok, 200)
 
         # 8. Telemetry WebSocket frame filtering & redaction
@@ -344,6 +352,156 @@ class TestEdgeAuthz(unittest.TestCase):
         self.assertEqual(filtered["data"][0]["input_config"]["url"], "rtmp://u:********@h/app")
         self.assertEqual([t["id"] for t in filtered["upcoming_tasks"]], [self.task_op.id])
         self.assertEqual(filtered["system"], {"cpu": 10})
+
+    def test_manage_vs_admin_lifecycle_and_structural_guards(self):
+        # Create an audio-only FFmpeg service to verify manage allows tuning filters/EQ
+        # while blocking structural transitions (audio-only <-> video, service_type change)
+        # and lifecycle mutations (create, clone, export, delete).
+        audio_svc = MediaProcess(
+            name="Test Authz Audio Only",
+            service_type="ffmpeg_stream",
+            status="stopped",
+            input_config={"has_video": False, "has_audio": True, "input1": {"type": "alsa", "device": "hw:0,0"}},
+            output_config={"type": "icecast", "host": "127.0.0.1", "port": 8123, "mount": "/radio.mp3"},
+            codec_config={"acodec": "libmp3lame", "audio_params": {"bitrate": "128k"}},
+            filter_config={"volume": {"enabled": True, "gain": 0}},
+        )
+        self.db.add(audio_svc)
+        self.db.commit()
+        self.db.refresh(audio_svc)
+        cloned_ids = []
+        try:
+            manage_scopes = {
+                "dashboard": "monitor",
+                "hardware": "manage",
+                "media": "manage",
+                "settings": "manage",
+                "forge": "manage",
+                "processes": {
+                    "default": "manage",
+                    "by_type": {},
+                    "services": {},
+                    "tasks": {},
+                },
+            }
+            admin_scopes = {
+                "dashboard": "admin",
+                "hardware": "admin",
+                "media": "admin",
+                "settings": "admin",
+                "forge": "admin",
+                "processes": {
+                    "default": "admin",
+                    "by_type": {},
+                    "services": {},
+                    "tasks": {},
+                },
+            }
+            mgr_token = _sign_authz(self.node_id, "op_manager", self.secret, manage_scopes)
+            adm_token = _sign_authz(self.node_id, "op_admin", self.secret, admin_scopes)
+            json_hdrs = {"content-type": "application/json"}
+
+            # 1. Service tuning under 'manage' is allowed (EQ/volume/bitrate edit)
+            tune_body = json.dumps({
+                "filter_config": {"volume": {"enabled": True, "gain": 3}},
+                "codec_config": {"acodec": "libmp3lame", "audio_params": {"bitrate": "192k"}},
+            }).encode("utf-8")
+            c_tune, _ = self._tunnel_http("PUT", f"/processes/{audio_svc.id}", mgr_token, body=tune_body, extra_headers=json_hdrs)
+            self.assertEqual(c_tune, 200)
+
+            # 2. Structural change under 'manage' is forbidden: audio-only -> video
+            av_flip_body = json.dumps({
+                "input_config": {"has_video": True, "has_audio": True, "input1": {"type": "v4l2", "device": "/dev/video0"}},
+                "codec_config": {"vcodec": "libx264", "acodec": "aac"},
+            }).encode("utf-8")
+            c_flip, _ = self._tunnel_http("PUT", f"/processes/{audio_svc.id}", mgr_token, body=av_flip_body, extra_headers=json_hdrs)
+            self.assertEqual(c_flip, 403)
+
+            # 3. Structural change under 'manage' is forbidden: video -> audio-only via vcodec='none'
+            vcodec_none_body = json.dumps({
+                "codec_config": {"vcodec": "none", "acodec": "aac"},
+            }).encode("utf-8")
+            c_vnone, _ = self._tunnel_http("PUT", f"/processes/{self.ffmpeg.id}", mgr_token, body=vcodec_none_body, extra_headers=json_hdrs)
+            self.assertEqual(c_vnone, 403)
+
+            # 4. Changing service_type under 'manage' is forbidden on both /processes and /api/services
+            stype_body = json.dumps({"service_type": "icecast_server"}).encode("utf-8")
+            c_st1, _ = self._tunnel_http("PUT", f"/processes/{audio_svc.id}", mgr_token, body=stype_body, extra_headers=json_hdrs)
+            c_st2, _ = self._tunnel_http("PUT", f"/api/services/{self.icecast.id}", mgr_token, body=json.dumps({"service_type": "mediamtx_hub"}).encode("utf-8"), extra_headers=json_hdrs)
+            self.assertEqual(c_st1, 403)
+            self.assertEqual(c_st2, 403)
+
+            # 5. Lifecycle actions under 'manage' are forbidden: create, import, clone, clone-as-task, export, delete
+            for method, path, body in (
+                ("POST", "/processes", json.dumps({"name": "New Svc", "service_type": "ffmpeg_stream"}).encode("utf-8")),
+                ("POST", "/api/services", json.dumps({"name": "New Ice", "service_type": "icecast_server", "config": {}}).encode("utf-8")),
+                ("POST", "/processes/import", json.dumps({"profile": {"name": "Imp"}}).encode("utf-8")),
+                ("POST", f"/processes/{audio_svc.id}/clone", b""),
+                ("POST", f"/processes/{audio_svc.id}/clone-as-task", b""),
+                ("GET", f"/processes/{audio_svc.id}/export", b""),
+                ("DELETE", f"/processes/{audio_svc.id}", b""),
+                ("DELETE", f"/api/services/{self.icecast.id}", b""),
+            ):
+                c, _ = self._tunnel_http(method, path, mgr_token, body=body, extra_headers=json_hdrs if body else None)
+                self.assertEqual(c, 403, f"Expected 403 under manage for {method} {path}, got {c}")
+
+            # 6. Task tuning under 'manage' allowed; structural flip & lifecycle blocked
+            t_tune = json.dumps({"name": "Test Authz Record Task Tuned"}).encode("utf-8")
+            c_tt, _ = self._tunnel_http("PUT", f"/tasks/{self.task_op.id}", mgr_token, body=t_tune, extra_headers=json_hdrs)
+            self.assertEqual(c_tt, 200)
+
+            t_flip = json.dumps({"input_config": {"type": "url", "url": "http://10.0.0.9/in.ts", "has_video": False, "has_audio": True}}).encode("utf-8")
+            c_tf, _ = self._tunnel_http("PUT", f"/tasks/{self.task_op.id}", mgr_token, body=t_flip, extra_headers=json_hdrs)
+            self.assertEqual(c_tf, 403)
+
+            for method, path in (
+                ("GET", "/tasks/export"),
+                ("GET", f"/tasks/{self.task_op.id}/export"),
+                ("POST", "/tasks/import"),
+                ("POST", f"/tasks/{self.task_op.id}/clone-as-service"),
+                ("DELETE", f"/tasks/{self.task_op.id}"),
+                ("DELETE", f"/tasks/{self.task_op.id}/executions"),
+            ):
+                c, _ = self._tunnel_http(method, path, mgr_token, body=b"{}" if method == "POST" else b"", extra_headers=json_hdrs if method == "POST" else None)
+                self.assertEqual(c, 403, f"Expected 403 under task manage for {method} {path}, got {c}")
+
+            # 7. Forge under 'manage' blocks create/import/export/delete/set-default/sdks/patches
+            for method, path in (
+                ("POST", "/builds"),
+                ("POST", "/builds/import"),
+                ("GET", "/builds/1/export"),
+                ("DELETE", "/builds/999999"),
+                ("POST", "/builds/999999/set-default"),
+                ("POST", "/sdks/upload"),
+                ("DELETE", "/sdks/999999"),
+                ("POST", "/system/patches/upload"),
+                ("DELETE", "/system/patches/nonexistent.patch"),
+            ):
+                c, _ = self._tunnel_http(method, path, mgr_token)
+                self.assertEqual(c, 403, f"Expected 403 under forge manage for {method} {path}, got {c}")
+
+            # 8. Under 'admin', structural flip, export, clone, and forge admin routes pass authz
+            c_adm_flip, _ = self._tunnel_http("PUT", f"/processes/{audio_svc.id}", adm_token, body=av_flip_body, extra_headers=json_hdrs)
+            self.assertEqual(c_adm_flip, 200)
+            c_adm_exp, _ = self._tunnel_http("GET", f"/processes/{audio_svc.id}/export", adm_token)
+            self.assertEqual(c_adm_exp, 200)
+            c_adm_clone, clone_data = self._tunnel_http("POST", f"/processes/{audio_svc.id}/clone", adm_token)
+            self.assertEqual(c_adm_clone, 200)
+            if isinstance(clone_data, dict) and clone_data.get("id"):
+                cloned_ids.append(clone_data["id"])
+            c_adm_texp, _ = self._tunnel_http("GET", f"/tasks/{self.task_op.id}/export", adm_token)
+            self.assertEqual(c_adm_texp, 200)
+            c_adm_forge, _ = self._tunnel_http("DELETE", "/builds/999999", adm_token)
+            self.assertEqual(c_adm_forge, 404)
+        finally:
+            for cid in cloned_ids:
+                row = self.db.query(MediaProcess).get(cid)
+                if row:
+                    self.db.delete(row)
+            row = self.db.query(MediaProcess).get(audio_svc.id)
+            if row:
+                self.db.delete(row)
+            self.db.commit()
 
 
 if __name__ == "__main__":

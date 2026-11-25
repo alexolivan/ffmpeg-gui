@@ -130,6 +130,8 @@
     "stopConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to stop \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will experience an immediate signal interruption.",
     "restartConfirm": "⚠️ LIVE BROADCAST WARNING:\n\nAre you sure you want to restart \"{{name}}\"? Any active live stream connections (SRT/UDP/RTP/Icecast) will drop and experience a temporary signal loss during restart.",
     "cloneAsTask": "Copy as Task",
+    "streamModeLockedTooltip": "Changing audio/video stream mode requires Admin permission on this resource.",
+    "streamModeLockedAlert": "This selection would change the audio/video stream mode, which requires Admin permission.",
     "typeFfmpegStream": "FFmpeg Stream Pipeline",
     "typeIcecastServer": "Icecast Audio Server",
     "typeKioskBrowser": "Kiosk WebView Browser",

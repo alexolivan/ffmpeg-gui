@@ -105,6 +105,7 @@ export default function BuildProfileCard({
   const { t } = useTranslation()
   const canOperate = hasMinLevel(forgeLevel, 'operate')
   const canManage = hasMinLevel(forgeLevel, 'manage')
+  const canAdmin = hasMinLevel(forgeLevel, 'admin')
   const [fetchedSdks, setFetchedSdks] = useState<any[]>([])
 
   useEffect(() => {
@@ -321,7 +322,7 @@ export default function BuildProfileCard({
               )}
 
               {/* Set Default Button */}
-              {!build.is_default && (
+              {canAdmin && !build.is_default && (
                 <button 
                   onClick={() => onSetDefault(build.id)}
                   title={t('common.setDefault', 'SET DEFAULT')}
@@ -345,7 +346,7 @@ export default function BuildProfileCard({
           )}
 
           {/* Export Recipe Button */}
-          {canManage && (
+          {canAdmin && (
             <button 
               onClick={() => onExport(build.id)}
               title={t('forge.exportRecipe', 'EXPORT RECIPE')}
@@ -372,7 +373,7 @@ export default function BuildProfileCard({
           )}
 
           {/* Delete Button */}
-          {canManage && build.status !== 'building' && (
+          {canAdmin && build.status !== 'building' && (
             <button 
               onClick={() => onDelete(build.id)}
               title={t('common.delete', 'DELETE')}

@@ -120,6 +120,7 @@ interface ProcessConfigFormProps {
   onSaveAs?: (config: any) => void;
   initialConfig?: any;
   isTask?: boolean;
+  canChangeStreamMode?: boolean;
   validationErrors?: Record<string, string>;
 }
 
@@ -131,6 +132,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   onSaveAs,
   initialConfig,
   isTask = false,
+  canChangeStreamMode = true,
   validationErrors: propsValidationErrors,
 }) => {
   const { t } = useTranslation();
@@ -838,6 +840,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   const handleInput1Change = useCallback((input1: InputSourceConfig) => {
     const isPureAudio = input1.type === 'alsa' || input1.type === 'lavfi_audio' || input1.type === 'http_audio' || input1.type === 'pipewire';
     if (isPureAudio && config.has_video) {
+      if (!canChangeStreamMode) {
+        alert(t('services.streamModeLockedAlert', 'This selection would change the audio/video stream mode, which requires Admin permission.'));
+        return;
+      }
       const label = input1.type === 'http_audio' 
         ? 'Icecast/HTTP Audio' 
         : input1.type === 'lavfi_audio' 
@@ -892,7 +898,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         audio_codec_params: finalAudioCodecParams,
       };
     });
-  }, [config.has_video]);
+  }, [config.has_video, canChangeStreamMode, t]);
 
   const handleInput2Change = useCallback((input2: InputSourceConfig) => {
     setConfig(prev => {
@@ -997,6 +1003,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
     const newType = output.type;
 
     if (oldType !== newType && (newType === 'icecast' || newType === 'alsa' || newType === 'pipewire') && config.has_video) {
+      if (!canChangeStreamMode) {
+        alert(t('services.streamModeLockedAlert', 'This selection would change the audio/video stream mode, which requires Admin permission.'));
+        return;
+      }
       const label = newType === 'icecast' ? 'Icecast' : newType === 'alsa' ? 'ALSA' : 'PipeWire Audio Hub';
       const proceed = window.confirm(
         `La salida seleccionada (${label}) es de solo audio. Se desactivará el flujo de vídeo de esta configuración.\n\n¿Deseas continuar?`
@@ -1104,7 +1114,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         audio_codec_params: isPcmViable ? {} : prev.audio_codec_params,
       }));
     }
-  }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort]);
+  }, [config.output.type, config.video_codec_id, config.audio_codec_id, config.has_video, config.has_audio, selectedBuildOptions, systemCapabilities, getNextAvailablePort, canChangeStreamMode, t]);
 
   const handleLifecycleOrSchedulingChange = useCallback((updates: any) => {
     setConfig(prev => ({
@@ -1127,6 +1137,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
   }, []);
 
   const handleHasVideoChange = useCallback((val: boolean) => {
+    if (!canChangeStreamMode) return;
     const isPureAudioInput = config.input1.type === 'alsa' || config.input1.type === 'lavfi_audio' || config.input1.type === 'http_audio' || config.input1.type === 'pipewire';
     const isPureAudioOutput = config.output.type === 'icecast' || config.output.type === 'alsa' || config.output.type === 'pipewire';
 
@@ -1198,9 +1209,10 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         input1: nextInput1
       };
     });
-  }, [config.input1, config.output, config.has_video, config.has_audio, getNextAvailablePort]);
+  }, [config.input1, config.output, config.has_video, config.has_audio, getNextAvailablePort, canChangeStreamMode]);
 
   const handleHasAudioChange = useCallback((val: boolean) => {
+    if (!canChangeStreamMode) return;
     setConfig(prev => {
       const nextSecondary = prev.has_video && val ? prev.use_secondary_input : false;
       let nextInput1 = prev.input1;
@@ -1220,7 +1232,7 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         input1: nextInput1
       };
     });
-  }, []);
+  }, [canChangeStreamMode]);
 
   const handleUseSecondaryInputChange = useCallback((val: boolean) => {
     setConfig(prev => {
@@ -1343,28 +1355,36 @@ const hasNDICodecIncompatibility = isNDIOutput && (
             </select>
           )}
           {/* Stream toggles */}
-          <div className="flex items-center gap-3 bg-[var(--input-bg)] rounded-lg px-2.5 py-1.5 border border-[var(--glass-border)] flex-shrink-0">
-            <label htmlFor="process-has-video" className="flex items-center gap-1.5 cursor-pointer">
+          <div
+            className={`flex items-center gap-3 bg-[var(--input-bg)] rounded-lg px-2.5 py-1.5 border border-[var(--glass-border)] flex-shrink-0 ${!canChangeStreamMode ? 'opacity-65' : ''}`}
+            title={!canChangeStreamMode ? t('services.streamModeLockedTooltip', 'Changing audio/video stream mode requires Admin permission on this resource.') : undefined}
+          >
+            <label htmlFor="process-has-video" className={`flex items-center gap-1.5 ${canChangeStreamMode ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
               <input
                 type="checkbox" id="process-has-video" name="has_video" checked={config.has_video}
+                disabled={!canChangeStreamMode}
                 onChange={e => handleHasVideoChange(e.target.checked)}
-                className="w-3.5 h-3.5 accent-brand-orange"
+                className="w-3.5 h-3.5 accent-brand-orange disabled:cursor-not-allowed"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_video ? 'text-brand-orange' : 'text-text-secondary'}`}>
                 Video
               </span>
             </label>
             <span className="w-px h-3 bg-white/10" />
-            <label htmlFor="process-has-audio" className="flex items-center gap-1.5 cursor-pointer">
+            <label htmlFor="process-has-audio" className={`flex items-center gap-1.5 ${canChangeStreamMode ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
               <input
                 type="checkbox" id="process-has-audio" name="has_audio" checked={config.has_audio}
+                disabled={!canChangeStreamMode}
                 onChange={e => handleHasAudioChange(e.target.checked)}
-                className="w-3.5 h-3.5 accent-blue-400"
+                className="w-3.5 h-3.5 accent-blue-400 disabled:cursor-not-allowed"
               />
               <span className={`text-[10px] font-bold uppercase tracking-wider ${config.has_audio ? 'text-blue-400' : 'text-text-secondary'}`}>
                 Audio
               </span>
             </label>
+            {!canChangeStreamMode && (
+              <span className="text-[10px] text-[var(--text-secondary)]" aria-hidden="true">🔒</span>
+            )}
           </div>
         </div>
       </div>

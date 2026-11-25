@@ -231,7 +231,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const forgeLevel = getDomainLevel(permissions, 'forge');
-  const canManageForge = hasMinLevel(forgeLevel, 'manage');
+  const canAdminForge = hasMinLevel(forgeLevel, 'admin');
   const canReadSettings = canAccessDomain(permissions, 'settings', 'monitor');
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
@@ -377,7 +377,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         <h3 className="text-xs font-bold uppercase tracking-wider text-text-secondary">
           {t('forge.activeProfilesFor', 'PROFILES')} — <span className="text-[var(--text-primary)]">{activeEngineTab.replace('_', ' ').toUpperCase()}</span>
         </h3>
-        {canManageForge && (
+        {canAdminForge && (
           <div className="flex items-center gap-3">
             <button onClick={() => importRecipeRef.current?.click()}
               className="pill-button bg-[var(--input-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] font-bold hover:border-brand-lime/40 hover:scale-105 transition-transform flex items-center gap-1.5 text-xs">
@@ -432,7 +432,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 </p>
               </div>
             </div>
-            {canManageForge && (
+            {canAdminForge && (
               <div className="flex items-center gap-2">
                 {engineSupportsSdks && (
                   <button

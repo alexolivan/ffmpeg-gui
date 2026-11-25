@@ -60,6 +60,28 @@ def max_level(a: Optional[str], b: Optional[str]) -> str:
     return la if LEVEL_RANK[la] >= LEVEL_RANK[lb] else lb
 
 
+def is_video_stream_enabled(input_cfg: Optional[Dict[str, Any]], codec_cfg: Optional[Dict[str, Any]]) -> bool:
+    """Return whether an FFmpeg service/task configuration includes a video stream."""
+    ic = input_cfg if isinstance(input_cfg, dict) else {}
+    cc = codec_cfg if isinstance(codec_cfg, dict) else {}
+    if ic.get("has_video") is False:
+        return False
+    if str(cc.get("vcodec") or "").strip().lower() == "none":
+        return False
+    return True
+
+
+def is_audio_stream_enabled(input_cfg: Optional[Dict[str, Any]], codec_cfg: Optional[Dict[str, Any]]) -> bool:
+    """Return whether an FFmpeg service/task configuration includes an audio stream."""
+    ic = input_cfg if isinstance(input_cfg, dict) else {}
+    cc = codec_cfg if isinstance(codec_cfg, dict) else {}
+    if ic.get("has_audio") is False:
+        return False
+    if str(cc.get("acodec") or "").strip().lower() == "none":
+        return False
+    return True
+
+
 def _redact_url_or_string(val: str) -> str:
     val = _URL_CREDS_RE.sub(r"\1:********@", val)
     val = _URL_QUERY_SECRET_RE.sub(r"\1=********", val)
@@ -320,8 +342,19 @@ class AuthzContext:
         procs = self.scopes.get("processes") or {}
         by_type = procs.get("by_type") or {}
         if service_type and service_type in by_type:
-            return has_min_level(by_type[service_type], "manage")
-        return has_min_level(procs.get("default"), "manage")
+            return has_min_level(by_type[service_type], "admin")
+        return has_min_level(procs.get("default"), "admin")
+
+    def can_create_any_service(self) -> bool:
+        if self.is_owner:
+            return True
+        procs = self.scopes.get("processes") or {}
+        if has_min_level(procs.get("default"), "admin"):
+            return True
+        for stype, lvl in (procs.get("by_type") or {}).items():
+            if stype != "task" and has_min_level(lvl, "admin"):
+                return True
+        return False
 
     def can_create_task(self) -> bool:
         if self.is_owner:
@@ -329,8 +362,22 @@ class AuthzContext:
         procs = self.scopes.get("processes") or {}
         by_type = procs.get("by_type") or {}
         if "task" in by_type:
-            return has_min_level(by_type["task"], "manage")
-        return has_min_level(procs.get("default"), "manage")
+            return has_min_level(by_type["task"], "admin")
+        return has_min_level(procs.get("default"), "admin")
+
+    def can_manage_any_task(self) -> bool:
+        if self.is_owner:
+            return True
+        procs = self.scopes.get("processes") or {}
+        if has_min_level(procs.get("default"), "manage"):
+            return True
+        by_type = procs.get("by_type") or {}
+        if has_min_level(by_type.get("task"), "manage"):
+            return True
+        for lvl in (procs.get("tasks") or {}).values():
+            if has_min_level(lvl, "manage"):
+                return True
+        return False
 
     def can_manage_any_process(self) -> bool:
         if self.is_owner:
@@ -380,8 +427,11 @@ class AuthzContext:
 _SERVICE_ACTION_OPERATE_RE = re.compile(
     r"^/(?:api/)?(?:processes|services)/(\d+)/(?:start|stop|restart|kiosk/clear-cache|pipewire/matrix/reconcile)$"
 )
+_SERVICE_LIFECYCLE_ADMIN_RE = re.compile(
+    r"^/(?:api/)?(?:processes|services)/(\d+)/(?:clone|export)$"
+)
 _SERVICE_MANAGE_RE = re.compile(
-    r"^/(?:api/)?(?:processes|services)/(\d+)(?:/(?:clone|export|dependencies(?:/\d+)?))?$"
+    r"^/(?:api/)?(?:processes|services)/(\d+)(?:/dependencies(?:/\d+)?)?$"
 )
 _SERVICE_ICECAST_PROXY_RE = re.compile(r"^/(?:api/)?processes/(\d+)/icecast-proxy/(.*)$")
 _SERVICE_READ_RE = re.compile(
@@ -391,7 +441,8 @@ _SERVICE_READ_RE = re.compile(
 _TASK_EXEC_READ_RE = re.compile(r"^/tasks/executions/(\d+)/(?:preview|logs)$")
 _TASK_EXEC_OPERATE_RE = re.compile(r"^/tasks/executions/(\d+)/stop$")
 _TASK_OPERATE_RE = re.compile(r"^/tasks/(\d+)/trigger$")
-_TASK_MANAGE_RE = re.compile(r"^/tasks/(\d+)(?:/(?:export|executions|clone-as-service))?$")
+_TASK_LIFECYCLE_ADMIN_RE = re.compile(r"^/tasks/(\d+)/(?:export|clone-as-service)$")
+_TASK_MANAGE_RE = re.compile(r"^/tasks/(\d+)(?:/executions)?$")
 _TASK_READ_RE = re.compile(r"^/tasks/(\d+)$")
 
 _HARDWARE_DROPDOWNS = frozenset({
@@ -473,14 +524,22 @@ def authorize_http_request(request: Request, ctx: AuthzContext, db: Session) -> 
     if path.startswith("/builds") or path.startswith("/sdks") or path.startswith("/system/patches"):
         if re.match(r"^/builds/\d+/(compile|stop)$", path) and method == "POST":
             return None if ctx.has_domain("forge", "operate") else "Forge 'operate' permission required"
+        if re.match(r"^/builds/\d+/export$", path) and method == "GET":
+            return None if ctx.has_domain("forge", "admin") else "Forge 'admin' permission required"
         if method == "GET":
             return None if ctx.has_domain("forge", "monitor") else "Forge 'monitor' permission required"
-        return None if ctx.has_domain("forge", "manage") else "Forge 'manage' permission required"
+        if (re.match(r"^/builds/\d+$", path) and method == "PUT") or (
+            re.match(r"^/builds/\d+/clean-sources$", path) and method == "POST"
+        ):
+            return None if ctx.has_domain("forge", "manage") else "Forge 'manage' permission required"
+        return None if ctx.has_domain("forge", "admin") else "Forge 'admin' permission required"
 
     # 6. Services / Processes
     if path in ("/processes", "/api/services") and method == "GET":
         return None  # Filtered & redacted per service inside route handler
-    if path in ("/processes", "/api/services", "/processes/import", "/processes/preview-cmd") and method == "POST":
+    if path in ("/processes", "/api/services", "/processes/import") and method == "POST":
+        return None if ctx.can_create_any_service() else "Process 'admin' permission required"
+    if path == "/processes/preview-cmd" and method == "POST":
         return None if ctx.can_manage_any_process() else "Process 'manage' permission required"
     if path in ("/api/services/mediamtx/next-available-ports", "/services/mediamtx/next-available-ports", "/api/services/icecast/next-available-ports", "/services/icecast/next-available-ports", "/api/services/desktop/next-available-ports", "/services/desktop/next-available-ports", "/api/services/next-desktop-ports"):
         return None if ctx.can_manage_any_process() else "Process 'manage' permission required"
@@ -503,11 +562,16 @@ def authorize_http_request(request: Request, ctx: AuthzContext, db: Session) -> 
 
     if re.match(r"^/processes/\d+/clone-as-task$", path) and method == "POST":
         sid = int(path.split("/")[2])
-        if not has_min_level(ctx.service_level(db, sid), "manage"):
-            return f"Service #{sid} requires 'manage'"
+        if not has_min_level(ctx.service_level(db, sid), "admin"):
+            return f"Service #{sid} requires 'admin'"
         if not ctx.can_create_task():
-            return "Task 'manage' permission required"
+            return "Task 'admin' permission required"
         return None
+
+    m = _SERVICE_LIFECYCLE_ADMIN_RE.match(path)
+    if m:
+        sid = int(m.group(1))
+        return None if has_min_level(ctx.service_level(db, sid), "admin") else f"Service #{sid} requires 'admin'"
 
     m = _SERVICE_READ_RE.match(path)
     if m and method == "GET":
@@ -517,15 +581,19 @@ def authorize_http_request(request: Request, ctx: AuthzContext, db: Session) -> 
     m = _SERVICE_MANAGE_RE.match(path)
     if m:
         sid = int(m.group(1))
-        if method == "GET" and not path.endswith("/export"):
+        if method == "GET":
             return None if has_min_level(ctx.service_level(db, sid), "monitor") else f"Service #{sid} requires 'monitor'"
+        if method == "DELETE" and "/dependencies" not in path:
+            return None if has_min_level(ctx.service_level(db, sid), "admin") else f"Service #{sid} requires 'admin'"
         return None if has_min_level(ctx.service_level(db, sid), "manage") else f"Service #{sid} requires 'manage'"
 
     # 7. Scheduled Tasks
     if path == "/tasks" and method == "GET":
         return None  # Filtered & redacted inside route handler
-    if path in ("/tasks", "/tasks/export", "/tasks/import", "/tasks/preview-cmd"):
-        return None if ctx.can_create_task() else "Task 'manage' permission required"
+    if path == "/tasks/preview-cmd" and method == "POST":
+        return None if ctx.can_manage_any_task() else "Task 'manage' permission required"
+    if path in ("/tasks", "/tasks/export", "/tasks/import"):
+        return None if ctx.can_create_task() else "Task 'admin' permission required"
 
     m = _TASK_EXEC_READ_RE.match(path)
     if m:
@@ -548,13 +616,20 @@ def authorize_http_request(request: Request, ctx: AuthzContext, db: Session) -> 
         tid = int(m.group(1))
         return None if has_min_level(ctx.task_level(tid), "operate") else f"Task #{tid} requires 'operate'"
 
+    m = _TASK_LIFECYCLE_ADMIN_RE.match(path)
+    if m:
+        tid = int(m.group(1))
+        if path.endswith("/clone-as-service") and not ctx.can_create_service("ffmpeg_stream"):
+            return "Process 'admin' permission required to clone task as service"
+        return None if has_min_level(ctx.task_level(tid), "admin") else f"Task #{tid} requires 'admin'"
+
     m = _TASK_MANAGE_RE.match(path)
     if m:
         tid = int(m.group(1))
-        if method == "GET" and not path.endswith("/export"):
+        if method == "GET":
             return None if has_min_level(ctx.task_level(tid), "monitor") else f"Task #{tid} requires 'monitor'"
-        if path.endswith("/clone-as-service") and not ctx.can_create_service("ffmpeg_stream"):
-            return "Process 'manage' permission required to clone task as service"
+        if method == "DELETE":
+            return None if has_min_level(ctx.task_level(tid), "admin") else f"Task #{tid} requires 'admin'"
         return None if has_min_level(ctx.task_level(tid), "manage") else f"Task #{tid} requires 'manage'"
 
     m = _TASK_READ_RE.match(path)

@@ -130,6 +130,8 @@
     "stopConfirm": "⚠️ ADVERTENCIA DE EMISIÓN EN DIRECTO:\n\n¿Estás seguro de que deseas detener \"{{name}}\"? Las conexiones de transmisión en directo activas (SRT/UDP/RTP/Icecast) sufrirán un corte inmediato de señal.",
     "restartConfirm": "⚠️ ADVERTENCIA DE EMISIÓN EN DIRECTO:\n\n¿Estás seguro de que deseas reiniciar \"{{name}}\"? Las conexiones de transmisión en directo activas (SRT/UDP/RTP/Icecast) sufrirán una pérdida temporal de señal durante el reinicio.",
     "cloneAsTask": "Copiar como Tarea",
+    "streamModeLockedTooltip": "Cambiar el modo de flujo audio/vídeo requiere permiso de Administrador en este recurso.",
+    "streamModeLockedAlert": "Esta selección cambiaría el modo de flujo audio/vídeo, lo cual requiere permiso de Administrador.",
     "typeFfmpegStream": "Pipeline de Streaming FFmpeg",
     "typeIcecastServer": "Servidor de Audio Icecast",
     "typeKioskBrowser": "Navegador Web Kiosk",

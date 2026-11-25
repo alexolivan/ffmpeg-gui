@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.69.0] - 2026-11-25
+
+### Changed
+- **RBAC `manage` vs `admin` Capability Separation (`backend/core/authz.py`, `backend/main.py`, `frontend/src/utils/permissions.ts`, cards, views & modals)**:
+  - Separated **`manage`** (*tune and edit existing resources*) from **`admin`** (*full lifecycle and structural control*) across Services, Scheduled Tasks, and Forge:
+    - **Services & Scheduled Tasks**: `manage` allows editing parameters on existing services/tasks (audio/video filters, EQ, compression, gain, bitrates, destinations, cron schedules, and command preview) while blocking lifecycle mutations (**create**, **clone**, **copy as task/service**, **import**, **export**, **delete**, **clear task history**) and structural changes (**changing `service_type`**, **changing task type**, or **toggling audio-only ↔ video mode** via `has_video`/`has_audio` or `vcodec: 'none'`). Those operations now require **`admin`**.
+    - **Forge**: `manage` allows editing existing build profiles, validating builds, and cleaning build sources; creating/importing/exporting/deleting profiles, setting the default build, managing SDKs, and managing system patches/dependencies now require **`admin`**.
+  - Updated `ProcessConfigForm` to lock audio/video stream mode toggles with a localized tooltip when editing an existing service or task without `admin` permission, and updated all service cards, preview modals, `ScheduledTasks`, `ForgeView`, and `BuildProfileCard` to hide lifecycle/destructive controls below `admin`.
+  - Added comprehensive backend authorization tests in `backend/tests/test_edge_authz.py` covering `manage` vs `admin` lifecycle routes and structural guards.
+
 ## [2.68.1] - 2026-11-24
 
 ### Fixed
