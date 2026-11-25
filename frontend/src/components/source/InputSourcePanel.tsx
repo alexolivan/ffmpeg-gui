@@ -1,6 +1,26 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SystemCapabilities } from '../codec/codecRegistry';
+import { SearchableSelect, type SelectOption } from '../common/SearchableSelect';
+
+const buildInputProviderOptions = (
+  localList: any[],
+  remoteList: Array<{ peer: any; svc: any }>,
+  localGroupLabel: string,
+  remoteGroupLabel: string,
+  formatLocalLabel: (p: any) => string
+): SelectOption[] => [
+  ...localList.map((p) => ({
+    value: String(p.id),
+    label: formatLocalLabel(p),
+    group: localGroupLabel,
+  })),
+  ...remoteList.map(({ peer, svc }) => ({
+    value: `peer:${peer.id}:${svc.id}`,
+    label: `${svc.name} @ ${peer.name} (${peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})`,
+    group: remoteGroupLabel,
+  })),
+];
 
 // ── Input source types ───────────────────────────────────────────
 
@@ -688,18 +708,22 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label htmlFor={`${idPrefix}-storage`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">{t('sources.mediaStorage')}</label>
-            <select
+            <SearchableSelect
               id={`${idPrefix}-storage`}
-              name="storage_id"
-              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-              value={config.storage_id || ''}
-              onChange={e => update({ storage_id: e.target.value ? Number(e.target.value) : null })}
-            >
-              <option value="">{t('sources.selectStorage')}</option>
-              {storages.filter((s: any) => s.type === 'media').map((s: any) => (
-                <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
-              ))}
-            </select>
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={440}
+              buttonClassName="p-1.5"
+              value={config.storage_id ? String(config.storage_id) : ''}
+              onChange={val => update({ storage_id: val ? Number(val) : null })}
+              options={[
+                { value: '', label: t('sources.selectStorage') },
+                ...storages.filter((s: any) => s.type === 'media').map((s: any) => ({
+                  value: String(s.id),
+                  label: `${s.name} (${s.path})`,
+                })),
+              ]}
+            />
           </div>
           <div>
             <label htmlFor={`${idPrefix}-relative-path`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">{t('sources.relativePath')}</label>
@@ -816,23 +840,25 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   <span>{t('sources.desktop.noDesktopsFound', 'No active Virtual Desktop found. You can configure one in Services or enter an X11 display manually.')}</span>
                 </div>
               ) : (
-                <select
+                <SearchableSelect
                   id={`${idPrefix}-desktop-provider`}
-                  value={manualDesktopMode ? '__manual__' : (config.provider_service_id || '')}
-                  onChange={e => handleSelectDesktop(e.target.value)}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-                >
-                  <option value="">{t('sources.desktop.chooseDesktop', '-- Select Virtual Desktop --')}</option>
-                  {desktops.map(desk => {
-                    const cfg = desk.config?.desktop_config || desk.config || {};
-                    return (
-                      <option key={desk.id} value={desk.id}>
-                        #{desk.id} - {desk.alias || desk.name} (Display :{cfg.display_num ?? 99} • {cfg.resolution || '1920x1080'} @ {cfg.framerate ?? 30} fps)
-                      </option>
-                    );
-                  })}
-                  <option value="__manual__">{t('sources.desktop.manualDesktop', 'Manual / Custom X11 Display')}</option>
-                </select>
+                  accent="lime"
+                  wrapLabels
+                  maxDropdownWidth={460}
+                  value={manualDesktopMode ? '__manual__' : (config.provider_service_id ? String(config.provider_service_id) : '')}
+                  onChange={val => handleSelectDesktop(val)}
+                  options={[
+                    { value: '', label: t('sources.desktop.chooseDesktop', '-- Select Virtual Desktop --') },
+                    ...desktops.map(desk => {
+                      const cfg = desk.config?.desktop_config || desk.config || {};
+                      return {
+                        value: String(desk.id),
+                        label: `#${desk.id} - ${desk.alias || desk.name} (Display :${cfg.display_num ?? 99} • ${cfg.resolution || '1920x1080'} @ ${cfg.framerate ?? 30} fps)`,
+                      };
+                    }),
+                    { value: '__manual__', label: t('sources.desktop.manualDesktop', 'Manual / Custom X11 Display') },
+                  ]}
+                />
               )}
             </div>
 
@@ -1315,11 +1341,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('sources.selectIcecastService', 'Icecast Service')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                          onChange={e => {
-                            const val = e.target.value;
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={440}
+                          buttonClassName="p-1.5 font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={val => {
                             if (val.startsWith('peer:')) {
                               const [, pId, sId] = val.split(':');
                               handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -1327,41 +1355,31 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                               handleSelectProvider(Number(val));
                             }
                           }}
-                        >
-                          {icecastProviders.length > 0 && (
-                            <optgroup label={t('sources.localServices', 'Local Services (This Node)')}>
-                              {icecastProviders.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} (Port :{p.config?.port || 7000})
-                                </option>
-                              ))}
-                            </optgroup>
+                          options={buildInputProviderOptions(
+                            icecastProviders,
+                            remoteIcecastServices,
+                            t('sources.localServices', 'Local Services (This Node)'),
+                            t('sources.remotePeers', 'Federated Remote Peers'),
+                            p => `${p.name} (Port :${p.config?.port || 7000})`
                           )}
-                          {remoteIcecastServices.length > 0 && (
-                            <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
-                              {remoteIcecastServices.map(({ peer, svc }) => (
-                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
+                        />
                       </div>
                       <div>
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('sources.icecastMountPoint', 'Mountpoint')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={mountNames.includes(config.icecast_mount || '') ? config.icecast_mount : '__custom__'}
-                          onChange={e => handleSelectMount(e.target.value)}
-                        >
-                          {mountNames.map(mName => (
-                            <option key={mName} value={mName}>{mName}</option>
-                          ))}
-                          <option value="__custom__">{t('sources.customMountOption', '+ Custom Mountpoint...')}</option>
-                        </select>
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={420}
+                          buttonClassName="p-1.5 font-mono"
+                          value={mountNames.includes(config.icecast_mount || '') ? (config.icecast_mount || '') : '__custom__'}
+                          onChange={val => handleSelectMount(val)}
+                          options={[
+                            ...mountNames.map(mName => ({ value: mName, label: mName })),
+                            { value: '__custom__', label: t('sources.customMountOption', '+ Custom Mountpoint...') },
+                          ]}
+                        />
                       </div>
                     </div>
 
@@ -1853,11 +1871,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('sources.selectHubService', 'MediaMTX Service')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                          onChange={e => {
-                            const val = e.target.value;
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={440}
+                          buttonClassName="p-1.5 font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={val => {
                             if (val.startsWith('peer:')) {
                               const [, pId, sId] = val.split(':');
                               handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -1865,43 +1885,34 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                               handleSelectProvider(Number(val));
                             }
                           }}
-                        >
-                          {mediamtxProviders.length > 0 && (
-                            <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
-                              {mediamtxProviders.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} (Port :{p.config?.rtmp_port || 1935})
-                                </option>
-                              ))}
-                            </optgroup>
+                          options={buildInputProviderOptions(
+                            mediamtxProviders,
+                            remoteMtxServices,
+                            t('sources.localServices', 'Local Hubs (This Node)'),
+                            t('sources.remotePeers', 'Federated Remote Peers'),
+                            p => `${p.name} (Port :${p.config?.rtmp_port || 1935})`
                           )}
-                          {remoteMtxServices.length > 0 && (
-                            <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
-                              {remoteMtxServices.map(({ peer, svc }) => (
-                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
+                        />
                       </div>
                       <div>
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('sources.streamPath', 'Stream Path')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
-                          onChange={e => handleSelectPath(e.target.value)}
-                        >
-                          {configuredPaths.map(pName => (
-                            <option key={pName} value={pName}>
-                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''}
-                            </option>
-                          ))}
-                          <option value="__custom__">{t('sources.customPathOption', '+ Custom Path Slug...')}</option>
-                        </select>
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={420}
+                          buttonClassName="p-1.5 font-mono"
+                          value={configuredPaths.includes(config.path_id || '') ? (config.path_id || '') : '__custom__'}
+                          onChange={val => handleSelectPath(val)}
+                          options={[
+                            ...configuredPaths.map(pName => ({
+                              value: pName,
+                              label: `/${pName}${activePathsDict[pName]?.mode === 'open' ? ' (LAN Open)' : ''}`,
+                            })),
+                            { value: '__custom__', label: t('sources.customPathOption', '+ Custom Path Slug...') },
+                          ]}
+                        />
                       </div>
                     </div>
 
@@ -2355,11 +2366,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('sources.selectHubService', 'MediaMTX Service')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                          onChange={e => {
-                            const val = e.target.value;
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={440}
+                          buttonClassName="p-1.5 font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={val => {
                             if (val.startsWith('peer:')) {
                               const [, pId, sId] = val.split(':');
                               handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -2367,43 +2380,34 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                               handleSelectProvider(Number(val));
                             }
                           }}
-                        >
-                          {mediamtxProviders.length > 0 && (
-                            <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
-                              {mediamtxProviders.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} (Port :{p.config?.hls_port || 8888})
-                                </option>
-                              ))}
-                            </optgroup>
+                          options={buildInputProviderOptions(
+                            mediamtxProviders,
+                            remoteMtxServices,
+                            t('sources.localServices', 'Local Hubs (This Node)'),
+                            t('sources.remotePeers', 'Federated Remote Peers'),
+                            p => `${p.name} (Port :${p.config?.hls_port || 8888})`
                           )}
-                          {remoteMtxServices.length > 0 && (
-                            <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
-                              {remoteMtxServices.map(({ peer, svc }) => (
-                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
+                        />
                       </div>
                       <div>
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('sources.streamPath', 'Stream Path')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
-                          onChange={e => handleSelectPath(e.target.value)}
-                        >
-                          {configuredPaths.map(pName => (
-                            <option key={pName} value={pName}>
-                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''}
-                            </option>
-                          ))}
-                          <option value="__custom__">{t('sources.customPathOption', '+ Custom Path Slug...')}</option>
-                        </select>
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={420}
+                          buttonClassName="p-1.5 font-mono"
+                          value={configuredPaths.includes(config.path_id || '') ? (config.path_id || '') : '__custom__'}
+                          onChange={val => handleSelectPath(val)}
+                          options={[
+                            ...configuredPaths.map(pName => ({
+                              value: pName,
+                              label: `/${pName}${activePathsDict[pName]?.mode === 'open' ? ' (LAN Open)' : ''}`,
+                            })),
+                            { value: '__custom__', label: t('sources.customPathOption', '+ Custom Path Slug...') },
+                          ]}
+                        />
                       </div>
                     </div>
 
@@ -2867,12 +2871,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       <label htmlFor={`${idPrefix}-srt-hub`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                         {t('sources.srtSelectHub', 'Source MediaMTX Hub')}
                       </label>
-                      <select
+                      <SearchableSelect
                         id={`${idPrefix}-srt-hub`}
-                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                        value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                        onChange={e => {
-                          const val = e.target.value;
+                        accent="lime"
+                        wrapLabels
+                        maxDropdownWidth={440}
+                        buttonClassName="p-1.5 font-mono"
+                        value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                        onChange={val => {
                           if (val.startsWith('peer:')) {
                             const [, pId, sId] = val.split(':');
                             handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -2880,26 +2886,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                             handleSelectProvider(parseInt(val));
                           }
                         }}
-                      >
-                        {mediamtxProviders.length > 0 && (
-                          <optgroup label={t('sources.localServices', 'Local Hubs (This Node)')}>
-                            {mediamtxProviders.map(p => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} {p.alias ? `(${p.alias})` : ''} — {p.status}
-                              </option>
-                            ))}
-                          </optgroup>
+                        options={buildInputProviderOptions(
+                          mediamtxProviders,
+                          remoteMtxServices,
+                          t('sources.localServices', 'Local Hubs (This Node)'),
+                          t('sources.remotePeers', 'Federated Remote Peers'),
+                          p => `${p.name}${p.alias ? ` (${p.alias})` : ''} — ${p.status}`
                         )}
-                        {remoteMtxServices.length > 0 && (
-                          <optgroup label={t('sources.remotePeers', 'Federated Remote Peers')}>
-                            {remoteMtxServices.map(({ peer, svc }) => (
-                              <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                                {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </select>
+                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -2907,19 +2901,22 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                         <label htmlFor={`${idPrefix}-srt-path-select`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('sources.srtTargetPath', 'Stream Path (Channel)')}
                         </label>
-                        <select
+                        <SearchableSelect
                           id={`${idPrefix}-srt-path-select`}
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={420}
+                          buttonClassName="p-1.5 font-mono"
                           value={isCustomPath ? '__custom__' : (config.path_id || '')}
-                          onChange={e => handleSelectPath(e.target.value)}
-                        >
-                          {configuredPaths.map(pKey => (
-                            <option key={pKey} value={pKey}>
-                              /{pKey} {activePathsDict[pKey]?.mode ? `(${activePathsDict[pKey].mode})` : ''}
-                            </option>
-                          ))}
-                          <option value="__custom__">{t('sources.srtCustomPath', '✏️ Custom Path Slug...')}</option>
-                        </select>
+                          onChange={val => handleSelectPath(val)}
+                          options={[
+                            ...configuredPaths.map(pKey => ({
+                              value: pKey,
+                              label: `/${pKey}${activePathsDict[pKey]?.mode ? ` (${activePathsDict[pKey].mode})` : ''}`,
+                            })),
+                            { value: '__custom__', label: t('sources.srtCustomPath', '✏️ Custom Path Slug...') },
+                          ]}
+                        />
                       </div>
 
                       <div>
@@ -3234,26 +3231,27 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
           </label>
           <div className="flex gap-1.5">
             {!manualNdiMode ? (
-              <select
+              <SearchableSelect
                 id={`${idPrefix}-ndi-name`}
-                name="name"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                accent="lime"
+                wrapLabels
+                maxDropdownWidth={440}
+                buttonClassName="p-1.5"
                 value={config.name || ''}
-                onChange={e => {
-                  if (e.target.value === '__manual__') {
-                     setManualNdiMode(true);
-                     update({ name: '' });
+                onChange={val => {
+                  if (val === '__manual__') {
+                    setManualNdiMode(true);
+                    update({ name: '' });
                   } else {
-                     update({ name: e.target.value });
+                    update({ name: val });
                   }
                 }}
-              >
-                <option value="">{t('sources.selectNdiSource')}</option>
-                {displayedNdiSources.map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-                <option value="__manual__">{t('sources.manualInput')}</option>
-              </select>
+                options={[
+                  { value: '', label: t('sources.selectNdiSource') },
+                  ...displayedNdiSources.map(s => ({ value: s, label: s })),
+                  { value: '__manual__', label: t('sources.manualInput') },
+                ]}
+              />
             ) : (
               <div className="flex w-full gap-1.5">
                 <input
@@ -3381,26 +3379,27 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               <div className="space-y-1.5">
                 <div className="flex gap-1.5">
                   {!manualDeviceMode ? (
-                    <select
+                    <SearchableSelect
                       id={`${idPrefix}-decklink-device`}
-                      name="device"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                      accent="lime"
+                      wrapLabels
+                      maxDropdownWidth={440}
+                      buttonClassName="p-1.5"
                       value={config.device || ''}
-                      onChange={e => {
-                        if (e.target.value === '__manual__') {
+                      onChange={val => {
+                        if (val === '__manual__') {
                           setManualDeviceMode(true);
                           update({ device: '' });
                         } else {
-                          update({ device: e.target.value });
+                          update({ device: val });
                         }
                       }}
-                    >
-                      <option value="">{t('sources.selectDevice')}</option>
-                      {devices.map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                      <option value="__manual__">{t('sources.manualInput')}</option>
-                    </select>
+                      options={[
+                        { value: '', label: t('sources.selectDevice') },
+                        ...devices.map(d => ({ value: d, label: d })),
+                        { value: '__manual__', label: t('sources.manualInput') },
+                      ]}
+                    />
                   ) : (
                     <div className="flex flex-col w-full gap-1.5">
                       <div className="flex w-full gap-1.5">
@@ -3491,20 +3490,22 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 onChange={e => update({ format_code: e.target.value })}
               />
             ) : (
-              <select
+              <SearchableSelect
                 id={`${idPrefix}-decklink-format-code`}
-                name="format_code"
-                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                accent="lime"
+                wrapLabels
+                maxDropdownWidth={440}
+                buttonClassName="p-1.5 font-mono"
                 value={config.format_code || ''}
-                onChange={e => update({ format_code: e.target.value })}
-              >
-                <option value="">{t('sources.defaultAutoSdk')}</option>
-                {formats.map(f => (
-                  <option key={f.code} value={f.code}>
-                    {f.code} ({f.description})
-                  </option>
-                ))}
-              </select>
+                onChange={val => update({ format_code: val })}
+                options={[
+                  { value: '', label: t('sources.defaultAutoSdk') },
+                  ...formats.map(f => ({
+                    value: f.code,
+                    label: `${f.code} (${f.description})`,
+                  })),
+                ]}
+              />
             )}
           </div>
         </div>
@@ -3625,12 +3626,13 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                 <label htmlFor={`${idPrefix}-alsa-card`} className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
                   {t('sources.alsaSoundCard')}
                 </label>
-                <select
+                <SearchableSelect
                   id={`${idPrefix}-alsa-card`}
-                  className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer"
+                  accent="lime"
+                  wrapLabels
+                  maxDropdownWidth={460}
                   value={selectedCardId !== '' ? String(selectedCardId) : (config.device === 'default' ? '__default__' : '')}
-                  onChange={e => {
-                    const newCardId = e.target.value;
+                  onChange={newCardId => {
                     if (newCardId === '__default__') {
                       setSelectedCardId('__default__');
                       update({ device: 'default' });
@@ -3648,15 +3650,15 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       update({ device: '' });
                     }
                   }}
-                >
-                  <option value="__default__">🌟 {t('sources.defaultDevice', 'System Default (default)')}</option>
-                  <option value="">{t('sources.alsaSelectCard')}</option>
-                  {alsaCards.map(c => (
-                    <option key={`card-${c.card_id}`} value={String(c.card_id)}>
-                      🎛️ {c.card_label || `${c.card_name} [Card ${c.card_id}]`}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '__default__', label: `🌟 ${t('sources.defaultDevice', 'System Default (default)')}` },
+                    { value: '', label: t('sources.alsaSelectCard') },
+                    ...alsaCards.map(c => ({
+                      value: String(c.card_id),
+                      label: `🎛️ ${c.card_label || `${c.card_name} [Card ${c.card_id}]`}`,
+                    })),
+                  ]}
+                />
               </div>
 
               {/* Level 2: Subdevice / Channel / Plug Selector (Shown only when physical card is selected) */}
@@ -3670,20 +3672,22 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                     const subdevices = currentCard ? (currentCard.devices || []) : alsaDevices;
 
                     return (
-                      <select
+                      <SearchableSelect
                         id={`${idPrefix}-alsa-subdevice`}
-                        className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer disabled:opacity-50"
+                        accent="lime"
+                        wrapLabels
+                        maxDropdownWidth={460}
                         disabled={subdevices.length === 0}
                         value={config.device || ''}
-                        onChange={e => update({ device: e.target.value })}
-                      >
-                        <option value="">{t('sources.alsaSelectSubdevice')}</option>
-                        {subdevices.map((d: any) => (
-                          <option key={d.device} value={d.device}>
-                            {d.name} ({d.device})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => update({ device: val })}
+                        options={[
+                          { value: '', label: t('sources.alsaSelectSubdevice') },
+                          ...subdevices.map((d: any) => ({
+                            value: d.device,
+                            label: `${d.name} (${d.device})`,
+                          })),
+                        ]}
+                      />
                     );
                   })()}
                 </div>
@@ -3743,12 +3747,15 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   <label htmlFor={`${idPrefix}-pw-provider`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
                     {t('sources.pipewire.hubService', 'PipeWire Audio Hub Service')}
                   </label>
-                  <select
+                  <SearchableSelect
                     id={`${idPrefix}-pw-provider`}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
-                    value={selectedHub?.id || config.provider_service_id || ''}
-                    onChange={e => {
-                      const nextHubId = Number(e.target.value);
+                    accent="lime"
+                    wrapLabels
+                    maxDropdownWidth={420}
+                    value={String(selectedHub?.id || config.provider_service_id || '')}
+                    onChange={val => {
+                      if (!val) return;
+                      const nextHubId = Number(val);
                       const nextHub = pipewireHubs.find(h => Number(h.id) === nextHubId);
                       const nextSinks = getHubSinkList(nextHub, 'virtual_sinks');
                       const nextRemoteSinks = getHubSinkList(nextHub, 'remote_sinks');
@@ -3756,17 +3763,17 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       update({
                         provider_service_id: nextHubId,
                         sink_id: defaultSink,
-                        device: `${defaultSink}.monitor`
+                        device: `${defaultSink}.monitor`,
                       });
                     }}
-                  >
-                    <option value="">{t('sources.pipewire.selectHub', 'Select PipeWire Hub...')}</option>
-                    {pipewireHubs.map(h => (
-                      <option key={h.id} value={h.id}>
-                        {h.name} ({h.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: t('sources.pipewire.selectHub', 'Select PipeWire Hub...') },
+                      ...pipewireHubs.map(h => ({
+                        value: String(h.id),
+                        label: `${h.name} (${h.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})`,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 {/* Selector 2: Target Virtual Audio Bus Monitor */}
@@ -3774,38 +3781,32 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   <label htmlFor={`${idPrefix}-pw-sink`} className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
                     {t('sources.pipewire.sinkMonitor', 'Audio Bus / Sink Monitor Target')}
                   </label>
-                  <select
+                  <SearchableSelect
                     id={`${idPrefix}-pw-sink`}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
+                    accent="lime"
+                    wrapLabels
+                    maxDropdownWidth={480}
                     value={currentSinkId}
-                    onChange={e => {
-                      const selectedSink = e.target.value;
+                    onChange={selectedSink => {
                       update({
                         sink_id: selectedSink,
-                        device: `${selectedSink}.monitor`
+                        device: `${selectedSink}.monitor`,
                       });
                     }}
-                  >
-                    <option value="default">🌟 {t('sources.pipewire.defaultMonitor', 'System Default (default.monitor)')}</option>
-                    {virtualSinks.length > 0 && (
-                      <optgroup label={t('sources.pipewire.localSinksGroup', 'Local Virtual Buses (Tx)')}>
-                        {virtualSinks.map((s: any) => (
-                          <option key={s.id} value={s.id}>
-                            🎛️ {s.name || s.id} ({s.channels || 2}ch) [{s.id}.monitor]{s.aes67_enabled ? ' [AES67 Tx]' : ''}
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {remoteSinks.length > 0 && (
-                      <optgroup label={t('sources.pipewire.remoteSinksGroup', 'Remote AoIP Sinks (Rx)')}>
-                        {remoteSinks.map((rs: any) => (
-                          <option key={rs.id} value={rs.id}>
-                            📡 {rs.name || rs.id} ({rs.channels || 2}ch) [{rs.id}.monitor] [{rs.multicast_ip}:{rs.rtp_port}]
-                          </option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
+                    options={[
+                      { value: 'default', label: `🌟 ${t('sources.pipewire.defaultMonitor', 'System Default (default.monitor)')}` },
+                      ...virtualSinks.map((s: any) => ({
+                        value: s.id,
+                        label: `🎛️ ${s.name || s.id} (${s.channels || 2}ch) [${s.id}.monitor]${s.aes67_enabled ? ' [AES67 Tx]' : ''}`,
+                        group: t('sources.pipewire.localSinksGroup', 'Local Virtual Buses (Tx)'),
+                      })),
+                      ...remoteSinks.map((rs: any) => ({
+                        value: rs.id,
+                        label: `📡 ${rs.name || rs.id} (${rs.channels || 2}ch) [${rs.id}.monitor] [${rs.multicast_ip}:${rs.rtp_port}]`,
+                        group: t('sources.pipewire.remoteSinksGroup', 'Remote AoIP Sinks (Rx)'),
+                      })),
+                    ]}
+                  />
                   <p className="text-[10px] text-[var(--text-secondary)] mt-1">
                     {t('sources.pipewire.sinkHelp', 'FFmpeg captures uncompressed audio directly from this PipeWire virtual bus monitor (.monitor).')}
                   </p>
@@ -3839,26 +3840,30 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               <div className="space-y-1.5">
                 <div className="flex gap-1.5">
                   {!manualV4l2Mode ? (
-                    <select
+                    <SearchableSelect
                       id={`${idPrefix}-v4l2-device`}
-                      name="device"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none"
+                      accent="lime"
+                      wrapLabels
+                      maxDropdownWidth={440}
+                      buttonClassName="p-1.5"
                       value={config.device || ''}
-                      onChange={e => {
-                        if (e.target.value === '__manual__') {
+                      onChange={val => {
+                        if (val === '__manual__') {
                           setManualV4l2Mode(true);
                           update({ device: '' });
                         } else {
-                          update({ device: e.target.value });
+                          update({ device: val });
                         }
                       }}
-                    >
-                      <option value="">{t('sources.selectV4l2')}</option>
-                      {v4l2Devices.map(d => (
-                        <option key={d.device} value={d.device}>{d.name} ({d.device})</option>
-                      ))}
-                      <option value="__manual__">{t('sources.manualInput')}</option>
-                    </select>
+                      options={[
+                        { value: '', label: t('sources.selectV4l2') },
+                        ...v4l2Devices.map(d => ({
+                          value: d.device,
+                          label: `${d.name} (${d.device})`,
+                        })),
+                        { value: '__manual__', label: t('sources.manualInput') },
+                      ]}
+                    />
                   ) : (
                     <div className="flex flex-col w-full gap-1.5">
                       <div className="flex w-full gap-1.5">
@@ -3895,13 +3900,14 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
               ) : v4l2Formats.length === 0 ? (
                 <div className="text-[10px] text-text-secondary italic">No formats detected.</div>
               ) : (
-                <select
+                <SearchableSelect
                   id={`${idPrefix}-v4l2-format`}
-                  name="pixel_format"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                  accent="lime"
+                  wrapLabels
+                  maxDropdownWidth={420}
+                  buttonClassName="p-1.5 font-mono"
                   value={config.pixel_format && config.size ? `${config.pixel_format}|${config.size}` : ''}
-                  onChange={e => {
-                    const val = e.target.value;
+                  onChange={val => {
                     if (!val) {
                       update({ pixel_format: undefined, size: undefined });
                     } else {
@@ -3909,18 +3915,17 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       update({ pixel_format: fmt, size: sz });
                     }
                   }}
-                >
-                  <option value="">{t('sources.defaultAutoSdk')}</option>
-                  {v4l2Formats.map(f => (
-                    <optgroup key={`${f.type}-${f.pixel_format}`} label={`${f.type}: ${f.description || f.pixel_format}`}>
-                      {f.resolutions.map((r: string) => (
-                        <option key={`${f.pixel_format}|${r}`} value={`${f.pixel_format}|${r}`}>
-                          {f.pixel_format} @ {r}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+                  options={[
+                    { value: '', label: t('sources.defaultAutoSdk') },
+                    ...v4l2Formats.flatMap(f =>
+                      f.resolutions.map((r: string) => ({
+                        value: `${f.pixel_format}|${r}`,
+                        label: `${f.pixel_format} @ ${r}`,
+                        group: `${f.type}: ${f.description || f.pixel_format}`,
+                      }))
+                    ),
+                  ]}
+                />
               )}
             </div>
           )}

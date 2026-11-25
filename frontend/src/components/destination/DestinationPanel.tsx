@@ -4,6 +4,26 @@ import type { SystemCapabilities } from '../codec/codecRegistry';
 import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
 import { ShieldIcon } from '../Icons';
 import { useTelemetry } from '../../context/TelemetryContext';
+import { SearchableSelect, type SelectOption } from '../common/SearchableSelect';
+
+const buildOutputProviderOptions = (
+  localList: any[],
+  remoteList: Array<{ peer: any; svc: any }>,
+  localGroupLabel: string,
+  remoteGroupLabel: string,
+  formatLocalLabel: (p: any) => string
+): SelectOption[] => [
+  ...localList.map((p) => ({
+    value: String(p.id),
+    label: formatLocalLabel(p),
+    group: localGroupLabel,
+  })),
+  ...remoteList.map(({ peer, svc }) => ({
+    value: `peer:${peer.id}:${svc.id}`,
+    label: `${svc.name} @ ${peer.name} (${peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})`,
+    group: remoteGroupLabel,
+  })),
+];
 
 const getHubVirtualSinks = (hub: any): any[] => {
   const nested = hub?.config?.pipewire_config?.virtual_sinks;
@@ -1192,12 +1212,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       <label htmlFor="dest-srt-hub" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                         {t('destinations.srtSelectHub', 'Target MediaMTX Hub')}
                       </label>
-                      <select
+                      <SearchableSelect
                         id="dest-srt-hub"
-                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                        value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                        onChange={e => {
-                          const val = e.target.value;
+                        accent="lime"
+                        wrapLabels
+                        maxDropdownWidth={440}
+                        buttonClassName="p-1.5 font-mono"
+                        value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                        onChange={val => {
                           if (val.startsWith('peer:')) {
                             const [, pId, sId] = val.split(':');
                             handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -1205,26 +1227,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                             handleSelectProvider(parseInt(val));
                           }
                         }}
-                      >
-                        {mediamtxProviders.length > 0 && (
-                          <optgroup label={t('destinations.localServices', 'Local Hubs (This Node)')}>
-                            {mediamtxProviders.map(p => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} {p.alias ? `(${p.alias})` : ''} — {p.status}
-                              </option>
-                            ))}
-                          </optgroup>
+                        options={buildOutputProviderOptions(
+                          mediamtxProviders,
+                          remoteMtxServices,
+                          t('destinations.localServices', 'Local Hubs (This Node)'),
+                          t('destinations.remotePeers', 'Federated Remote Peers'),
+                          p => `${p.name}${p.alias ? ` (${p.alias})` : ''} — ${p.status}`
                         )}
-                        {remoteMtxServices.length > 0 && (
-                          <optgroup label={t('destinations.remotePeers', 'Federated Remote Peers')}>
-                            {remoteMtxServices.map(({ peer, svc }) => (
-                              <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                                {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </select>
+                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
@@ -1232,19 +1242,22 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         <label htmlFor="dest-srt-path-select" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('destinations.srtTargetPath', 'Stream Path (Channel)')}
                         </label>
-                        <select
+                        <SearchableSelect
                           id="dest-srt-path-select"
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={460}
+                          buttonClassName="p-1.5 font-mono"
                           value={isCustomPath ? '__custom__' : (config.path_id || '')}
-                          onChange={e => handleSelectPath(e.target.value)}
-                        >
-                          {configuredPaths.map(pKey => (
-                            <option key={pKey} value={pKey}>
-                              /{pKey} {activePathsDict[pKey]?.mode ? `(${activePathsDict[pKey].mode})` : ''} {getOptionLockStatus('mediamtx', pKey)}
-                            </option>
-                          ))}
-                          <option value="__custom__">{t('destinations.srtCustomPath', '✏️ Custom Path Slug...')}</option>
-                        </select>
+                          onChange={val => handleSelectPath(val)}
+                          options={[
+                            ...configuredPaths.map(pKey => ({
+                              value: pKey,
+                              label: `/${pKey}${activePathsDict[pKey]?.mode ? ` (${activePathsDict[pKey].mode})` : ''} ${getOptionLockStatus('mediamtx', pKey)}`,
+                            })),
+                            { value: '__custom__', label: t('destinations.srtCustomPath', '✏️ Custom Path Slug...') },
+                          ]}
+                        />
                       </div>
 
                       <div>
@@ -1892,11 +1905,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('destinations.rtspProviderHub', 'MediaMTX Provider Instance')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                          onChange={e => {
-                            const val = e.target.value;
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={440}
+                          buttonClassName="p-1.5 font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={val => {
                             if (val.startsWith('peer:')) {
                               const [, pId, sId] = val.split(':');
                               handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -1904,42 +1919,35 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                               handleSelectProvider(parseInt(val));
                             }
                           }}
-                        >
-                          {mediamtxProviders.length > 0 && (
-                            <optgroup label={t('destinations.localServices', 'Local Hubs (This Node)')}>
-                              {mediamtxProviders.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} {p.alias ? `(${p.alias})` : ''} — Port {p.config?.rtsp_port || 8554}
-                                </option>
-                              ))}
-                            </optgroup>
+                          options={buildOutputProviderOptions(
+                            mediamtxProviders,
+                            remoteMtxServices,
+                            t('destinations.localServices', 'Local Hubs (This Node)'),
+                            t('destinations.remotePeers', 'Federated Remote Peers'),
+                            p => `${p.name}${p.alias ? ` (${p.alias})` : ''} — Port ${p.config?.rtsp_port || 8554}`
                           )}
-                          {remoteMtxServices.length > 0 && (
-                            <optgroup label={t('destinations.remotePeers', 'Federated Remote Peers')}>
-                              {remoteMtxServices.map(({ peer, svc }) => (
-                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
+                        />
                       </div>
 
                       <div>
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('destinations.rtspPathId', 'Target Stream Path')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
-                          onChange={e => handleSelectPath(e.target.value)}
-                        >
-                          {configuredPaths.map(pName => (
-                            <option key={pName} value={pName}>/{pName} {getOptionLockStatus('mediamtx', pName)}</option>
-                          ))}
-                          <option value="__custom__">✎ {t('destinations.customPathPrompt', 'Custom Path...')}</option>
-                        </select>
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={460}
+                          buttonClassName="p-1.5"
+                          value={configuredPaths.includes(config.path_id || '') ? (config.path_id || '') : '__custom__'}
+                          onChange={val => handleSelectPath(val)}
+                          options={[
+                            ...configuredPaths.map(pName => ({
+                              value: pName,
+                              label: `/${pName} ${getOptionLockStatus('mediamtx', pName)}`,
+                            })),
+                            { value: '__custom__', label: `✎ ${t('destinations.customPathPrompt', 'Custom Path...')}` },
+                          ]}
+                        />
                       </div>
                     </div>
 
@@ -2458,11 +2466,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('destinations.rtmpProviderHub', 'MediaMTX Provider Instance')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                          onChange={e => {
-                            const val = e.target.value;
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={440}
+                          buttonClassName="p-1.5 font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={val => {
                             if (val.startsWith('peer:')) {
                               const [, pId, sId] = val.split(':');
                               handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -2470,42 +2480,35 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                               handleSelectProvider(parseInt(val));
                             }
                           }}
-                        >
-                          {mediamtxProviders.length > 0 && (
-                            <optgroup label={t('destinations.localServices', 'Local Hubs (This Node)')}>
-                              {mediamtxProviders.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} {p.alias ? `(${p.alias})` : ''} — Port {p.config?.rtmp_port || 1935}
-                                </option>
-                              ))}
-                            </optgroup>
+                          options={buildOutputProviderOptions(
+                            mediamtxProviders,
+                            remoteMtxServices,
+                            t('destinations.localServices', 'Local Hubs (This Node)'),
+                            t('destinations.remotePeers', 'Federated Remote Peers'),
+                            p => `${p.name}${p.alias ? ` (${p.alias})` : ''} — Port ${p.config?.rtmp_port || 1935}`
                           )}
-                          {remoteMtxServices.length > 0 && (
-                            <optgroup label={t('destinations.remotePeers', 'Federated Remote Peers')}>
-                              {remoteMtxServices.map(({ peer, svc }) => (
-                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
+                        />
                       </div>
 
                       <div>
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('destinations.rtmpPathId', 'Target Stream Path')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
-                          onChange={e => handleSelectPath(e.target.value)}
-                        >
-                          {configuredPaths.map(pName => (
-                            <option key={pName} value={pName}>/{pName} {getOptionLockStatus('mediamtx', pName)}</option>
-                          ))}
-                          <option value="__custom__">✎ {t('destinations.customPathPrompt', 'Custom Path...')}</option>
-                        </select>
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={460}
+                          buttonClassName="p-1.5"
+                          value={configuredPaths.includes(config.path_id || '') ? (config.path_id || '') : '__custom__'}
+                          onChange={val => handleSelectPath(val)}
+                          options={[
+                            ...configuredPaths.map(pName => ({
+                              value: pName,
+                              label: `/${pName} ${getOptionLockStatus('mediamtx', pName)}`,
+                            })),
+                            { value: '__custom__', label: `✎ ${t('destinations.customPathPrompt', 'Custom Path...')}` },
+                          ]}
+                        />
                       </div>
                     </div>
 
@@ -2734,30 +2737,27 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               <div className="space-y-1.5">
                 <div className="flex gap-1.5">
                   {!manualDeviceMode ? (
-                    <select
+                    <SearchableSelect
                       id="dest-decklink-device"
-                      name="device"
-                      className={`w-full bg-white/5 border rounded-lg p-1.5 text-xs outline-none ${
-                        validationErrors?.device
-                          ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                          : 'border-white/10'
-                      }`}
+                      accent="lime"
+                      wrapLabels
+                      maxDropdownWidth={440}
+                      buttonClassName={`p-1.5 ${validationErrors?.device ? '!border-red-500/50 !bg-red-500/5' : ''}`}
                       value={config.device || ''}
-                      onChange={e => {
-                        if (e.target.value === '__manual__') {
+                      onChange={val => {
+                        if (val === '__manual__') {
                           setManualDeviceMode(true);
                           update({ device: '' });
                         } else {
-                          update({ device: e.target.value });
+                          update({ device: val });
                         }
                       }}
-                    >
-                      <option value="">{t('sources.selectDevice')}</option>
-                      {devices.map(d => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                      <option value="__manual__">{t('sources.manualInput')}</option>
-                    </select>
+                      options={[
+                        { value: '', label: t('sources.selectDevice') },
+                        ...devices.map(d => ({ value: d, label: d })),
+                        { value: '__manual__', label: t('sources.manualInput') },
+                      ]}
+                    />
                   ) : (
                     <div className="flex w-full gap-1.5">
                       <input
@@ -2859,20 +2859,22 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               </div>
             ) : (
               <div className="space-y-1.5">
-                <select
+                <SearchableSelect
                   id="dest-decklink-format-code"
-                  name="format_code"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-xs outline-none font-mono"
+                  accent="lime"
+                  wrapLabels
+                  maxDropdownWidth={440}
+                  buttonClassName="p-1.5 font-mono"
                   value={config.format_code || ''}
-                  onChange={e => handleFormatChange(e.target.value)}
-                >
-                  <option value="">{t('sources.defaultAutoSdk')}</option>
-                  {formats.map(f => (
-                    <option key={f.code} value={f.code}>
-                      {f.code} ({f.description})
-                    </option>
-                  ))}
-                </select>
+                  onChange={val => handleFormatChange(val)}
+                  options={[
+                    { value: '', label: t('sources.defaultAutoSdk') },
+                    ...formats.map(f => ({
+                      value: f.code,
+                      label: `${f.code} (${f.description})`,
+                    })),
+                  ]}
+                />
                 
                 {config.format_code && (
                   <div className="flex gap-4 px-1 text-[10px] text-text-secondary font-mono">
@@ -2893,28 +2895,28 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
               <label htmlFor="dest-file-storage" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                 {t('destinations.mediaStorage')}<span className="text-red-500 ml-0.5">*</span>
               </label>
-              <select
+              <SearchableSelect
                 id="dest-file-storage"
-                name="storage_id"
-                className={`w-full bg-[var(--input-bg)] border rounded-lg p-1.5 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] ${
-                  validationErrors?.storage_id || validationErrors?.path
-                    ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                    : 'border-[var(--glass-border)]'
-                }`}
-                value={config.storage_id || ''}
-                onChange={e => {
-                  const sid = e.target.value ? Number(e.target.value) : null;
+                accent="lime"
+                wrapLabels
+                maxDropdownWidth={440}
+                buttonClassName={`p-1.5 ${validationErrors?.storage_id || validationErrors?.path ? '!border-red-500/50 !bg-red-500/5' : ''}`}
+                value={config.storage_id ? String(config.storage_id) : ''}
+                onChange={val => {
+                  const sid = val ? Number(val) : null;
                   const st = storages.find((s: any) => s.id === sid);
                   const rel = config.relative_path || '';
                   const full = st?.path ? (rel ? `${st.path.replace(/\/+$/, '')}/${rel.replace(/^\/+/, '')}` : st.path) : '';
                   update({ storage_id: sid, path: full });
                 }}
-              >
-                <option value="">{t('sources.selectStorage')}</option>
-                {storages.filter((s: any) => s.type === 'media').map((s: any) => (
-                  <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: t('sources.selectStorage') },
+                  ...storages.filter((s: any) => s.type === 'media').map((s: any) => ({
+                    value: String(s.id),
+                    label: `${s.name} (${s.path})`,
+                  })),
+                ]}
+              />
             </div>
             <div>
               <label htmlFor="dest-file-relative-path" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
@@ -3168,10 +3170,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
                       {t('destinations.icecast.targetServer', 'Servidor Icecast Destino')}
                     </label>
-                    <select
-                      value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                      onChange={(e) => {
-                        const val = e.target.value;
+                    <SearchableSelect
+                      accent="lime"
+                      wrapLabels
+                      maxDropdownWidth={440}
+                      buttonClassName="p-1.5 font-mono"
+                      value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                      onChange={(val) => {
                         if (val.startsWith('peer:')) {
                           const [, pId, sId] = val.split(':');
                           handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -3179,27 +3184,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                           handleSelectProvider(parseInt(val));
                         }
                       }}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-lime font-mono"
-                    >
-                      {icecastProviders.length > 0 && (
-                        <optgroup label={t('destinations.localServices', 'Local Hubs (This Node)')}>
-                          {icecastProviders.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} {p.alias ? `(${p.alias})` : ''} — Port {p.config?.port || 7000}
-                            </option>
-                          ))}
-                        </optgroup>
+                      options={buildOutputProviderOptions(
+                        icecastProviders,
+                        remoteIcecastServices,
+                        t('destinations.localServices', 'Local Hubs (This Node)'),
+                        t('destinations.remotePeers', 'Federated Remote Peers'),
+                        p => `${p.name}${p.alias ? ` (${p.alias})` : ''} — Port ${p.config?.port || 7000}`
                       )}
-                      {remoteIcecastServices.length > 0 && (
-                        <optgroup label={t('destinations.remotePeers', 'Federated Remote Peers')}>
-                          {remoteIcecastServices.map(({ peer, svc }) => (
-                            <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                              {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                    />
                   </div>
 
                   <div>
@@ -3207,18 +3199,22 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       {t('destinations.icecast.targetMount', 'Punto de Montaje (Mountpoint)')}
                     </label>
                     <div className="flex gap-2">
-                      <select
-                        value={mountNames.includes(config.icecast_mount) ? config.icecast_mount : '__custom__'}
-                        onChange={(e) => handleSelectMount(e.target.value)}
-                        className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-brand-lime font-mono"
-                      >
-                        {mountNames.map((m: string) => (
-                          <option key={m} value={m}>
-                            {m} {getOptionLockStatus('icecast', m)}
-                          </option>
-                        ))}
-                        <option value="__custom__">✎ {t('destinations.icecast.customMount', 'Personalizado...')}</option>
-                      </select>
+                      <SearchableSelect
+                        accent="lime"
+                        wrapLabels
+                        maxDropdownWidth={460}
+                        className="w-full"
+                        buttonClassName="p-1.5 font-mono"
+                        value={mountNames.includes(config.icecast_mount) ? (config.icecast_mount || '') : '__custom__'}
+                        onChange={(val) => handleSelectMount(val)}
+                        options={[
+                          ...mountNames.map((m: string) => ({
+                            value: m,
+                            label: `${m} ${getOptionLockStatus('icecast', m)}`,
+                          })),
+                          { value: '__custom__', label: `✎ ${t('destinations.icecast.customMount', 'Personalizado...')}` },
+                        ]}
+                      />
                     </div>
                   </div>
                 </div>
@@ -3579,22 +3575,22 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   <label htmlFor="dest-hls-storage" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
                     {t('destinations.hlsStorage', 'HLS Storage Directory')}<span className="text-red-500 ml-0.5">*</span>
                   </label>
-                  <select
+                  <SearchableSelect
                     id="dest-hls-storage"
-                    name="storage_id"
-                    className={`w-full bg-[var(--input-bg)] border rounded-lg p-2 text-xs outline-none focus:border-brand-lime text-[var(--text-primary)] ${
-                      validationErrors?.storage_id || validationErrors?.path
-                        ? 'border-red-500/50 focus:border-red-500 bg-red-500/5'
-                        : 'border-[var(--glass-border)]'
-                    }`}
-                    value={config.storage_id || ''}
-                    onChange={e => handleHlsStorageChange(e.target.value ? Number(e.target.value) : null)}
-                  >
-                    <option value="">{t('sources.selectStorage', 'Select HLS Storage Volume')}</option>
-                    {hlsStorages.map((s: any) => (
-                      <option key={s.id} value={s.id}>{s.name} ({s.path})</option>
-                    ))}
-                  </select>
+                    accent="lime"
+                    wrapLabels
+                    maxDropdownWidth={440}
+                    buttonClassName={validationErrors?.storage_id || validationErrors?.path ? '!border-red-500/50 !bg-red-500/5' : ''}
+                    value={config.storage_id ? String(config.storage_id) : ''}
+                    onChange={val => handleHlsStorageChange(val ? Number(val) : null)}
+                    options={[
+                      { value: '', label: t('sources.selectStorage', 'Select HLS Storage Volume') },
+                      ...hlsStorages.map((s: any) => ({
+                        value: String(s.id),
+                        label: `${s.name} (${s.path})`,
+                      })),
+                    ]}
+                  />
                 </div>
                 <div>
                   <label htmlFor="dest-hls-relative-path" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
@@ -4101,11 +4097,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('destinations.selectHubService', 'MediaMTX Service')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime font-mono"
-                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : (config.provider_service_id || selectedProvider?.id || '')}
-                          onChange={e => {
-                            const val = e.target.value;
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={440}
+                          buttonClassName="p-1.5 font-mono"
+                          value={config.peer_node_id ? `peer:${config.peer_node_id}:${config.peer_service_id}` : String(config.provider_service_id || selectedProvider?.id || '')}
+                          onChange={val => {
                             if (val.startsWith('peer:')) {
                               const [, pId, sId] = val.split(':');
                               handleSelectRemotePeer(parseInt(pId), parseInt(sId));
@@ -4113,43 +4111,34 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                               handleSelectProvider(parseInt(val));
                             }
                           }}
-                        >
-                          {mediamtxProviders.length > 0 && (
-                            <optgroup label={t('destinations.localServices', 'Local Hubs (This Node)')}>
-                              {mediamtxProviders.map(p => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} (Port :{p.config?.webrtc_port || 8889})
-                                </option>
-                              ))}
-                            </optgroup>
+                          options={buildOutputProviderOptions(
+                            mediamtxProviders,
+                            remoteMtxServices,
+                            t('destinations.localServices', 'Local Hubs (This Node)'),
+                            t('destinations.remotePeers', 'Federated Remote Peers'),
+                            p => `${p.name} (Port :${p.config?.webrtc_port || 8889})`
                           )}
-                          {remoteMtxServices.length > 0 && (
-                            <optgroup label={t('destinations.remotePeers', 'Federated Remote Peers')}>
-                              {remoteMtxServices.map(({ peer, svc }) => (
-                                <option key={`peer:${peer.id}:${svc.id}`} value={`peer:${peer.id}:${svc.id}`}>
-                                  {svc.name} @ {peer.name} ({peer.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline'})
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                        </select>
+                        />
                       </div>
                       <div>
                         <label className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-0.5">
                           {t('destinations.streamPath', 'Publish Path')}
                         </label>
-                        <select
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime"
-                          value={configuredPaths.includes(config.path_id || '') ? config.path_id : '__custom__'}
-                          onChange={e => handleSelectPath(e.target.value)}
-                        >
-                          {configuredPaths.map(pName => (
-                            <option key={pName} value={pName}>
-                              /{pName} {activePathsDict[pName]?.mode === 'open' ? '(LAN Open)' : ''} {getOptionLockStatus('mediamtx', pName)}
-                            </option>
-                          ))}
-                          <option value="__custom__">{t('destinations.customPathOption', '+ Custom Path Slug...')}</option>
-                        </select>
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={460}
+                          buttonClassName="p-1.5"
+                          value={configuredPaths.includes(config.path_id || '') ? (config.path_id || '') : '__custom__'}
+                          onChange={val => handleSelectPath(val)}
+                          options={[
+                            ...configuredPaths.map(pName => ({
+                              value: pName,
+                              label: `/${pName}${activePathsDict[pName]?.mode === 'open' ? ' (LAN Open)' : ''} ${getOptionLockStatus('mediamtx', pName)}`,
+                            })),
+                            { value: '__custom__', label: t('destinations.customPathOption', '+ Custom Path Slug...') },
+                          ]}
+                        />
                       </div>
                     </div>
 
@@ -4421,12 +4410,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                 <label htmlFor="dest-alsa-card" className="text-[9px] text-text-secondary uppercase font-semibold block mb-0.5">
                   {t('destinations.alsaSoundCard')}
                 </label>
-                <select
+                <SearchableSelect
                   id="dest-alsa-card"
-                  className="w-full bg-input-bg border border-glass-border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer"
+                  accent="lime"
+                  wrapLabels
+                  maxDropdownWidth={460}
                   value={selectedCardId !== '' ? String(selectedCardId) : (config.device === 'default' ? '__default__' : '')}
-                  onChange={e => {
-                    const newCardId = e.target.value;
+                  onChange={newCardId => {
                     if (newCardId === '__default__') {
                       setSelectedCardId('__default__');
                       update({ device: 'default' });
@@ -4444,15 +4434,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       update({ device: '' });
                     }
                   }}
-                >
-                  <option value="__default__">🌟 {t('destinations.defaultDevice', 'System Default (default)')}</option>
-                  <option value="">{t('destinations.alsaSelectCard')}</option>
-                  {alsaCards.map(c => (
-                    <option key={`dest-card-${c.card_id}`} value={String(c.card_id)}>
-                      🎛️ {c.card_label || `${c.card_name} [Card ${c.card_id}]`}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: '__default__', label: `🌟 ${t('destinations.defaultDevice', 'System Default (default)')}` },
+                    { value: '', label: t('destinations.alsaSelectCard') },
+                    ...alsaCards.map(c => ({
+                      value: String(c.card_id),
+                      label: `🎛️ ${c.card_label || `${c.card_name} [Card ${c.card_id}]`}`,
+                    })),
+                  ]}
+                />
               </div>
 
               {/* Level 2: Subdevice / Channel Selector (Shown only when physical card is selected) */}
@@ -4466,23 +4456,23 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                     const subdevices = currentCard ? (currentCard.devices || []) : alsaDevices;
 
                     return (
-                      <select
+                      <SearchableSelect
                         id="dest-alsa-device"
-                        name="device"
-                        className={`w-full bg-input-bg border rounded-lg p-2 text-xs text-text-primary outline-none focus:border-purple-400 transition-all cursor-pointer disabled:opacity-50 ${
-                          validationErrors?.device ? 'border-red-500/50 bg-red-500/5' : 'border-glass-border'
-                        }`}
+                        accent="lime"
+                        wrapLabels
+                        maxDropdownWidth={460}
+                        buttonClassName={validationErrors?.device ? '!border-red-500/50 !bg-red-500/5' : ''}
                         disabled={subdevices.length === 0}
                         value={config.device || ''}
-                        onChange={e => update({ device: e.target.value })}
-                      >
-                        <option value="">{t('destinations.alsaSelectSubdevice')}</option>
-                        {subdevices.map((d: any) => (
-                          <option key={d.device} value={d.device}>
-                            {d.name} ({d.device})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => update({ device: val })}
+                        options={[
+                          { value: '', label: t('destinations.alsaSelectSubdevice') },
+                          ...subdevices.map((d: any) => ({
+                            value: d.device,
+                            label: `${d.name} (${d.device})`,
+                          })),
+                        ]}
+                      />
                     );
                   })()}
                   {validationErrors?.device && (
@@ -4540,12 +4530,15 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   <label htmlFor="dest-pw-provider" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
                     {t('destinations.pipewire.hubService', 'PipeWire Audio Hub Service')}
                   </label>
-                  <select
+                  <SearchableSelect
                     id="dest-pw-provider"
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
-                    value={selectedHub?.id || config.provider_service_id || ''}
-                    onChange={e => {
-                      const nextHubId = Number(e.target.value);
+                    accent="lime"
+                    wrapLabels
+                    maxDropdownWidth={420}
+                    value={String(selectedHub?.id || config.provider_service_id || '')}
+                    onChange={val => {
+                      if (!val) return;
+                      const nextHubId = Number(val);
                       const nextHub = pipewireProviders.find(h => Number(h.id) === nextHubId);
                       const nextSinks = getHubVirtualSinks(nextHub);
                       const defaultSink = nextSinks[0]?.id || 'mix_bus';
@@ -4556,14 +4549,14 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                         device: defaultSink,
                       });
                     }}
-                  >
-                    <option value="">{t('destinations.pipewire.selectHub', 'Select PipeWire Hub...')}</option>
-                    {pipewireProviders.map(h => (
-                      <option key={h.id} value={h.id}>
-                        {h.name} ({h.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})
-                      </option>
-                    ))}
-                  </select>
+                    options={[
+                      { value: '', label: t('destinations.pipewire.selectHub', 'Select PipeWire Hub...') },
+                      ...pipewireProviders.map(h => ({
+                        value: String(h.id),
+                        label: `${h.name} (${h.status === 'running' ? t('common.active', 'Active') : t('common.inactive', 'Inactive')})`,
+                      })),
+                    ]}
+                  />
                 </div>
 
                 {/* Selector 2: Target Virtual Audio Sink */}
@@ -4571,28 +4564,27 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   <label htmlFor="dest-pw-sink" className="text-[9px] text-[var(--text-secondary)] uppercase font-bold block mb-1">
                     {t('destinations.pipewire.sinkTarget', 'Target Virtual Audio Sink')}
                   </label>
-                  <select
+                  <SearchableSelect
                     id="dest-pw-sink"
-                    className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none focus:border-brand-lime transition-all cursor-pointer"
+                    accent="lime"
+                    wrapLabels
+                    maxDropdownWidth={480}
                     value={currentSinkId}
-                    onChange={e => {
-                      const selectedSink = e.target.value;
+                    onChange={selectedSink => {
                       update({
                         sink_id: selectedSink,
                         device: selectedSink,
                       });
                     }}
-                  >
-                    {virtualSinks.length === 0 ? (
-                      <option value="default">{t('destinations.pipewire.defaultSink', 'System Default (default)')}</option>
-                    ) : (
-                      virtualSinks.map((s: any) => (
-                        <option key={s.id} value={s.id}>
-                          🎛️ {s.name || s.id} ({s.channels || 2}ch) [{s.id}]{s.aes67_enabled ? ' [AES67 Tx]' : ''}
-                        </option>
-                      ))
-                    )}
-                  </select>
+                    options={
+                      virtualSinks.length === 0
+                        ? [{ value: 'default', label: t('destinations.pipewire.defaultSink', 'System Default (default)') }]
+                        : virtualSinks.map((s: any) => ({
+                            value: s.id,
+                            label: `🎛️ ${s.name || s.id} (${s.channels || 2}ch) [${s.id}]${s.aes67_enabled ? ' [AES67 Tx]' : ''}`,
+                          }))
+                    }
+                  />
                   <p className="text-[10px] text-[var(--text-secondary)] mt-1">
                     {t('destinations.pipewire.sinkHelp', 'FFmpeg injects uncompressed audio directly into this PipeWire virtual sink via the PulseAudio socket.')}
                   </p>

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.72.0] - 2026-11-25
+
+### Changed
+- **Portal `<SearchableSelect />` Rollout — Phase 2 (`frontend/src/components/source/InputSourcePanel.tsx`, `frontend/src/components/destination/DestinationPanel.tsx`)**:
+  - Migrated dynamic input/output selectors in `InputSourcePanel` and `DestinationPanel` to `<SearchableSelect />` with `wrapLabels`, `maxDropdownWidth`, and `brand-lime` focus accents:
+    - MediaMTX (SRT, RTSP, RTMP, HLS, WebRTC/WHIP) and Icecast local/federated remote peer selectors and stream path / mountpoint selectors (preserving resource lock badges and custom slug/mountpoint fallbacks).
+    - PipeWire hub selectors and grouped monitor/virtual/remote AoIP sink selectors.
+    - ALSA card and subdevice selectors, DeckLink device and format selectors, V4L2 device and resolution selectors, NDI source selector, Virtual Desktop selector, and Media/HLS storage volume selectors.
+
 ## [2.71.0] - 2026-11-25
 
 ### Changed
