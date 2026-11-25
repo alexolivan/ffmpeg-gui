@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { ShieldIcon } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
 import { AliasField } from '../common/AliasField';
+import { SearchableSelect } from '../common/SearchableSelect';
 
 interface KioskConfigFormProps {
   initialConfig?: any;
@@ -306,21 +307,21 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
             </div>
           ) : (
             <div>
-              <select
-                required
-                value={desktopServiceId}
-                onChange={(e) => setDesktopServiceId(Number(e.target.value))}
-                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none"
-              >
-                {availableDesktops.map((desk) => {
+              <SearchableSelect
+                accent="lime"
+                wrapLabels
+                maxDropdownWidth={460}
+                buttonClassName="px-3 py-2 text-sm"
+                value={desktopServiceId === '' ? '' : String(desktopServiceId)}
+                onChange={(val) => setDesktopServiceId(val ? Number(val) : '')}
+                options={availableDesktops.map((desk) => {
                   const dCfg = desk.config?.desktop_config || desk.desktop_config || {};
-                  return (
-                    <option key={desk.id} value={desk.id}>
-                      #{desk.id} - {desk.alias || desk.name} (Display :{dCfg.display_num ?? 99} • {dCfg.resolution || '1920x1080'})
-                    </option>
-                  );
+                  return {
+                    value: String(desk.id),
+                    label: `#${desk.id} - ${desk.alias || desk.name} (Display :${dCfg.display_num ?? 99} • ${dCfg.resolution || '1920x1080'})`,
+                  };
                 })}
-              </select>
+              />
               <span className="text-[10px] text-[var(--text-secondary)] mt-1 block">
                 {t('kiosk.target_desktop_help', 'The browser will attach full-screen to this virtual X11 display socket.')}
               </span>
@@ -414,27 +415,28 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
             <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
               {t('kiosk.build_label', 'Software Release / Binary')}
             </label>
-            <select
-              value={buildId}
-              onChange={(e) => setBuildId(e.target.value)}
-              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none"
-            >
-              {hasSystemBinary && (
-                <option value="system">
-                  {t('kiosk.build_system', 'Host System Binary (PATH audit)')} ({systemPath || 'PATH'})
-                </option>
-              )}
-              {availableBuilds.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name || `${b.software_type} v${b.version_tag || b.version}`} ({b.binary_path || 'Precompiled'})
-                </option>
-              ))}
-              {!hasSystemBinary && availableBuilds.length === 0 && (
-                <option value="" disabled>
-                  {t('kiosk.no_binaries_available', 'No binary available (System or Downloaded)')}
-                </option>
-              )}
-            </select>
+            <SearchableSelect
+              accent="lime"
+              wrapLabels
+              maxDropdownWidth={480}
+              buttonClassName="px-3 py-2 text-sm"
+              value={String(buildId)}
+              disabled={!hasSystemBinary && availableBuilds.length === 0}
+              placeholder={t('kiosk.no_binaries_available', 'No binary available (System or Downloaded)')}
+              onChange={(val) => setBuildId(val)}
+              options={[
+                ...(hasSystemBinary
+                  ? [{
+                      value: 'system',
+                      label: `${t('kiosk.build_system', 'Host System Binary (PATH audit)')} (${systemPath || 'PATH'})`,
+                    }]
+                  : []),
+                ...availableBuilds.map((b) => ({
+                  value: String(b.id),
+                  label: `${b.name || `${b.software_type} v${b.version_tag || b.version}`} (${b.binary_path || 'Precompiled'})`,
+                })),
+              ]}
+            />
 
             {!hasSystemBinary && availableBuilds.length === 0 && (
               <div className="mt-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs flex items-center gap-2">
@@ -566,20 +568,22 @@ export const KioskConfigForm: React.FC<KioskConfigFormProps> = ({
                 <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1">
                   {t('kiosk.cache_storage_select', 'Target Cache Storage')}
                 </label>
-                <select
-                  value={cacheStorageId}
-                  onChange={(e) => setCacheStorageId(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:border-brand-lime outline-none"
-                >
-                  <option value="" disabled>
-                    {t('kiosk.cache_storage_none', 'Select a cache storage...')}
-                  </option>
-                  {availableCacheStorages.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} ({s.path}) {s.is_default ? '★' : ''}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  accent="lime"
+                  wrapLabels
+                  maxDropdownWidth={440}
+                  buttonClassName="!bg-[var(--bg-card)] px-3 py-2 text-sm"
+                  value={cacheStorageId === '' ? '' : String(cacheStorageId)}
+                  onChange={(val) => setCacheStorageId(val ? Number(val) : '')}
+                  placeholder={t('kiosk.cache_storage_none', 'Select a cache storage...')}
+                  options={[
+                    { value: '', label: t('kiosk.cache_storage_none', 'Select a cache storage...'), disabled: true },
+                    ...availableCacheStorages.map((s) => ({
+                      value: String(s.id),
+                      label: `${s.name} (${s.path})${s.is_default ? ' ★' : ''}`,
+                    })),
+                  ]}
+                />
               </div>
             )}
           </div>

@@ -14,6 +14,7 @@ import { AuditLogCard } from './settings/AuditLogCard';
 
 import { NetworkInterfaceSelector } from '../common/NetworkInterfaceSelector';
 import { AliasField } from '../common/AliasField';
+import { SearchableSelect } from '../common/SearchableSelect';
 import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
 import { canAccessDomain, getDomainLevel, type EdgePermissionsSummary } from '../../utils/permissions';
 
@@ -1576,18 +1577,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <>
                       <div className="space-y-1">
                         <label className="text-[10px] uppercase font-bold text-text-secondary tracking-wider block">{t('settings.logging.storage', 'Log Storage')}</label>
-                        <select
-                          value={loggingStorageId}
-                          onChange={e => setLoggingStorageId(e.target.value === '' ? '' : Number(e.target.value))}
-                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg p-2 text-xs outline-none focus:border-brand-lime transition-all text-[var(--text-primary)]"
-                        >
-                          <option value="" className="bg-[var(--bg-dark)] text-[var(--text-primary)]">{t('settings.logging.selectStorage', 'Select a Log Storage...')}</option>
-                          {storages.filter(s => s.type === 'logs').map(s => (
-                            <option key={s.id} value={s.id} className="bg-[var(--bg-dark)] text-[var(--text-primary)]">
-                              {s.name} ({s.path})
-                            </option>
-                          ))}
-                        </select>
+                        <SearchableSelect
+                          accent="lime"
+                          wrapLabels
+                          maxDropdownWidth={440}
+                          value={loggingStorageId === '' ? '' : String(loggingStorageId)}
+                          onChange={val => setLoggingStorageId(val === '' ? '' : Number(val))}
+                          options={[
+                            { value: '', label: t('settings.logging.selectStorage', 'Select a Log Storage...') },
+                            ...storages.filter(s => s.type === 'logs').map(s => ({
+                              value: String(s.id),
+                              label: `${s.name} (${s.path})`,
+                            })),
+                          ]}
+                        />
                       </div>
 
                       <div className="space-y-1">
