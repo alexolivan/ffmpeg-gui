@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.75.4] - 2026-11-26
+
+### Changed
+- **Icecast2 Fallback Mountpoint Selector (`IcecastConfigForm.tsx`, `icecastHelpers.ts`)**:
+  - Replaced the free-text `fallback_mount` input with a conditional `<SearchableSelect />` listing only the other distinct mountpoints configured on the same Icecast server (excluding self).
+  - The fallback selector and `fallback_override` auto-recovery toggle now appear only when multiple mountpoints exist (or an existing legacy fallback needs management).
+  - Automatically cascades sibling `fallback_mount` updates on mountpoint rename and clears dangling `fallback_mount` references on deletion.
+
+### Fixed
+- **Federated Icecast Relay HTTP-First Default (`peer_manager.py`, `IcecastConfigForm.tsx`)**:
+  - Exported `http_enabled` inside `_extract_service_protocols` for federated `icecast_server` catalog entries.
+  - Updated the federated peer relay selector to prefer plain HTTP by default whenever HTTP is enabled on the peer (avoiding TLS mismatch errors on Icecast 2.3/2.4 relays and self-signed certs), enabling TLS automatically only when HTTP is disabled.
+
 ## [2.75.3] - 2026-11-26
 
 ### Fixed
