@@ -9,6 +9,7 @@ import {
   RefreshIcon,
   PencilIcon,
   ExportIcon,
+  LightningIcon,
 } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 import { useTelemetry } from '../../context/TelemetryContext';
@@ -19,6 +20,7 @@ interface IcecastPreviewModalProps {
   selectedProcess: any;
   telemetry: any[];
   actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
+  isReloading?: boolean;
   logs: any[];
   onClose: () => void;
   onEditProcess: (proc: any) => void;
@@ -26,6 +28,7 @@ interface IcecastPreviewModalProps {
   onStartService: (id: number) => void;
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
+  onReloadService?: (id: number, name?: string) => void;
   API: string;
   settings?: any;
   isCloudHubSession?: boolean;
@@ -52,6 +55,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   selectedProcess,
   telemetry,
   actionPending,
+  isReloading = false,
   logs: externalLogs,
   onClose,
   onEditProcess,
@@ -59,6 +63,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   onStartService,
   onStopService,
   onRestartService,
+  onReloadService,
   API,
   settings,
   isCloudHubSession = false,
@@ -74,7 +79,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   const canOperate = hasMinLevel(svcLevel, 'operate');
   const canManage = hasMinLevel(svcLevel, 'manage');
   const isRunning = currentProcess.status === 'running';
-  const isPending = !!actionPending[currentProcess.id];
+  const isPending = !!actionPending[currentProcess.id] || isReloading;
 
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copyLogsSuccess, setCopyLogsSuccess] = useState(false);
@@ -377,10 +382,33 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
             {/* Action Buttons in Header */}
             {canOperate && (isRunning ? (
               <>
+                {onReloadService && (
+                  <button
+                    disabled={isPending}
+                    onClick={() => onReloadService(currentProcess.id, currentProcess.name)}
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer ${
+                      currentProcess.pending_change_mode === 'reload'
+                        ? 'bg-brand-lime text-black border-brand-lime/40 animate-pulse shadow-lg shadow-brand-lime/20'
+                        : 'border-[var(--glass-border)] bg-[var(--input-bg)] text-brand-lime hover:brightness-110'
+                    }`}
+                    title={t('services.reloadService', 'Recargar configuración (en vivo)')}
+                  >
+                    {isReloading ? (
+                      <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+                    ) : (
+                      <LightningIcon size={13} />
+                    )}
+                    <span className="hidden sm:inline">{t('services.reloadButtonLabel', 'RECARGAR')}</span>
+                  </button>
+                )}
                 <button
                   disabled={isPending}
                   onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
-                  className="px-2.5 py-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-cyan-400 hover:brightness-110 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer ${
+                    currentProcess.pending_changes && currentProcess.pending_change_mode !== 'reload'
+                      ? 'bg-brand-orange text-black border-brand-orange/40 animate-pulse shadow-lg shadow-brand-orange/20'
+                      : 'border-[var(--glass-border)] bg-[var(--input-bg)] text-cyan-400 hover:brightness-110'
+                  }`}
                   title={t('services.restartService', 'Reiniciar')}
                 >
                   <RefreshIcon size={13} className={actionPending[currentProcess.id] === 'restarting' ? 'animate-spin' : ''} />

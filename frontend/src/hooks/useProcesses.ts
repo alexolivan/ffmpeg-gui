@@ -21,6 +21,7 @@ export function useProcesses() {
   const [logs, setLogs] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProcess, setEditingProcess] = useState<any | null>(null);
+  const [reloadingIds, setReloadingIds] = useState<Record<number, boolean>>({});
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
   // ── Process logs: On-Demand WebSocket Subscription (Zero HTTP Polling) ──
@@ -163,6 +164,28 @@ export function useProcesses() {
     }
   };
 
+  const handleReloadService = async (procId: number, procName?: string) => {
+    if (actionPending[procId] || reloadingIds[procId]) return;
+    setReloadingIds(prev => ({ ...prev, [procId]: true }));
+    try {
+      const res = await fetch(`${API}/processes/${procId}/reload`, { method: 'POST' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const label = procName || telemetry.find(p => p.id === procId)?.name || `#${procId}`;
+        alert(`${t('services.reloadFailed', 'Live reload failed')} (${label}): ${errData.detail || res.statusText}`);
+      }
+    } catch (err: any) {
+      console.error("Error reloading process:", err);
+      alert(`${t('services.reloadFailed', 'Live reload failed')}: ${err?.message || err}`);
+    } finally {
+      setReloadingIds(prev => {
+        const next = { ...prev };
+        delete next[procId];
+        return next;
+      });
+    }
+  };
+
   const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -212,6 +235,8 @@ export function useProcesses() {
     handleStopService,
     handleCloneProcess,
     handleRestartService,
+    handleReloadService,
+    reloadingIds,
     handleImportFileChange,
     actionPending,
   };

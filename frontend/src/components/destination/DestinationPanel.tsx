@@ -3001,7 +3001,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           const services = peer ? (peer.cached_services || peer.cached_services_json || []) : [];
           const svc = services.find((s: any) => s.id === config.peer_service_id);
           const protos = svc?.protocols || {};
-          availableMounts = Array.isArray(protos.mounts) ? protos.mounts : [];
+          availableMounts = (Array.isArray(protos.mounts) ? protos.mounts : []).filter((m: any) => !m?.relay_enabled);
           activePass = protos.source_password || 'hackme';
           activeTls = Boolean(protos.ssl_enabled);
           activeLegacy = Boolean(
@@ -3021,7 +3021,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           statusBadge = peer?.status === 'online' ? `${peer.latency_ms || 0}ms` : 'offline';
         } else if (selectedProvider) {
           const iceCfg = selectedProvider.config || {};
-          availableMounts = Array.isArray(iceCfg.mounts) ? iceCfg.mounts : [];
+          availableMounts = (Array.isArray(iceCfg.mounts) ? iceCfg.mounts : []).filter((m: any) => !m?.relay_enabled);
           activePass = iceCfg.source_password || 'hackme';
           activeTls = Boolean(iceCfg.ssl_enabled);
           activeLegacy = Boolean(
@@ -3041,7 +3041,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           const prov = icecastProviders.find(p => p.id === provId);
           if (!prov) return;
           const pCfg = prov.config || {};
-          const pMounts: any[] = Array.isArray(pCfg.mounts) ? pCfg.mounts : [];
+          const pMounts: any[] = (Array.isArray(pCfg.mounts) ? pCfg.mounts : []).filter((m: any) => !m?.relay_enabled);
           const firstMount = pMounts.length > 0 ? pMounts[0].mount_name : (config.icecast_mount || '/live.mp3');
           const firstMountObj = pMounts.find((m: any) => m.mount_name === firstMount);
           const pass = firstMountObj?.source_password || pCfg.source_password || 'hackme';
@@ -3084,7 +3084,7 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
           }
 
           const protos = svc.protocols || {};
-          const pMounts: any[] = Array.isArray(protos.mounts) ? protos.mounts : [];
+          const pMounts: any[] = (Array.isArray(protos.mounts) ? protos.mounts : []).filter((m: any) => !m?.relay_enabled);
           const firstMount = pMounts.length > 0 ? pMounts[0].mount_name : (config.icecast_mount || '/live.mp3');
           const firstMountObj = pMounts.find((m: any) => m.mount_name === firstMount);
           const pass = firstMountObj?.source_password || protos.source_password || 'hackme';

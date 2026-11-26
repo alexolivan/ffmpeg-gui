@@ -22,9 +22,11 @@ interface MediaMtxServiceCardProps {
   service: ServiceItem;
   telemetryItem?: any;
   actionPending?: 'starting' | 'stopping' | 'restarting';
+  isReloading?: boolean;
   onStartService: (procId: number) => void;
   onStopService: (procId: number, name?: string) => void;
   onRestartService: (procId: number, name: string) => void;
+  onReloadService?: (procId: number, name?: string) => void;
   onEditProcess: (service: ServiceItem) => void;
   onCloneProcess?: (service: ServiceItem) => void;
   onDeleteProcess: (service: ServiceItem) => void;
@@ -54,9 +56,11 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
   service,
   telemetryItem,
   actionPending,
+  isReloading = false,
   onStartService,
   onStopService,
   onRestartService,
+  onReloadService,
   onEditProcess,
   onCloneProcess,
   onDeleteProcess,
@@ -72,7 +76,7 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
   const canAdmin = hasMinLevel(serviceLevel, 'admin');
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
-  const isPending = !!actionPending;
+  const isPending = !!actionPending || isReloading;
   const watchdogEnabled = service.watchdog_enabled ?? service.config?.watchdog_enabled ?? false;
   const restartCount = service.restart_count ?? telemetryItem?.restart_count ?? 0;
   const isRetrying = !!watchdogEnabled && restartCount > 0 && service.status !== 'running' && service.status !== 'stopped';
@@ -161,11 +165,23 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
             </span>
           )}
 
-          {/* Pending Changes Reboot */}
+          {/* Pending Changes Badge (Reload vs Reboot) */}
           {service.pending_changes && (
-            <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse">
-              PENDING REBOOT
-            </span>
+            service.pending_change_mode === 'reload' ? (
+              <span
+                className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-black animate-pulse"
+                title={t('services.reloadPendingTooltip', 'Live-reloadable changes pending — apply without dropping active listeners/streams')}
+              >
+                PENDING RELOAD
+              </span>
+            ) : (
+              <span
+                className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse"
+                title={t('services.restartPendingTooltip', 'Structural changes pending (ports, bind, TLS or relays) — full restart required')}
+              >
+                PENDING REBOOT
+              </span>
+            )
           )}
 
           {/* Autostart on Boot */}
@@ -317,17 +333,41 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
           </button>
         )}
 
+        {/* Live Reload Button */}
+        {canOperate && isRunning && onReloadService && (
+          <button
+            disabled={isPending}
+            onClick={() => onReloadService(service.id, service.name)}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 disabled:opacity-50 cursor-pointer ${
+              service.pending_change_mode === 'reload'
+                ? 'bg-brand-lime text-black border-brand-lime/40 animate-pulse shadow-lg shadow-brand-lime/20'
+                : 'bg-white/5 hover:bg-white/10 border-white/10 text-brand-lime'
+            }`}
+            title={service.pending_change_mode === 'reload'
+              ? t('services.reloadPendingTooltip', 'Live-reloadable changes pending — apply without dropping active listeners/streams')
+              : t('services.reloadService', 'Reload Config (Live)')}
+          >
+            {isReloading ? (
+              <span className="w-3.5 h-3.5 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
+            ) : (
+              <LightningIcon size={16} />
+            )}
+          </button>
+        )}
+
         {/* Restart Button */}
         {canOperate && isRunning && (
           <button
             disabled={isPending}
             onClick={() => onRestartService(service.id, service.name)}
             className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 disabled:opacity-50 ${
-              service.pending_changes
+              service.pending_changes && service.pending_change_mode !== 'reload'
                 ? 'bg-brand-orange text-black border-brand-orange/40 animate-pulse shadow-lg shadow-brand-orange/20'
                 : 'bg-white/5 hover:bg-white/10 border-white/10 text-emerald-400'
             }`}
-            title={t('services.restartService', 'Restart Service')}
+            title={service.pending_changes && service.pending_change_mode !== 'reload'
+              ? t('services.restartPendingTooltip', 'Structural changes pending (ports, bind, TLS or relays) — full restart required')
+              : t('services.restartService', 'Restart Service')}
           >
             {actionPending === 'restarting' ? (
               <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" />

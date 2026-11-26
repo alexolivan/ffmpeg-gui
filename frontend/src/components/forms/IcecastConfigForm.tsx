@@ -25,6 +25,9 @@ export interface MountpointConfig {
   fallback_override?: boolean;
   burst_size?: number;
   source_password?: string;
+  relay_enabled?: boolean;
+  relay_url?: string;
+  relay_on_demand?: boolean;
 }
 
 export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
@@ -84,7 +87,10 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
     fallback_mount: '',
     fallback_override: true,
     burst_size: 65536,
-    source_password: ''
+    source_password: '',
+    relay_enabled: false,
+    relay_url: '',
+    relay_on_demand: false
   });
 
   const [hasCertificates, setHasCertificates] = useState(false);
@@ -178,28 +184,41 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
       fallback_mount: '',
       fallback_override: true,
       burst_size: 65536,
-      source_password: ''
+      source_password: '',
+      relay_enabled: false,
+      relay_url: '',
+      relay_on_demand: false
     });
     setMountModalOpen(true);
   };
 
   const handleOpenEditMount = (index: number) => {
     setEditingMountIndex(index);
-    setMountForm({ ...mounts[index] });
+    setMountForm({
+      relay_enabled: false,
+      relay_url: '',
+      relay_on_demand: false,
+      ...mounts[index],
+    });
     setMountModalOpen(true);
   };
 
   const handleSaveMount = () => {
     let cleanName = mountForm.mount_name.trim();
     if (!cleanName) return;
+    if (mountForm.relay_enabled && !mountForm.relay_url?.trim()) return;
     if (!cleanName.startsWith('/')) cleanName = '/' + cleanName;
 
+    const relayEnabled = Boolean(mountForm.relay_enabled);
     const updated = {
       ...mountForm,
       mount_name: cleanName,
       fallback_mount: mountForm.fallback_mount?.trim() ? (
         mountForm.fallback_mount.trim().startsWith('/') ? mountForm.fallback_mount.trim() : '/' + mountForm.fallback_mount.trim()
-      ) : undefined
+      ) : undefined,
+      relay_enabled: relayEnabled,
+      relay_url: relayEnabled ? (mountForm.relay_url || '').trim() : '',
+      relay_on_demand: relayEnabled ? Boolean(mountForm.relay_on_demand) : false,
     };
 
     if (editingMountIndex !== null) {
@@ -559,7 +578,22 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
                   {mounts.map((m, idx) => (
                     <tr key={idx} className="hover:bg-[var(--bg-card)]/50 transition-colors text-xs">
                       <td className="py-1.5 px-2.5 font-mono font-bold text-brand-lime">
-                        {m.mount_name}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{m.mount_name}</span>
+                          {m.relay_enabled && m.relay_url && (
+                            <span
+                              className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-sans font-bold"
+                              title={m.relay_url}
+                            >
+                              RELAY
+                            </span>
+                          )}
+                        </div>
+                        {m.relay_enabled && m.relay_url && (
+                          <div className="text-[10px] font-normal text-[var(--text-secondary)] truncate max-w-[220px]" title={m.relay_url}>
+                            ← {m.relay_url}
+                          </div>
+                        )}
                       </td>
                       <td className="py-1.5 px-2.5 text-[var(--text-secondary)]">
                         {m.max_listeners ? `${m.max_listeners} oyentes` : 'Ilimitado'}
@@ -968,6 +1002,54 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
               </label>
             </div>
 
+            {/* Remote Icecast2 Relay Pull */}
+            <div className="p-2.5 rounded-lg bg-[var(--input-bg)]/60 border border-[var(--glass-border)] space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  id="relay_enabled"
+                  checked={Boolean(mountForm.relay_enabled)}
+                  onChange={(e) => setMountForm({ ...mountForm, relay_enabled: e.target.checked })}
+                  className="accent-cyan-400 w-3.5 h-3.5"
+                />
+                <span className="text-[11px] font-bold uppercase tracking-wide text-cyan-400">
+                  {t('services.icecast.relayEnabled', 'Alimentar desde Relay Remoto')}
+                </span>
+              </label>
+
+              {mountForm.relay_enabled && (
+                <div className="space-y-2 pt-0.5">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase text-[var(--text-secondary)] mb-1">
+                      {t('services.icecast.relayUrl', 'URL del Stream Icecast Remoto')} *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={mountForm.relay_url || ''}
+                      onChange={(e) => setMountForm({ ...mountForm, relay_url: e.target.value })}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                      placeholder="https://origin.example.com:8000/stream.mp3"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(mountForm.relay_on_demand)}
+                      onChange={(e) => setMountForm({ ...mountForm, relay_on_demand: e.target.checked })}
+                      className="accent-cyan-400 w-3.5 h-3.5"
+                    />
+                    <span className="text-[11px] text-[var(--text-secondary)]">
+                      {t('services.icecast.relayOnDemand', 'Relay bajo demanda (conectar solo cuando haya oyentes activos)')}
+                    </span>
+                  </label>
+                  <p className="text-[10px] text-[var(--text-secondary)] leading-snug">
+                    {t('services.icecast.relayDisabledHint', 'Alimentado por relay remoto — no estará disponible como destino para procesos FFmpeg locales (sigue disponible como origen).')}
+                  </p>
+                </div>
+              )}
+            </div>
+
             <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-[var(--glass-border)]">
               <button
                 type="button"
@@ -979,7 +1061,7 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
               <button
                 type="button"
                 onClick={handleSaveMount}
-                disabled={!mountForm.mount_name.trim()}
+                disabled={!mountForm.mount_name.trim() || (Boolean(mountForm.relay_enabled) && !mountForm.relay_url?.trim())}
                 className="px-3.5 py-1 bg-brand-lime text-black rounded-lg text-xs uppercase font-bold disabled:opacity-50"
               >
                 {t('common.save', 'Guardar')}
