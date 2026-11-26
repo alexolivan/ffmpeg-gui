@@ -28,6 +28,13 @@ export interface MountpointConfig {
   relay_enabled?: boolean;
   relay_url?: string;
   relay_on_demand?: boolean;
+  relay_username?: string;
+  relay_password?: string;
+  relay_mode?: 'manual' | 'peer';
+  relay_peer_node_id?: number;
+  relay_peer_service_id?: number;
+  relay_peer_mount?: string;
+  relay_peer_tls?: boolean;
 }
 
 export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
@@ -90,8 +97,17 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
     source_password: '',
     relay_enabled: false,
     relay_url: '',
-    relay_on_demand: false
+    relay_on_demand: false,
+    relay_username: '',
+    relay_password: '',
+    relay_mode: 'manual',
+    relay_peer_node_id: undefined,
+    relay_peer_service_id: undefined,
+    relay_peer_mount: '',
+    relay_peer_tls: false,
   });
+  const [remotePeers, setRemotePeers] = useState<any[]>([]);
+  const [showRelayPassword, setShowRelayPassword] = useState(false);
 
   const [hasCertificates, setHasCertificates] = useState(false);
   const [sslDomain, setSslDomain] = useState('');
@@ -162,6 +178,16 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
       })
       .catch(() => {});
 
+    // Fetch federated peers catalog for quick mountpoint relay selection
+    fetch(`${API}/api/peers/remote-nodes`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setRemotePeers(data);
+        }
+      })
+      .catch(() => {});
+
     // Auto-suggest conflict-free ports if creating a new service
     if (!initialConfig) {
       fetch(`${API}/api/services/icecast/next-available-ports`)
@@ -178,6 +204,7 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
 
   const handleOpenAddMount = () => {
     setEditingMountIndex(null);
+    setShowRelayPassword(false);
     setMountForm({
       mount_name: '',
       max_listeners: undefined,
@@ -187,20 +214,59 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
       source_password: '',
       relay_enabled: false,
       relay_url: '',
-      relay_on_demand: false
+      relay_on_demand: false,
+      relay_username: '',
+      relay_password: '',
+      relay_mode: 'manual',
+      relay_peer_node_id: undefined,
+      relay_peer_service_id: undefined,
+      relay_peer_mount: '',
+      relay_peer_tls: false,
     });
     setMountModalOpen(true);
   };
 
   const handleOpenEditMount = (index: number) => {
     setEditingMountIndex(index);
+    setShowRelayPassword(false);
     setMountForm({
       relay_enabled: false,
       relay_url: '',
       relay_on_demand: false,
+      relay_username: '',
+      relay_password: '',
+      relay_mode: 'manual',
+      relay_peer_node_id: undefined,
+      relay_peer_service_id: undefined,
+      relay_peer_mount: '',
+      relay_peer_tls: false,
       ...mounts[index],
     });
     setMountModalOpen(true);
+  };
+
+  const peersWithIcecast = remotePeers
+    .map((peer: any) => {
+      const services = (peer.cached_services || peer.cached_services_json || []).filter(
+        (s: any) => s.service_type === 'icecast_server'
+      );
+      return { peer, services };
+    })
+    .filter((entry: any) => entry.services.length > 0);
+
+  const buildPeerRelayUrl = (peer: any, svc: any, mountName: string, useTls: boolean): string => {
+    let host = '127.0.0.1';
+    try {
+      host = new URL(peer.base_url).hostname;
+    } catch {
+      host = String(peer?.base_url || '127.0.0.1').replace(/https?:\/\//, '').split(':')[0].split('/')[0] || '127.0.0.1';
+    }
+    const protos = svc?.protocols || {};
+    const port = useTls ? (protos.ssl_port || 8443) : (protos.port || 8000);
+    const scheme = useTls ? 'https' : 'http';
+    const rawMount = (mountName || '/live.mp3').trim();
+    const cleanMount = rawMount.startsWith('/') ? rawMount : `/${rawMount}`;
+    return `${scheme}://${host}:${port}${cleanMount}`;
   };
 
   const handleSaveMount = () => {
@@ -210,7 +276,8 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
     if (!cleanName.startsWith('/')) cleanName = '/' + cleanName;
 
     const relayEnabled = Boolean(mountForm.relay_enabled);
-    const updated = {
+    const isPeerMode = relayEnabled && mountForm.relay_mode === 'peer';
+    const updated: MountpointConfig = {
       ...mountForm,
       mount_name: cleanName,
       fallback_mount: mountForm.fallback_mount?.trim() ? (
@@ -219,6 +286,13 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
       relay_enabled: relayEnabled,
       relay_url: relayEnabled ? (mountForm.relay_url || '').trim() : '',
       relay_on_demand: relayEnabled ? Boolean(mountForm.relay_on_demand) : false,
+      relay_username: relayEnabled ? (mountForm.relay_username || '').trim() : '',
+      relay_password: relayEnabled ? (mountForm.relay_password || '').trim() : '',
+      relay_mode: isPeerMode ? 'peer' : 'manual',
+      relay_peer_node_id: isPeerMode ? mountForm.relay_peer_node_id : undefined,
+      relay_peer_service_id: isPeerMode ? mountForm.relay_peer_service_id : undefined,
+      relay_peer_mount: isPeerMode ? mountForm.relay_peer_mount : undefined,
+      relay_peer_tls: isPeerMode ? Boolean(mountForm.relay_peer_tls) : undefined,
     };
 
     if (editingMountIndex !== null) {
@@ -581,12 +655,22 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <span>{m.mount_name}</span>
                           {m.relay_enabled && m.relay_url && (
-                            <span
-                              className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-sans font-bold"
-                              title={m.relay_url}
-                            >
-                              RELAY
-                            </span>
+                            <>
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 font-sans font-bold"
+                                title={m.relay_url}
+                              >
+                                {m.relay_mode === 'peer' ? 'PEER RELAY' : 'RELAY'}
+                              </span>
+                              {(m.relay_password || m.relay_username) && (
+                                <span
+                                  className="text-[10px]"
+                                  title={t('services.icecast.relayAuthTitle', 'Autenticación Remota (Opcional)')}
+                                >
+                                  🔒
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
                         {m.relay_enabled && m.relay_url && (
@@ -929,7 +1013,7 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
       {/* ── Inline Mountpoint Modal ── */}
       {mountModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl w-full max-w-md p-4 space-y-3 shadow-2xl">
+          <div className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto custom-scrollbar p-4 space-y-3 shadow-2xl">
             <h4 className="text-xs font-bold uppercase text-brand-lime tracking-wide">
               {editingMountIndex !== null ? t('services.icecast.editMount', 'Editar Punto de Montaje') : t('services.icecast.addMount', 'Añadir Punto de Montaje')}
             </h4>
@@ -1017,37 +1101,291 @@ export const IcecastConfigForm: React.FC<IcecastConfigFormProps> = ({
                 </span>
               </label>
 
-              {mountForm.relay_enabled && (
-                <div className="space-y-2 pt-0.5">
-                  <div>
-                    <label className="block text-[10px] font-semibold uppercase text-[var(--text-secondary)] mb-1">
-                      {t('services.icecast.relayUrl', 'URL del Stream Icecast Remoto')} *
+              {mountForm.relay_enabled && (() => {
+                const selectedPeerEntry =
+                  peersWithIcecast.find((e: any) => e.peer.id === mountForm.relay_peer_node_id) || peersWithIcecast[0];
+                const peerServices = selectedPeerEntry?.services || [];
+                const selectedPeerSvc =
+                  peerServices.find((s: any) => s.id === mountForm.relay_peer_service_id) || peerServices[0];
+                const peerProtos = selectedPeerSvc?.protocols || {};
+                const peerMounts: any[] = Array.isArray(peerProtos.mounts) ? peerProtos.mounts : [];
+                const peerMountNames = peerMounts.map((pm: any) => (typeof pm === 'string' ? pm : pm.mount_name)).filter(Boolean);
+                const usePeerMode = mountForm.relay_mode === 'peer' && peersWithIcecast.length > 0;
+                const peerHasSsl = Boolean(peerProtos.ssl_enabled);
+                const effectiveTls = Boolean(mountForm.relay_peer_tls && peerHasSsl);
+
+                const applyPeerSelection = (peerObj: any, svcObj: any, mountStr: string, tlsFlag: boolean) => {
+                  const prot = svcObj?.protocols || {};
+                  const validTls = Boolean(tlsFlag && prot.ssl_enabled);
+                  const nextUrl = buildPeerRelayUrl(peerObj, svcObj, mountStr, validTls);
+                  setMountForm((prev) => ({
+                    ...prev,
+                    relay_mode: 'peer',
+                    relay_peer_node_id: peerObj.id,
+                    relay_peer_service_id: svcObj.id,
+                    relay_peer_mount: mountStr,
+                    relay_peer_tls: validTls,
+                    relay_url: nextUrl,
+                  }));
+                };
+
+                return (
+                  <div className="space-y-2.5 pt-1">
+                    {/* Source Mode Switcher: Manual URL vs Federated Peer */}
+                    <div className="flex bg-[var(--input-bg)] p-0.5 rounded-lg border border-[var(--glass-border)] text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setMountForm({ ...mountForm, relay_mode: 'manual' })}
+                        className={`flex-1 py-1 px-2 rounded-md font-bold transition-all cursor-pointer ${
+                          !usePeerMode
+                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-sm'
+                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {t('services.icecast.relayModeManual', 'URL Manual')}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={peersWithIcecast.length === 0}
+                        onClick={() => {
+                          if (!selectedPeerEntry || !selectedPeerSvc) return;
+                          const mName = mountForm.relay_peer_mount || peerMountNames[0] || mountForm.mount_name || '/live.mp3';
+                          applyPeerSelection(
+                            selectedPeerEntry.peer,
+                            selectedPeerSvc,
+                            mName,
+                            mountForm.relay_peer_tls !== undefined ? Boolean(mountForm.relay_peer_tls) : Boolean(peerProtos.ssl_enabled)
+                          );
+                        }}
+                        className={`flex-1 py-1 px-2 rounded-md font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                          usePeerMode
+                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 shadow-sm'
+                            : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {t('services.icecast.relayModePeer', 'Peer Federado')}
+                        {peersWithIcecast.length === 0 ? ` (${t('services.icecast.relayNoPeers', 'Sin peers')})` : ''}
+                      </button>
+                    </div>
+
+                    {usePeerMode && selectedPeerEntry && selectedPeerSvc ? (
+                      <div className="space-y-2 bg-[var(--bg-card)]/60 p-2 rounded-lg border border-[var(--glass-border)]">
+                        <div>
+                          <label className="block text-[10px] font-semibold uppercase text-[var(--text-secondary)] mb-1">
+                            {t('services.icecast.relayPeerNode', 'Nodo Peer Federado')}
+                          </label>
+                          <SearchableSelect
+                            value={String(selectedPeerEntry.peer.id)}
+                            onChange={(val) => {
+                              const nextEntry = peersWithIcecast.find((e: any) => String(e.peer.id) === val);
+                              if (!nextEntry || !nextEntry.services.length) return;
+                              const nextSvc = nextEntry.services[0];
+                              const nextProt = nextSvc.protocols || {};
+                              const nextMounts = (Array.isArray(nextProt.mounts) ? nextProt.mounts : [])
+                                .map((pm: any) => (typeof pm === 'string' ? pm : pm.mount_name))
+                                .filter(Boolean);
+                              applyPeerSelection(
+                                nextEntry.peer,
+                                nextSvc,
+                                nextMounts[0] || '/live.mp3',
+                                Boolean(nextProt.ssl_enabled)
+                              );
+                            }}
+                            options={peersWithIcecast.map((e: any) => ({
+                              value: String(e.peer.id),
+                              label: `${e.peer.name} (${e.peer.status === 'online' ? `${e.peer.latency_ms || 0}ms` : 'offline'})`,
+                            }))}
+                            accent="lime"
+                            buttonClassName="!px-2 !py-1 !text-xs"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-semibold uppercase text-[var(--text-secondary)] mb-1">
+                              {t('services.icecast.relayPeerService', 'Servidor Icecast Remoto')}
+                            </label>
+                            <SearchableSelect
+                              value={String(selectedPeerSvc.id)}
+                              onChange={(val) => {
+                                const nextSvc = peerServices.find((s: any) => String(s.id) === val);
+                                if (!nextSvc) return;
+                                const nextProt = nextSvc.protocols || {};
+                                const nextMounts = (Array.isArray(nextProt.mounts) ? nextProt.mounts : [])
+                                  .map((pm: any) => (typeof pm === 'string' ? pm : pm.mount_name))
+                                  .filter(Boolean);
+                                applyPeerSelection(
+                                  selectedPeerEntry.peer,
+                                  nextSvc,
+                                  nextMounts[0] || '/live.mp3',
+                                  Boolean(nextProt.ssl_enabled)
+                                );
+                              }}
+                              options={peerServices.map((s: any) => ({
+                                value: String(s.id),
+                                label: `${s.name}${s.alias ? ` [${s.alias}]` : ''}`,
+                              }))}
+                              accent="lime"
+                              buttonClassName="!px-2 !py-1 !text-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-semibold uppercase text-[var(--text-secondary)] mb-1">
+                              {t('services.icecast.relayPeerMount', 'Mountpoint Remoto')}
+                            </label>
+                            {peerMountNames.length > 0 ? (
+                              <SearchableSelect
+                                value={peerMountNames.includes(mountForm.relay_peer_mount || '') ? (mountForm.relay_peer_mount || '') : '__custom__'}
+                                onChange={(val) => {
+                                  if (val === '__custom__') {
+                                    setMountForm({ ...mountForm, relay_peer_mount: '', relay_url: '' });
+                                    return;
+                                  }
+                                  applyPeerSelection(selectedPeerEntry.peer, selectedPeerSvc, val, effectiveTls);
+                                }}
+                                options={[
+                                  ...peerMounts
+                                    .filter((pm: any) => (typeof pm === 'string' ? pm : pm.mount_name))
+                                    .map((pm: any) => {
+                                      const mName = typeof pm === 'string' ? pm : pm.mount_name;
+                                      const isRel = typeof pm === 'object' && Boolean(pm.relay_enabled);
+                                      return {
+                                        value: mName,
+                                        label: isRel ? `${mName} (Relay)` : mName,
+                                      };
+                                    }),
+                                  { value: '__custom__', label: t('common.customPath', 'Custom mountpoint...') },
+                                ]}
+                                accent="lime"
+                                buttonClassName="!px-2 !py-1 !text-xs"
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                value={mountForm.relay_peer_mount || ''}
+                                onChange={(e) => applyPeerSelection(selectedPeerEntry.peer, selectedPeerSvc, e.target.value, effectiveTls)}
+                                className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                                placeholder="/live.mp3"
+                              />
+                            )}
+                          </div>
+                        </div>
+
+                        {peerMountNames.length > 0 && !peerMountNames.includes(mountForm.relay_peer_mount || '') && (
+                          <input
+                            type="text"
+                            value={mountForm.relay_peer_mount || ''}
+                            onChange={(e) => applyPeerSelection(selectedPeerEntry.peer, selectedPeerSvc, e.target.value, effectiveTls)}
+                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                            placeholder="/custom_mount.mp3"
+                          />
+                        )}
+
+                        {peerHasSsl && (
+                          <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={effectiveTls}
+                              onChange={(e) =>
+                                applyPeerSelection(
+                                  selectedPeerEntry.peer,
+                                  selectedPeerSvc,
+                                  mountForm.relay_peer_mount || peerMountNames[0] || '/live.mp3',
+                                  e.target.checked
+                                )
+                              }
+                              className="accent-cyan-400 w-3.5 h-3.5"
+                            />
+                            <span className="text-[11px] text-[var(--text-secondary)]">
+                              {t('services.icecast.relayPeerUseTls', 'Conectar por HTTPS (TLS)')}
+                            </span>
+                          </label>
+                        )}
+
+                        <div className="text-[10px] font-mono text-cyan-400 bg-[var(--input-bg)] px-2 py-1 rounded border border-[var(--glass-border)] truncate" title={mountForm.relay_url}>
+                          → {mountForm.relay_url || '-'}
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="block text-[10px] font-semibold uppercase text-[var(--text-secondary)] mb-1">
+                          {t('services.icecast.relayUrl', 'URL del Stream Icecast Remoto')} *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={mountForm.relay_url || ''}
+                          onChange={(e) => setMountForm({ ...mountForm, relay_url: e.target.value, relay_mode: 'manual' })}
+                          className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                          placeholder="https://origin.example.com:8000/stream.mp3"
+                        />
+                      </div>
+                    )}
+
+                    {/* Optional Upstream Auth */}
+                    <div className="bg-[var(--bg-card)]/60 p-2 rounded-lg border border-[var(--glass-border)] space-y-1.5">
+                      <span className="block text-[10px] font-semibold uppercase text-[var(--text-secondary)]">
+                        {t('services.icecast.relayAuthTitle', 'Autenticación Remota (Opcional)')}
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[9px] font-semibold uppercase text-[var(--text-secondary)] mb-0.5">
+                            {t('services.icecast.relayUsernameField', 'Usuario (Opcional)')}
+                          </label>
+                          <input
+                            type="text"
+                            value={mountForm.relay_username || ''}
+                            onChange={(e) => setMountForm({ ...mountForm, relay_username: e.target.value })}
+                            className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                            placeholder={t('services.icecast.relayUsernamePlaceholder', 'relay (por defecto)')}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-semibold uppercase text-[var(--text-secondary)] mb-0.5">
+                            {t('services.icecast.relayPasswordField', 'Contraseña (Opcional)')}
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showRelayPassword ? 'text' : 'password'}
+                              value={mountForm.relay_password || ''}
+                              onChange={(e) => setMountForm({ ...mountForm, relay_password: e.target.value })}
+                              className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg pl-2 pr-7 py-1 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                              placeholder="••••••••"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowRelayPassword((prev) => !prev)}
+                              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+                              tabIndex={-1}
+                            >
+                              {showRelayPassword ? '🙈' : '👁'}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-[9.5px] text-[var(--text-secondary)] leading-snug">
+                        {t('services.icecast.relayAuthHelp', 'Dejar vacío para montajes públicos o nodos federados estándar. Si solo pones contraseña, Icecast2 usa automáticamente el usuario \'relay\'.')}
+                      </p>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(mountForm.relay_on_demand)}
+                        onChange={(e) => setMountForm({ ...mountForm, relay_on_demand: e.target.checked })}
+                        className="accent-cyan-400 w-3.5 h-3.5"
+                      />
+                      <span className="text-[11px] text-[var(--text-secondary)]">
+                        {t('services.icecast.relayOnDemand', 'Relay bajo demanda (conectar solo cuando haya oyentes activos)')}
+                      </span>
                     </label>
-                    <input
-                      type="text"
-                      required
-                      value={mountForm.relay_url || ''}
-                      onChange={(e) => setMountForm({ ...mountForm, relay_url: e.target.value })}
-                      className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
-                      placeholder="https://origin.example.com:8000/stream.mp3"
-                    />
+                    <p className="text-[10px] text-[var(--text-secondary)] leading-snug">
+                      {t('services.icecast.relayDisabledHint', 'Alimentado por relay remoto — no estará disponible como destino para procesos FFmpeg locales (sigue disponible como origen).')}
+                    </p>
                   </div>
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(mountForm.relay_on_demand)}
-                      onChange={(e) => setMountForm({ ...mountForm, relay_on_demand: e.target.checked })}
-                      className="accent-cyan-400 w-3.5 h-3.5"
-                    />
-                    <span className="text-[11px] text-[var(--text-secondary)]">
-                      {t('services.icecast.relayOnDemand', 'Relay bajo demanda (conectar solo cuando haya oyentes activos)')}
-                    </span>
-                  </label>
-                  <p className="text-[10px] text-[var(--text-secondary)] leading-snug">
-                    {t('services.icecast.relayDisabledHint', 'Alimentado por relay remoto — no estará disponible como destino para procesos FFmpeg locales (sigue disponible como origen).')}
-                  </p>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-[var(--glass-border)]">
