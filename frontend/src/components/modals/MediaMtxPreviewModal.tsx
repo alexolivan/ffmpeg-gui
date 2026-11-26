@@ -1,17 +1,19 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
-import { ClipboardIcon, CheckIcon, ShieldIcon, LightningIcon } from '../Icons';
+import { ClipboardIcon, CheckIcon, ShieldIcon, LightningIcon, RefreshIcon } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 import { useTelemetry } from '../../context/TelemetryContext';
 import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
 import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
+import { getReloadButtonState, getRestartButtonState } from '../../utils/serviceActionStyles';
 
 interface MediaMtxPreviewModalProps {
   selectedProcess: any;
   telemetry: any[];
   actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
   isReloading?: boolean;
+  isReloadAck?: boolean;
   logs: any[];
   onClose: () => void;
   onEditProcess: (proc: any) => void;
@@ -47,6 +49,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   telemetry,
   actionPending,
   isReloading = false,
+  isReloadAck = false,
   logs: externalLogs,
   onClose,
   onEditProcess,
@@ -1388,59 +1391,67 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
               </button>
             )}
 
-            {canOperate && (currentProcess.status === 'running' ? (
-              <>
-                {onReloadService && (
+            {canOperate && (currentProcess.status === 'running' ? (() => {
+              const reloadState = getReloadButtonState({
+                isReloading,
+                isReloadAck,
+                isPendingReload: currentProcess.pending_change_mode === 'reload',
+              });
+              const restartState = getRestartButtonState({
+                isRestarting: actionPending[currentProcess.id] === 'restarting',
+                isPendingRestart: Boolean(currentProcess.pending_changes && currentProcess.pending_change_mode !== 'reload'),
+              });
+              const isBusy = !!actionPending[currentProcess.id] || isReloading;
+              return (
+                <>
+                  {onReloadService && (
+                    <button
+                      disabled={isBusy}
+                      onClick={() => onReloadService(currentProcess.id, currentProcess.name)}
+                      className={`pill-button hover:scale-[1.02] text-xs font-black py-1.5 px-5 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center cursor-pointer ${reloadState.className}`}
+                      title={
+                        isReloadAck
+                          ? t('services.reloadAckTooltip', 'Live configuration reloaded')
+                          : t('services.reloadService', 'Reload Config (Live)')
+                      }
+                    >
+                      {reloadState.spinIcon ? (
+                        <RefreshIcon size={13} className="animate-spin" />
+                      ) : reloadState.showCheck ? (
+                        <CheckIcon size={13} />
+                      ) : (
+                        <LightningIcon size={13} />
+                      )}
+                      {isReloading
+                        ? t('services.reloading', 'RELOADING...')
+                        : isReloadAck
+                        ? t('services.reloadedAck', 'RELOADED')
+                        : t('services.reloadButtonLabel', 'RELOAD')}
+                    </button>
+                  )}
                   <button
-                    disabled={!!actionPending[currentProcess.id] || isReloading}
-                    onClick={() => onReloadService(currentProcess.id, currentProcess.name)}
-                    className={`pill-button hover:scale-[1.02] text-xs font-black py-1.5 px-5 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center cursor-pointer ${
-                      currentProcess.pending_change_mode === 'reload'
-                        ? 'bg-brand-lime text-black shadow-xl shadow-brand-lime/20 animate-pulse'
-                        : 'bg-white/10 hover:bg-white/15 text-brand-lime border border-brand-lime/30'
-                    }`}
-                    title={t('services.reloadService', 'Reload Config (Live)')}
+                    disabled={isBusy}
+                    onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
+                    className={`pill-button hover:scale-[1.02] text-xs font-black py-1.5 px-5 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center cursor-pointer ${restartState.className}`}
                   >
-                    {isReloading ? (
-                      <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
-                    ) : (
-                      <LightningIcon size={13} />
-                    )}
-                    {isReloading
-                      ? t('services.reloading', 'RELOADING...')
-                      : t('services.reloadButtonLabel', 'RELOAD')}
+                    <RefreshIcon size={13} className={restartState.spinIcon ? 'animate-spin' : ''} />
+                    {restartState.spinIcon
+                      ? t('services.restarting', 'RESTARTING...')
+                      : t('services.restartService', 'RESTART SERVICE')}
                   </button>
-                )}
-                <button
-                  disabled={!!actionPending[currentProcess.id] || isReloading}
-                  onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
-                  className={`pill-button hover:scale-[1.02] text-black text-xs font-black py-1.5 px-5 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center cursor-pointer ${
-                    currentProcess.pending_changes && currentProcess.pending_change_mode !== 'reload'
-                      ? 'bg-brand-orange shadow-xl shadow-brand-orange/20'
-                      : 'bg-brand-lime shadow-xl shadow-brand-lime/20'
-                  }`}
-                >
-                  {actionPending[currentProcess.id] === 'restarting' && (
-                    <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin inline-block" />
-                  )}
-                  {actionPending[currentProcess.id] === 'restarting'
-                    ? t('services.restarting', 'RESTARTING...')
-                    : t('services.restartService', 'RESTART SERVICE')}
-                </button>
-                <button
-                  disabled={!!actionPending[currentProcess.id]}
-                  onClick={() => onStopService(currentProcess.id, currentProcess.name)}
-                  className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-1.5 px-5 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center cursor-pointer"
-                >
-                  {actionPending[currentProcess.id] === 'stopping' && (
-                    <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
-                  )}
-                  {actionPending[currentProcess.id] === 'stopping'
-                    ? t('services.stopping', 'STOPPING...')
-                    : t('services.stopService', 'STOP SERVICE')}
-                </button>
-              </>
-            ) : (
+                  <button
+                    disabled={isBusy}
+                    onClick={() => onStopService(currentProcess.id, currentProcess.name)}
+                    className="pill-button bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs font-bold py-1.5 px-5 disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center cursor-pointer"
+                  >
+                    {actionPending[currentProcess.id] === 'stopping' && (
+                      <RefreshIcon size={13} className="animate-spin text-brand-orange" />
+                    )}
+                    {actionPending[currentProcess.id] === 'stopping' ? t('services.stopping', 'STOPPING...') : t('services.stopService', 'STOP SERVICE')}
+                  </button>
+                </>
+              );
+            })() : (
               <button
                 disabled={!!actionPending[currentProcess.id]}
                 onClick={() => onStartService(currentProcess.id)}

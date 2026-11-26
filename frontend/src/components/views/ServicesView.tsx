@@ -25,6 +25,7 @@ interface ServicesViewProps {
   telemetry: any[];
   actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
   reloadingIds?: Record<number, boolean>;
+  reloadAckIds?: Record<number, boolean>;
   onEditProcess: (proc: any) => void;
   onCloneProcess: (proc: any) => void;
   onStartService: (procId: number) => void;
@@ -52,6 +53,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
   telemetry,
   actionPending,
   reloadingIds = {},
+  reloadAckIds = {},
   onEditProcess,
   onCloneProcess,
   onStartService,
@@ -108,6 +110,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           telemetryItem={proc}
           actionPending={actionPending[proc.id]}
           isReloading={!!reloadingIds[proc.id]}
+          isReloadAck={!!reloadAckIds[proc.id]}
           onStartService={onStartService}
           onStopService={onStopService}
           onRestartService={onRestartService}
@@ -130,6 +133,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           telemetryItem={proc}
           actionPending={actionPending[proc.id]}
           isReloading={!!reloadingIds[proc.id]}
+          isReloadAck={!!reloadAckIds[proc.id]}
           onStartService={onStartService}
           onStopService={onStopService}
           onRestartService={onRestartService}
