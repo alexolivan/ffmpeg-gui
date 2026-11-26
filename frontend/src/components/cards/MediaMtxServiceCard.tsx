@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
-  PlayIcon, 
-  StopIcon, 
-  RefreshIcon, 
   PencilIcon, 
   TrashIcon, 
   ClipboardIcon, 
@@ -11,6 +8,7 @@ import {
   LightningIcon, 
   ExportIcon 
 } from '../Icons';
+import { ServiceLifecycleButtons } from './ServiceLifecycleButtons';
 import { EngineLogo } from '../common/EngineLogo';
 import { MicroSparkline } from '../common/MicroSparkline';
 import { ServiceRRDDrawer } from './ServiceRRDDrawer';
@@ -22,9 +20,12 @@ interface MediaMtxServiceCardProps {
   service: ServiceItem;
   telemetryItem?: any;
   actionPending?: 'starting' | 'stopping' | 'restarting';
+  isReloading?: boolean;
+  isReloadAck?: boolean;
   onStartService: (procId: number) => void;
   onStopService: (procId: number, name?: string) => void;
   onRestartService: (procId: number, name: string) => void;
+  onReloadService?: (procId: number, name?: string) => void;
   onEditProcess: (service: ServiceItem) => void;
   onCloneProcess?: (service: ServiceItem) => void;
   onDeleteProcess: (service: ServiceItem) => void;
@@ -54,9 +55,12 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
   service,
   telemetryItem,
   actionPending,
+  isReloading = false,
+  isReloadAck = false,
   onStartService,
   onStopService,
   onRestartService,
+  onReloadService,
   onEditProcess,
   onCloneProcess,
   onDeleteProcess,
@@ -72,7 +76,7 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
   const canAdmin = hasMinLevel(serviceLevel, 'admin');
   const isRunning = service.status === 'running';
   const isError = service.status === 'error';
-  const isPending = !!actionPending;
+  const isPending = !!actionPending || isReloading;
   const watchdogEnabled = service.watchdog_enabled ?? service.config?.watchdog_enabled ?? false;
   const restartCount = service.restart_count ?? telemetryItem?.restart_count ?? 0;
   const isRetrying = !!watchdogEnabled && restartCount > 0 && service.status !== 'running' && service.status !== 'stopped';
@@ -161,11 +165,23 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
             </span>
           )}
 
-          {/* Pending Changes Reboot */}
+          {/* Pending Changes Badge (Reload vs Reboot) */}
           {service.pending_changes && (
-            <span className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse">
-              PENDING REBOOT
-            </span>
+            service.pending_change_mode === 'reload' ? (
+              <span
+                className="text-[9px] bg-brand-lime/20 text-brand-lime border border-brand-lime/30 px-2 py-0.5 rounded font-black animate-pulse"
+                title={t('services.reloadPendingTooltip', 'Live-reloadable changes pending — apply without dropping active listeners/streams')}
+              >
+                PENDING RELOAD
+              </span>
+            ) : (
+              <span
+                className="text-[9px] bg-brand-orange/20 text-brand-orange border border-brand-orange/30 px-2 py-0.5 rounded font-black animate-pulse"
+                title={t('services.restartPendingTooltip', 'Structural changes pending (ports, bind, TLS or relays) — full restart required')}
+              >
+                PENDING REBOOT
+              </span>
+            )
           )}
 
           {/* Autostart on Boot */}
@@ -317,54 +333,22 @@ export const MediaMtxServiceCard: React.FC<MediaMtxServiceCardProps> = ({
           </button>
         )}
 
-        {/* Restart Button */}
-        {canOperate && isRunning && (
-          <button
-            disabled={isPending}
-            onClick={() => onRestartService(service.id, service.name)}
-            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 disabled:opacity-50 ${
-              service.pending_changes
-                ? 'bg-brand-orange text-black border-brand-orange/40 animate-pulse shadow-lg shadow-brand-orange/20'
-                : 'bg-white/5 hover:bg-white/10 border-white/10 text-emerald-400'
-            }`}
-            title={t('services.restartService', 'Restart Service')}
-          >
-            {actionPending === 'restarting' ? (
-              <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" />
-            ) : (
-              <RefreshIcon size={16} />
-            )}
-          </button>
-        )}
-
-        {/* Start / Stop Action Controls */}
-        {canOperate && (isRunning || isRetrying ? (
-          <button
-            disabled={actionPending === 'stopping'}
-            onClick={() => onStopService(service.id, service.name)}
-            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
-            title={t('services.stopService', 'Stop Service')}
-          >
-            {actionPending === 'stopping' ? (
-              <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
-            ) : (
-              <StopIcon size={16} />
-            )}
-          </button>
-        ) : (
-          <button
-            disabled={actionPending === 'starting' || actionPending === 'stopping'}
-            onClick={() => onStartService(service.id)}
-            className="w-9 h-9 rounded-xl bg-emerald-400/20 hover:bg-emerald-400/30 text-emerald-300 border border-emerald-400/30 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
-            title={t('services.startService', 'Start Service')}
-          >
-            {actionPending === 'starting' ? (
-              <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" />
-            ) : (
-              <PlayIcon size={16} />
-            )}
-          </button>
-        ))}
+        <ServiceLifecycleButtons
+          serviceId={service.id}
+          serviceName={service.name}
+          canOperate={canOperate}
+          isRunning={isRunning}
+          isRetrying={isRetrying}
+          actionPending={actionPending}
+          isReloading={isReloading}
+          isReloadAck={isReloadAck}
+          pendingChanges={service.pending_changes}
+          pendingChangeMode={service.pending_change_mode}
+          onStartService={onStartService}
+          onStopService={onStopService}
+          onRestartService={onRestartService}
+          onReloadService={onReloadService}
+        />
 
         {/* Delete Button */}
         {canAdmin && (

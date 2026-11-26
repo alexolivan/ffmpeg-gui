@@ -4153,6 +4153,7 @@ async def telemetry_broadcast_loop():
                         "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
                         "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
                         "pending_changes": p.pending_changes,
+                        "pending_change_mode": p.pending_change_mode,
                         "allow_auto_start_deps": getattr(p, 'allow_auto_start_deps', True),
                         "allow_auto_stop_deps": getattr(p, 'allow_auto_stop_deps', True),
                         "active_leases": p_leases,
@@ -5839,6 +5840,7 @@ def list_processes(request: Request = None, db: Session = Depends(get_db)):
             "is_pinned": dependency_manager.is_pinned(p.id),
             "dependencies": p_deps,
             "pending_changes": p.pending_changes,
+            "pending_change_mode": p.pending_change_mode,
             "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
             "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
             "restart_count": p.restart_count,
@@ -6938,6 +6940,18 @@ async def restart_process(process_id: int, request: Request, db: Session = Depen
     return {"status": "restarting", "process_id": process_id}
 
 
+@app.post("/processes/{process_id}/reload")
+async def reload_process_endpoint(process_id: int, request: Request, db: Session = Depends(get_db)):
+    try:
+        res = await process_manager.reload_process(process_id)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    except RuntimeError as err:
+        raise HTTPException(status_code=409, detail=str(err))
+    audit_service_action("SERVICE_RELOAD", process_id, request, db, details=res.get("detail", "Service reloaded"))
+    return res
+
+
 def migrate_and_validate_profile(payload: dict, db: Session) -> dict:
     if "profile" in payload and isinstance(payload["profile"], dict):
         profile = dict(payload["profile"])
@@ -7584,6 +7598,7 @@ def list_services(request: Request = None, db: Session = Depends(get_db)):
             "last_stop": s.last_stop.isoformat() + "Z" if s.last_stop else None,
             "restart_count": s.restart_count,
             "pending_changes": s.pending_changes,
+            "pending_change_mode": s.pending_change_mode,
             "last_error": getattr(s, "last_error", None),
             "is_shared_with_peers": bool(s.is_shared_with_peers),
             "allow_peer_lease": bool(s.allow_peer_lease),
@@ -7751,6 +7766,18 @@ async def restart_service_endpoint(service_id: int, request: Request, db: Sessio
     await process_manager.start_process(service_id, is_restart=True)
     audit_service_action("SERVICE_RESTART", service_id, request, db, details="Service restarted")
     return {"status": "restarting"}
+
+
+@app.post("/api/services/{service_id}/reload")
+async def reload_service_endpoint(service_id: int, request: Request, db: Session = Depends(get_db)):
+    try:
+        res = await process_manager.reload_process(service_id)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err))
+    except RuntimeError as err:
+        raise HTTPException(status_code=409, detail=str(err))
+    audit_service_action("SERVICE_RELOAD", service_id, request, db, details=res.get("detail", "Service reloaded"))
+    return res
 
 
 @app.get("/api/services/{service_id}/logs")
@@ -8510,6 +8537,7 @@ def _serialize_service(p) -> dict:
         "watchdog_max_memory_mb": p.watchdog_max_memory_mb,
         "watchdog_max_memory_duration": p.watchdog_max_memory_duration,
         "pending_changes": p.pending_changes,
+        "pending_change_mode": p.pending_change_mode,
         "last_start": p.last_start.isoformat() + "Z" if p.last_start else None,
         "last_stop": p.last_stop.isoformat() + "Z" if p.last_stop else None,
         "restart_count": p.restart_count,

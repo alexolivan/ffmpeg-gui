@@ -58,6 +58,7 @@ export interface ServiceItem {
     [key: string]: any;
   };
   pending_changes?: boolean;
+  pending_change_mode?: 'none' | 'reload' | 'restart';
   last_start?: string | null;
   last_stop?: string | null;
   restart_count?: number;

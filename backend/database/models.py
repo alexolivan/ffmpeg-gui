@@ -424,23 +424,163 @@ class Service(Base):
     def error_message(self, val):
         self.last_error = val
 
+    _MEDIAMTX_RELOADABLE_KEYS = frozenset({
+        "paths", "security",
+        "publish_user", "publishUser", "publish_pass", "publishPass",
+        "read_user", "readUser", "read_pass", "readPass",
+        "log_level", "hls_segment_count", "hls_segment_duration", "hls_storage_id",
+    })
+    _ICECAST_RELOADABLE_KEYS = frozenset({
+        "mounts", "clients_limit", "sources_limit", "burst_size",
+        "hostname", "location", "admin_email",
+        "source_password", "admin_user", "admin_password", "relay_password",
+    })
+
+    @staticmethod
+    def _effective_build_id(cfg: dict):
+        if not isinstance(cfg, dict):
+            return None
+        return cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+
+    @staticmethod
+    def _norm_bind_addr(val) -> str:
+        s = str(val or "").strip()
+        return "" if s in ("", "0.0.0.0", "::") else s
+
+    @classmethod
+    def _normalize_icecast_mounts(cls, mounts) -> list:
+        if not isinstance(mounts, list):
+            return []
+        norm = []
+        for m in mounts:
+            if not isinstance(m, dict):
+                continue
+            m_name = str(m.get("mount_name") or "").strip()
+            if m_name and not m_name.startswith("/"):
+                m_name = "/" + m_name
+            fb = str(m.get("fallback_mount") or "").strip()
+            if fb and not fb.startswith("/"):
+                fb = "/" + fb
+            relay_en = bool(m.get("relay_enabled", False))
+            norm.append({
+                "mount_name": m_name,
+                "max_listeners": m.get("max_listeners") or None,
+                "fallback_mount": fb,
+                "fallback_override": bool(m.get("fallback_override", True)) if fb else True,
+                "burst_size": m.get("burst_size") or None,
+                "source_password": str(m.get("source_password") or "").strip(),
+                "relay_enabled": relay_en,
+                "relay_url": str(m.get("relay_url") or "").strip() if relay_en else "",
+                "relay_on_demand": bool(m.get("relay_on_demand", False)) if relay_en else False,
+                "relay_username": str(m.get("relay_username") or "").strip() if relay_en else "",
+                "relay_password": str(m.get("relay_password") or "").strip() if relay_en else "",
+            })
+        return norm
+
+    @staticmethod
+    def _icecast_relay_signature(ice_cfg: dict) -> list:
+        mounts = ice_cfg.get("mounts") if isinstance(ice_cfg, dict) else None
+        if not isinstance(mounts, list):
+            return []
+        relays = []
+        for m in mounts:
+            if not isinstance(m, dict) or not m.get("relay_enabled"):
+                continue
+            relays.append((
+                str(m.get("mount_name") or "").strip(),
+                str(m.get("relay_url") or "").strip(),
+                bool(m.get("relay_on_demand", False)),
+                str(m.get("relay_username") or "").strip(),
+                str(m.get("relay_password") or "").strip(),
+            ))
+        return sorted(relays)
+
     @property
-    def pending_changes(self) -> bool:
+    def pending_change_mode(self) -> str:
+        """
+        Return 'none', 'reload' (apply live without restart), or 'restart'
+        based on the delta between saved config and last_started_config.
+        """
         if self.status != 'running' or not self.last_started_config:
-            return False
-        
+            return 'none'
+
         current_cfg = self.config or {}
         last_started = self.last_started_config
         started_cfg = last_started.get('config') if isinstance(last_started, dict) and 'config' in last_started else last_started
         if not isinstance(started_cfg, dict):
-            return False
-            
+            return 'none'
+
+        svc_type = getattr(self, 'service_type', None) or 'ffmpeg_stream'
+
+        if svc_type == 'mediamtx_hub':
+            if self._effective_build_id(current_cfg) != self._effective_build_id(started_cfg):
+                return 'restart'
+            cur_m = current_cfg.get('mediamtx_config') or {}
+            old_m = started_cfg.get('mediamtx_config') or {}
+            changed_keys = set()
+            for k in set(cur_m) | set(old_m):
+                cv, ov = cur_m.get(k), old_m.get(k)
+                if k == 'bind_address':
+                    if self._norm_bind_addr(cv) != self._norm_bind_addr(ov):
+                        changed_keys.add(k)
+                elif cv != ov:
+                    changed_keys.add(k)
+            if not changed_keys:
+                return 'none'
+            return 'reload' if changed_keys.issubset(self._MEDIAMTX_RELOADABLE_KEYS) else 'restart'
+
+        if svc_type == 'icecast_server':
+            if (
+                self._effective_build_id(current_cfg) != self._effective_build_id(started_cfg)
+                or current_cfg.get('log_storage_id') != started_cfg.get('log_storage_id')
+            ):
+                return 'restart'
+            cur_i = current_cfg.get('icecast_config') or {}
+            old_i = started_cfg.get('icecast_config') or {}
+            changed_keys = set()
+            for k in set(cur_i) | set(old_i):
+                if k == 'has_status_json':
+                    continue
+                cv, ov = cur_i.get(k), old_i.get(k)
+                if k == 'bind_address':
+                    if self._norm_bind_addr(cv) != self._norm_bind_addr(ov):
+                        changed_keys.add(k)
+                elif k == 'mounts':
+                    if self._normalize_icecast_mounts(cv) != self._normalize_icecast_mounts(ov):
+                        changed_keys.add(k)
+                elif cv != ov:
+                    changed_keys.add(k)
+            if not changed_keys:
+                return 'none'
+            if not changed_keys.issubset(self._ICECAST_RELOADABLE_KEYS):
+                return 'restart'
+            if self._icecast_relay_signature(cur_i) != self._icecast_relay_signature(old_i):
+                return 'restart'
+            return 'reload'
+
+        if svc_type == 'pipewire_hub':
+            changed = (
+                current_cfg.get('pipewire_config') != started_cfg.get('pipewire_config')
+                or self._effective_build_id(current_cfg) != self._effective_build_id(started_cfg)
+            )
+            return 'restart' if changed else 'none'
+
+        if svc_type == 'desktop':
+            return 'restart' if current_cfg.get('desktop_config') != started_cfg.get('desktop_config') else 'none'
+
+        if svc_type == 'kiosk_browser':
+            return 'restart' if current_cfg.get('kiosk_config') != started_cfg.get('kiosk_config') else 'none'
+
         c_in, s_in = current_cfg.get('input_config'), started_cfg.get('input_config')
         c_out, s_out = current_cfg.get('output_config'), started_cfg.get('output_config')
         c_codec, s_codec = current_cfg.get('codec_config'), started_cfg.get('codec_config')
         c_filter, s_filter = current_cfg.get('filter_config'), started_cfg.get('filter_config')
-        
-        return (c_in != s_in) or (c_out != s_out) or (c_codec != s_codec) or (c_filter != s_filter)
+        changed = (c_in != s_in) or (c_out != s_out) or (c_codec != s_codec) or (c_filter != s_filter)
+        return 'restart' if changed else 'none'
+
+    @property
+    def pending_changes(self) -> bool:
+        return self.pending_change_mode != 'none'
 
 
 class ServiceDependency(Base):

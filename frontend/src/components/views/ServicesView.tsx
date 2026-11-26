@@ -24,11 +24,14 @@ export { hasVideo };
 interface ServicesViewProps {
   telemetry: any[];
   actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
+  reloadingIds?: Record<number, boolean>;
+  reloadAckIds?: Record<number, boolean>;
   onEditProcess: (proc: any) => void;
   onCloneProcess: (proc: any) => void;
   onStartService: (procId: number) => void;
   onStopService: (procId: number, procName?: string) => void;
   onRestartService: (procId: number, name: string) => void;
+  onReloadService?: (procId: number, name?: string) => void;
   onDeleteProcess: (proc: any) => void;
   onSelectedProcess: (proc: any) => void;
   importFileRef: React.RefObject<HTMLInputElement | null>;
@@ -49,11 +52,14 @@ export const isActiveService = (p: any, actionPending: Record<number, string> = 
 export const ServicesView: React.FC<ServicesViewProps> = ({
   telemetry,
   actionPending,
+  reloadingIds = {},
+  reloadAckIds = {},
   onEditProcess,
   onCloneProcess,
   onStartService,
   onStopService,
   onRestartService,
+  onReloadService,
   onDeleteProcess,
   onSelectedProcess,
   importFileRef,
@@ -103,9 +109,12 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           service={proc as ServiceItem}
           telemetryItem={proc}
           actionPending={actionPending[proc.id]}
+          isReloading={!!reloadingIds[proc.id]}
+          isReloadAck={!!reloadAckIds[proc.id]}
           onStartService={onStartService}
           onStopService={onStopService}
           onRestartService={onRestartService}
+          onReloadService={onReloadService}
           onEditProcess={onEditProcess}
           onCloneProcess={onCloneProcess}
           onDeleteProcess={onDeleteProcess}
@@ -123,9 +132,12 @@ export const ServicesView: React.FC<ServicesViewProps> = ({
           service={proc as ServiceItem}
           telemetryItem={proc}
           actionPending={actionPending[proc.id]}
+          isReloading={!!reloadingIds[proc.id]}
+          isReloadAck={!!reloadAckIds[proc.id]}
           onStartService={onStartService}
           onStopService={onStopService}
           onRestartService={onRestartService}
+          onReloadService={onReloadService}
           onEditProcess={onEditProcess}
           onCloneProcess={onCloneProcess}
           onDeleteProcess={onDeleteProcess}

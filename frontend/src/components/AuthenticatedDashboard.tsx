@@ -126,6 +126,9 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
     handleStopService,
     handleCloneProcess,
     handleRestartService,
+    handleReloadService,
+    reloadingIds,
+    reloadedAckIds,
     handleImportFileChange,
     actionPending,
   } = useProcesses();
@@ -191,11 +194,14 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
           <ServicesView
             telemetry={telemetry}
             actionPending={actionPending}
+            reloadingIds={reloadingIds}
+            reloadAckIds={reloadedAckIds}
             onEditProcess={setEditingProcess}
             onCloneProcess={handleCloneProcess}
             onStartService={handleStartService}
             onStopService={handleStopService}
             onRestartService={handleRestartService}
+            onReloadService={handleReloadService}
             onDeleteProcess={handleDeleteProcess}
             onSelectedProcess={setSelectedProcess}
             importFileRef={importFileRef}
@@ -712,6 +718,8 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             selectedProcess={selectedProcess}
             telemetry={telemetry}
             actionPending={actionPending}
+            isReloading={!!reloadingIds[selectedProcess.id]}
+            isReloadAck={!!reloadedAckIds[selectedProcess.id]}
             logs={logs}
             onClose={() => setSelectedProcess(null)}
             onEditProcess={setEditingProcess}
@@ -719,6 +727,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStartService={handleStartService}
             onStopService={handleStopService}
             onRestartService={handleRestartService}
+            onReloadService={handleReloadService}
             API={API}
             settings={settings}
             isCloudHubSession={isCloudHubSession}
@@ -729,6 +738,8 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             selectedProcess={selectedProcess}
             telemetry={telemetry}
             actionPending={actionPending}
+            isReloading={!!reloadingIds[selectedProcess.id]}
+            isReloadAck={!!reloadedAckIds[selectedProcess.id]}
             logs={logs}
             onClose={() => setSelectedProcess(null)}
             onEditProcess={setEditingProcess}
@@ -736,6 +747,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             onStartService={handleStartService}
             onStopService={handleStopService}
             onRestartService={handleRestartService}
+            onReloadService={handleReloadService}
             API={API}
             settings={settings}
             isCloudHubSession={isCloudHubSession}

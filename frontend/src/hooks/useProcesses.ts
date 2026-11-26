@@ -21,6 +21,9 @@ export function useProcesses() {
   const [logs, setLogs] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProcess, setEditingProcess] = useState<any | null>(null);
+  const [reloadingIds, setReloadingIds] = useState<Record<number, boolean>>({});
+  const [reloadedAckIds, setReloadedAckIds] = useState<Record<number, boolean>>({});
+  const reloadAckTimersRef = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const importFileRef = useRef<HTMLInputElement | null>(null);
 
   // ── Process logs: On-Demand WebSocket Subscription (Zero HTTP Polling) ──
@@ -163,6 +166,53 @@ export function useProcesses() {
     }
   };
 
+  const handleReloadService = async (procId: number, procName?: string) => {
+    if (actionPending[procId] || reloadingIds[procId]) return;
+    if (reloadAckTimersRef.current[procId]) {
+      clearTimeout(reloadAckTimersRef.current[procId]);
+      delete reloadAckTimersRef.current[procId];
+    }
+    setReloadedAckIds(prev => {
+      if (!prev[procId]) return prev;
+      const next = { ...prev };
+      delete next[procId];
+      return next;
+    });
+    setReloadingIds(prev => ({ ...prev, [procId]: true }));
+    const startedAt = Date.now();
+    try {
+      const res = await fetch(`${API}/processes/${procId}/reload`, { method: 'POST' });
+      const minSpinRemaining = 450 - (Date.now() - startedAt);
+      if (minSpinRemaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, minSpinRemaining));
+      }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const label = procName || telemetry.find(p => p.id === procId)?.name || `#${procId}`;
+        alert(`${t('services.reloadFailed', 'Live reload failed')} (${label}): ${errData.detail || res.statusText}`);
+      } else {
+        setReloadedAckIds(prev => ({ ...prev, [procId]: true }));
+        reloadAckTimersRef.current[procId] = setTimeout(() => {
+          setReloadedAckIds(prev => {
+            const next = { ...prev };
+            delete next[procId];
+            return next;
+          });
+          delete reloadAckTimersRef.current[procId];
+        }, 1800);
+      }
+    } catch (err: any) {
+      console.error("Error reloading process:", err);
+      alert(`${t('services.reloadFailed', 'Live reload failed')}: ${err?.message || err}`);
+    } finally {
+      setReloadingIds(prev => {
+        const next = { ...prev };
+        delete next[procId];
+        return next;
+      });
+    }
+  };
+
   const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -212,6 +262,9 @@ export function useProcesses() {
     handleStopService,
     handleCloneProcess,
     handleRestartService,
+    handleReloadService,
+    reloadingIds,
+    reloadedAckIds,
     handleImportFileChange,
     actionPending,
   };

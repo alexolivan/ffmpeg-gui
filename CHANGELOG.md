@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.75.5] - 2026-11-26
+
+### Changed
+- **Unified Service Card & Preview Modal Action Controls (`ServiceLifecycleButtons.tsx`, `serviceActionStyles.ts`, `useProcesses.ts`)**:
+  - Extracted `<ServiceLifecycleButtons />` and `getRestartButtonState` / `getReloadButtonState` helpers matching `FfmpegServiceCard` aesthetics across `IcecastServiceCard`, `MediaMtxServiceCard`, `PipeWireServiceCard`, and `DesktopServiceCard`, as well as `IcecastPreviewModal` and `MediaMtxPreviewModal`.
+  - Fixed state priority so active `restarting` and `reloading` phases strictly override pending-change pulse animations immediately upon click and display spinning `<RefreshIcon />` indicators with translucent tinted borders instead of solid blocks.
+  - Added visible click feedback (450 ms minimum spinner window) and a 1.8 s `RELOADED` checkmark acknowledgement (`reloadedAckIds`) in `handleReloadService` after `POST /reload` succeeds.
+
+## [2.75.4] - 2026-11-26
+
+### Changed
+- **Icecast2 Fallback Mountpoint Selector (`IcecastConfigForm.tsx`, `icecastHelpers.ts`)**:
+  - Replaced the free-text `fallback_mount` input with a conditional `<SearchableSelect />` listing only the other distinct mountpoints configured on the same Icecast server (excluding self).
+  - The fallback selector and `fallback_override` auto-recovery toggle now appear only when multiple mountpoints exist (or an existing legacy fallback needs management).
+  - Automatically cascades sibling `fallback_mount` updates on mountpoint rename and clears dangling `fallback_mount` references on deletion.
+
+### Fixed
+- **Federated Icecast Relay HTTP-First Default (`peer_manager.py`, `IcecastConfigForm.tsx`)**:
+  - Exported `http_enabled` inside `_extract_service_protocols` for federated `icecast_server` catalog entries.
+  - Updated the federated peer relay selector to prefer plain HTTP by default whenever HTTP is enabled on the peer (avoiding TLS mismatch errors on Icecast 2.3/2.4 relays and self-signed certs), enabling TLS automatically only when HTTP is disabled.
+
+## [2.75.3] - 2026-11-26
+
+### Fixed
+- **Non-FFmpeg `start_process` Crash (`UnboundLocalError: copy`) (`process_manager.py`)**:
+  - Removed a shadowed local `import copy` inside the FFmpeg branch of `ProcessManager.start_process` (already imported at module scope) that raised `UnboundLocalError` for `icecast_server`, `mediamtx_hub`, `pipewire_hub`, `desktop`, and `kiosk_browser` services when persisting `last_started_config`.
+  - Added regression test `test_start_process_icecast_no_unbound_copy` in `backend/tests/test_service_reload.py` verifying full `start_process` execution for an `icecast_server` configured with a remote relay.
+
+## [2.75.2] - 2026-11-26
+
+### Fixed
+- **False-Positive `PENDING REBOOT` on Existing Icecast2 & MediaMTX Services (`models.py`, `process_manager.py`)**:
+  - Resolved effective build IDs (`software_build_id or ffmpeg_build_id or build_id`) in `Service.pending_change_mode` so re-saving `IcecastConfigForm`/`MediaMtxConfigForm` (which sends `ffmpeg_build_id` without repeating `software_build_id`) no longer looks like a software build change when the ID matches.
+  - Normalized wildcard `bind_address` values (`None`, `""`, `"0.0.0.0"`, `"::"`) and Icecast mount default fields (`fallback_override`, `relay_enabled`) during config diffing so unchanged production instances deployed prior to `v2.75.0` stay clean (`mode: none`).
+  - Refreshed `last_started_config` with `copy.deepcopy(media_proc.config)` in `ProcessManager.start_process` so runtime build-resolution metadata is captured accurately in the launched snapshot.
+
+## [2.75.1] - 2026-11-26
+
+### Added
+- **Icecast2 Relay Authentication & Federated Peer Source Picker**:
+  - Added optional **Username** (`relay_username`) and **Password** (`relay_password`, masked toggle & RBAC-redacted) fields per relay mountpoint in `IcecastConfigForm`. When only a password is supplied, `_build_icecast_relay_xml` automatically defaults `<username>` to `relay` and emits proper `<username>`/`<password>` XML tags for both Icecast 2.3/2.4/KH and Icecast 2.5+ `<upstream>` blocks.
+  - Added **`Manual URL` | `Federated Peer`** switcher inside the relay configuration modal so operators can pull any Icecast mountpoint from another federated node (`/api/peers/remote-nodes`) with 3 `<SearchableSelect />` clicks (Peer → Icecast server → Mountpoint + TLS option).
+
+## [2.75.0] - 2026-11-26
+
+### Added
+- **Icecast2 Remote Mountpoint Relays (`<relay>` Pull Support)**:
+  - Added per-mountpoint **Feed from Remote Relay** (`relay_enabled`), **Remote Icecast Stream URL** (`relay_url`), and **On-demand** (`relay_on_demand`) toggles in `IcecastConfigForm` with `RELAY` mount badges.
+  - Emits version-aware `<relay>` XML blocks in `_build_icecast_config_and_cmd` (`<server>/<port>/<mount>/<local-mount>` + optional credentials for Icecast 2.3/2.4/KH, and `<upstream type="normal"><uri>...</uri></upstream>` for Icecast 2.5+) alongside local `<mount>` fallback settings.
+  - Filtered relay-fed mountpoints out of FFmpeg output destination selectors (`DestinationPanel`) while keeping them selectable as HTTP audio sources (`InputSourcePanel`).
+- **Live Service Hot-Reload (`MediaMTX` & `Icecast2`)**:
+  - Added `POST /processes/{id}/reload` and `POST /api/services/{id}/reload` (`operate` RBAC level) backed by `ProcessManager.reload_process`: atomically rewrites the active RAM configuration via `os.replace` on `ephemeral_configs[id]` (`mediamtx.yml` hot-watch for MediaMTX; `icecast.xml` + `SIGHUP` for Icecast2) and refreshes `last_started_config` without dropping active listeners or streams.
+  - Added `Service.pending_change_mode` (`'none' | 'reload' | 'restart'`) classifying config changes so `MediaMtxServiceCard`, `IcecastServiceCard`, `MediaMtxPreviewModal`, and `IcecastPreviewModal` highlight the **`Reload`** (`PENDING RELOAD`) action for live-reloadable path/mount updates and reserve **`Restart`** (`PENDING REBOOT`) highlights for ports/bind/TLS/relay structural changes.
+  - Added EN/ES/CA translations and unit tests in `test_icecast_service.py` and `test_service_reload.py`.
+
 ## [2.74.2] - 2026-11-25
 
 ### Changed

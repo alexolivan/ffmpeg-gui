@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  PlayIcon,
-  StopIcon,
-  RefreshIcon,
   PencilIcon,
   TrashIcon,
   ClipboardIcon,
@@ -11,6 +8,7 @@ import {
   LightningIcon,
   ShieldIcon,
 } from '../Icons';
+import { ServiceLifecycleButtons } from './ServiceLifecycleButtons';
 import { EngineLogo } from '../common/EngineLogo';
 import { MicroSparkline } from '../common/MicroSparkline';
 import { ServiceRRDDrawer } from './ServiceRRDDrawer';
@@ -351,54 +349,19 @@ export const PipeWireServiceCard: React.FC<PipeWireServiceCardProps> = ({
           </button>
         )}
 
-        {/* Restart Button */}
-        {canOperate && isRunning && (
-          <button
-            disabled={isPending}
-            onClick={() => onRestartService(service.id, service.name)}
-            className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-all hover:scale-105 disabled:opacity-50 ${
-              service.pending_changes
-                ? 'bg-brand-orange text-black border-brand-orange/40 animate-pulse shadow-lg shadow-brand-orange/20'
-                : 'bg-white/5 hover:bg-white/10 border-white/10 text-emerald-400'
-            }`}
-            title={t('services.restartService', 'Restart Service')}
-          >
-            {actionPending === 'restarting' ? (
-              <span className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin inline-block" />
-            ) : (
-              <RefreshIcon size={16} />
-            )}
-          </button>
-        )}
-
-        {/* Start / Stop Action Controls */}
-        {canOperate && (isRunning || isRetrying ? (
-          <button
-            disabled={actionPending === 'stopping'}
-            onClick={() => onStopService(service.id, service.name)}
-            className="w-9 h-9 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
-            title={t('services.stopService', 'Stop Service')}
-          >
-            {actionPending === 'stopping' ? (
-              <span className="w-3.5 h-3.5 border-2 border-red-400 border-t-transparent rounded-full animate-spin inline-block" />
-            ) : (
-              <StopIcon size={16} />
-            )}
-          </button>
-        ) : (
-          <button
-            disabled={actionPending === 'starting'}
-            onClick={() => onStartService(service.id)}
-            className="w-9 h-9 rounded-xl bg-brand-lime/10 hover:bg-brand-lime/20 text-brand-lime border border-brand-lime/20 flex items-center justify-center transition-all hover:scale-105 disabled:opacity-50"
-            title={t('services.startService', 'Start Service')}
-          >
-            {actionPending === 'starting' ? (
-              <span className="w-3.5 h-3.5 border-2 border-brand-lime border-t-transparent rounded-full animate-spin inline-block" />
-            ) : (
-              <PlayIcon size={16} />
-            )}
-          </button>
-        ))}
+        <ServiceLifecycleButtons
+          serviceId={service.id}
+          serviceName={service.name}
+          canOperate={canOperate}
+          isRunning={isRunning}
+          isRetrying={isRetrying}
+          actionPending={actionPending}
+          pendingChanges={service.pending_changes}
+          pendingChangeMode={service.pending_change_mode}
+          onStartService={onStartService}
+          onStopService={onStopService}
+          onRestartService={onRestartService}
+        />
 
         {/* Delete Process Button */}
         {canAdmin && (

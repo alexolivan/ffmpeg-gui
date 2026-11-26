@@ -147,6 +147,7 @@ class PeerManager:
             protocols["security"] = mtx.get("security", {})
         elif svc.service_type == "icecast_server":
             ice = cfg.get("icecast_config", {})
+            protocols["http_enabled"] = bool(ice.get("http_enabled", True))
             protocols["port"] = ice.get("port", 8000)
             protocols["ssl_port"] = ice.get("ssl_port", 8443)
             protocols["ssl_enabled"] = bool(ice.get("ssl_enabled", False))

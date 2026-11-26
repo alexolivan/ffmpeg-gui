@@ -9,16 +9,20 @@ import {
   RefreshIcon,
   PencilIcon,
   ExportIcon,
+  LightningIcon,
 } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 import { useTelemetry } from '../../context/TelemetryContext';
 import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
 import { getServiceLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
+import { getReloadButtonState, getRestartButtonState } from '../../utils/serviceActionStyles';
 
 interface IcecastPreviewModalProps {
   selectedProcess: any;
   telemetry: any[];
   actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
+  isReloading?: boolean;
+  isReloadAck?: boolean;
   logs: any[];
   onClose: () => void;
   onEditProcess: (proc: any) => void;
@@ -26,6 +30,7 @@ interface IcecastPreviewModalProps {
   onStartService: (id: number) => void;
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
+  onReloadService?: (id: number, name?: string) => void;
   API: string;
   settings?: any;
   isCloudHubSession?: boolean;
@@ -52,6 +57,8 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   selectedProcess,
   telemetry,
   actionPending,
+  isReloading = false,
+  isReloadAck = false,
   logs: externalLogs,
   onClose,
   onEditProcess,
@@ -59,6 +66,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   onStartService,
   onStopService,
   onRestartService,
+  onReloadService,
   API,
   settings,
   isCloudHubSession = false,
@@ -74,7 +82,7 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
   const canOperate = hasMinLevel(svcLevel, 'operate');
   const canManage = hasMinLevel(svcLevel, 'manage');
   const isRunning = currentProcess.status === 'running';
-  const isPending = !!actionPending[currentProcess.id];
+  const isPending = !!actionPending[currentProcess.id] || isReloading;
 
   const [daemonLogs, setDaemonLogs] = useState<any[]>([]);
   const [copyLogsSuccess, setCopyLogsSuccess] = useState(false);
@@ -375,28 +383,74 @@ export const IcecastPreviewModal: React.FC<IcecastPreviewModalProps> = ({
 
           <div className="flex items-center gap-2">
             {/* Action Buttons in Header */}
-            {canOperate && (isRunning ? (
-              <>
-                <button
-                  disabled={isPending}
-                  onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
-                  className="px-2.5 py-1.5 rounded-lg border border-[var(--glass-border)] bg-[var(--input-bg)] text-cyan-400 hover:brightness-110 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
-                  title={t('services.restartService', 'Reiniciar')}
-                >
-                  <RefreshIcon size={13} className={actionPending[currentProcess.id] === 'restarting' ? 'animate-spin' : ''} />
-                  <span className="hidden sm:inline">{t('common.restart', 'Reiniciar')}</span>
-                </button>
-                <button
-                  disabled={isPending}
-                  onClick={() => onStopService(currentProcess.id, currentProcess.name)}
-                  className="px-2.5 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
-                  title={t('services.stopService', 'Detener')}
-                >
-                  <StopIcon size={13} />
-                  <span className="hidden sm:inline">{t('common.stop', 'Detener')}</span>
-                </button>
-              </>
-            ) : (
+            {canOperate && (isRunning ? (() => {
+              const reloadState = getReloadButtonState({
+                isReloading,
+                isReloadAck,
+                isPendingReload: currentProcess.pending_change_mode === 'reload',
+              });
+              const restartState = getRestartButtonState({
+                isRestarting: actionPending[currentProcess.id] === 'restarting',
+                isPendingRestart: Boolean(currentProcess.pending_changes && currentProcess.pending_change_mode !== 'reload'),
+              });
+              return (
+                <>
+                  {onReloadService && (
+                    <button
+                      disabled={isPending}
+                      onClick={() => onReloadService(currentProcess.id, currentProcess.name)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer ${reloadState.className}`}
+                      title={
+                        isReloadAck
+                          ? t('services.reloadAckTooltip', 'Live configuration reloaded')
+                          : t('services.reloadService', 'Recargar configuración (en vivo)')
+                      }
+                    >
+                      {reloadState.spinIcon ? (
+                        <RefreshIcon size={13} className="animate-spin" />
+                      ) : reloadState.showCheck ? (
+                        <CheckIcon size={13} />
+                      ) : (
+                        <LightningIcon size={13} />
+                      )}
+                      <span className="hidden sm:inline">
+                        {isReloading
+                          ? t('services.reloading', 'RELOADING...')
+                          : isReloadAck
+                          ? t('services.reloadedAck', 'RELOADED')
+                          : t('services.reloadButtonLabel', 'RECARGAR')}
+                      </span>
+                    </button>
+                  )}
+                  <button
+                    disabled={isPending}
+                    onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
+                    className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer ${restartState.className}`}
+                    title={t('services.restartService', 'Reiniciar')}
+                  >
+                    <RefreshIcon size={13} className={restartState.spinIcon ? 'animate-spin' : ''} />
+                    <span className="hidden sm:inline">
+                      {restartState.spinIcon
+                        ? t('services.restarting', 'RESTARTING...')
+                        : t('common.restart', 'Reiniciar')}
+                    </span>
+                  </button>
+                  <button
+                    disabled={isPending}
+                    onClick={() => onStopService(currentProcess.id, currentProcess.name)}
+                    className="px-2.5 py-1.5 rounded-lg border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 text-xs font-semibold flex items-center gap-1.5 transition-all disabled:opacity-50 cursor-pointer"
+                    title={t('services.stopService', 'Detener')}
+                  >
+                    {actionPending[currentProcess.id] === 'stopping' ? (
+                      <RefreshIcon size={13} className="animate-spin text-brand-orange" />
+                    ) : (
+                      <StopIcon size={13} />
+                    )}
+                    <span className="hidden sm:inline">{t('common.stop', 'Detener')}</span>
+                  </button>
+                </>
+              );
+            })() : (
               <button
                 disabled={isPending}
                 onClick={() => onStartService(currentProcess.id)}

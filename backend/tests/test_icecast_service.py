@@ -682,5 +682,136 @@ class TestIcecastService(unittest.TestCase):
             self.assertEqual(media_proc.config["icecast_stats"]["listener_peak"], 7)
             self.assertEqual(media_proc.config["icecast_stats"]["active_mounts"], 1)
 
+    def test_build_icecast_config_relay_24_and_25(self):
+        session = MagicMock()
+        base_mounts = [
+            {
+                "mount_name": "/relayed.mp3",
+                "max_listeners": 80,
+                "fallback_mount": "/backup.mp3",
+                "fallback_override": True,
+                "relay_enabled": True,
+                "relay_url": "https://user:s3cr3t@origin.example.com:8443/source.mp3?token=1&q=hi",
+                "relay_on_demand": True,
+            },
+            {
+                "mount_name": "/backup.mp3",
+                "max_listeners": 40,
+            },
+        ]
+
+        proc_24 = Service(
+            id=24,
+            name="Icecast 2.4 Relay",
+            service_type="icecast_server",
+            config={"software_version": "2.4.4", "icecast_config": {"port": 7000, "mounts": base_mounts}},
+        )
+        _, xml_24 = self.pm._build_icecast_config_and_cmd(proc_24, "/usr/bin/icecast2", session)
+        try:
+            with open(xml_24, "r", encoding="utf-8") as f:
+                root_24 = ET.fromstring(f.read())
+            relays_24 = root_24.findall("relay")
+            self.assertEqual(len(relays_24), 1)
+            self.assertEqual(relays_24[0].findtext("server"), "origin.example.com")
+            self.assertEqual(relays_24[0].findtext("port"), "8443")
+            self.assertEqual(relays_24[0].findtext("mount"), "/source.mp3?token=1&q=hi")
+            self.assertEqual(relays_24[0].findtext("local-mount"), "/relayed.mp3")
+            self.assertEqual(relays_24[0].findtext("on-demand"), "1")
+            self.assertEqual(relays_24[0].findtext("username"), "user")
+            self.assertEqual(relays_24[0].findtext("password"), "s3cr3t")
+            # Local mount fallback configuration must still be emitted alongside <relay>
+            mounts_24 = root_24.findall("mount")
+            self.assertEqual(mounts_24[0].findtext("fallback-mount"), "/backup.mp3")
+        finally:
+            if os.path.exists(xml_24):
+                os.remove(xml_24)
+
+        proc_25 = Service(
+            id=25,
+            name="Icecast 2.5 Relay",
+            service_type="icecast_server",
+            config={"software_version": "2.5.0", "icecast_config": {"port": 7000, "mounts": base_mounts}},
+        )
+        _, xml_25 = self.pm._build_icecast_config_and_cmd(proc_25, "/usr/bin/icecast2", session)
+        try:
+            with open(xml_25, "r", encoding="utf-8") as f:
+                root_25 = ET.fromstring(f.read())
+            relays_25 = root_25.findall("relay")
+            self.assertEqual(len(relays_25), 1)
+            self.assertEqual(relays_25[0].findtext("local-mount"), "/relayed.mp3")
+            self.assertEqual(relays_25[0].findtext("on-demand"), "1")
+            upstream = relays_25[0].find("upstream")
+            self.assertIsNotNone(upstream)
+            self.assertEqual(upstream.attrib.get("type"), "normal")
+            self.assertEqual(
+                upstream.findtext("uri"),
+                "https://origin.example.com:8443/source.mp3?token=1&q=hi",
+            )
+            self.assertEqual(upstream.findtext("username"), "user")
+            self.assertEqual(upstream.findtext("password"), "s3cr3t")
+        finally:
+            if os.path.exists(xml_25):
+                os.remove(xml_25)
+
+    def test_build_icecast_relay_password_only_defaults_username_and_public_omits_auth(self):
+        session = MagicMock()
+        mounts_pw_only = [
+            {
+                "mount_name": "/protected.mp3",
+                "relay_enabled": True,
+                "relay_url": "http://studio.remote:8000/feed.mp3",
+                "relay_username": "",
+                "relay_password": "secret&pass",
+                "relay_on_demand": False,
+            },
+            {
+                "mount_name": "/public.mp3",
+                "relay_enabled": True,
+                "relay_url": "http://public.remote:8000/open.mp3",
+                "relay_on_demand": True,
+            },
+        ]
+
+        proc_24 = Service(
+            id=26,
+            name="Icecast 2.4 Auth Relay",
+            service_type="icecast_server",
+            config={"software_version": "2.4.4", "icecast_config": {"port": 7000, "mounts": mounts_pw_only}},
+        )
+        _, xml_24 = self.pm._build_icecast_config_and_cmd(proc_24, "/usr/bin/icecast2", session)
+        try:
+            with open(xml_24, "r", encoding="utf-8") as f:
+                root_24 = ET.fromstring(f.read())
+            relays = root_24.findall("relay")
+            self.assertEqual(len(relays), 2)
+            self.assertEqual(relays[0].findtext("username"), "relay")
+            self.assertEqual(relays[0].findtext("password"), "secret&pass")
+            self.assertIsNone(relays[1].find("username"))
+            self.assertIsNone(relays[1].find("password"))
+        finally:
+            if os.path.exists(xml_24):
+                os.remove(xml_24)
+
+        proc_25 = Service(
+            id=27,
+            name="Icecast 2.5 Auth Relay",
+            service_type="icecast_server",
+            config={"software_version": "2.5.0", "icecast_config": {"port": 7000, "mounts": mounts_pw_only}},
+        )
+        _, xml_25 = self.pm._build_icecast_config_and_cmd(proc_25, "/usr/bin/icecast2", session)
+        try:
+            with open(xml_25, "r", encoding="utf-8") as f:
+                root_25 = ET.fromstring(f.read())
+            relays_25 = root_25.findall("relay")
+            up_0 = relays_25[0].find("upstream")
+            up_1 = relays_25[1].find("upstream")
+            self.assertEqual(up_0.findtext("username"), "relay")
+            self.assertEqual(up_0.findtext("password"), "secret&pass")
+            self.assertIsNone(up_1.find("username"))
+            self.assertIsNone(up_1.find("password"))
+        finally:
+            if os.path.exists(xml_25):
+                os.remove(xml_25)
+
 if __name__ == "__main__":
     unittest.main()

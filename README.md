@@ -43,7 +43,7 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 ![Live Stream Preview & Logs](docs/assets/screenshot3.png)
 
 ### ⚡ 3. MediaMTX Hub, Stream Paths & SSL/TLS Integration
-- **Multi-Protocol Zero-Dependency Hub**: Deploy standalone MediaMTX daemon instances orchestrated through ephemeral YAML configs written to RAM (`/dev/shm`).
+- **Multi-Protocol Zero-Dependency Hub**: Deploy standalone MediaMTX daemon instances orchestrated through ephemeral YAML configs written to RAM (`/dev/shm`), with live atomic config hot-reload (`POST /processes/{id}/reload`) for path changes without dropping active streams.
 - **Universal Stream Paths & Granular Security**: Configure routing rules (`inherit`, `custom`, `open` LAN modes) with decoupled Publish (Push) and Read (Pull) credentials per path.
 - **In-RAM HLS Live Distribution & Storage Persistence**: Serves live HLS ultra-fast from RAM ring buffers without disk wear, with optional continuous stream recording to dedicated HLS storage volumes.
 - **Bidirectional SRT Access Control**: Formats and parses SRT stream IDs (`#!::r=<path_id>,m=<publish|request>[,u=...,p=...]`) with interactive Hub connection assistants across FFmpeg sources and destinations.
@@ -58,7 +58,8 @@ Inspired by high-reliability systems and developer utility, it provides an intui
 - **Native Service Orchestration**: Manage dedicated Icecast2 server daemons directly alongside FFmpeg and MediaMTX pipelines.
 - **Dual HTTP & HTTPS/TLS Sockets**: Run unencrypted listener sockets (TCP 7000) and encrypted TLS streams (TCP 7443) simultaneously with automated concatenated PEM certificate bundles.
 - **Interactive Server Preview & Live Player**: Monitor stream status with an embedded live web iframe preview, HTML5 in-browser audio player for active mountpoints, listener counters, and real-time logs—routed through the internal reverse proxy so previews and audio work seamlessly over CloudHub tunnels as well.
-- **Static & Dynamic Mountpoint Management**: Configure granular mountpoints with max audience limits, fallback drop protection (`fallback-mount` / `fallback-override`), and burst buffers.
+- **Static, Fallback & Remote Relay Mountpoint Management**: Configure mountpoints with max audience limits, selectable sibling fallback drop protection (`fallback-mount` / `fallback-override`), burst buffers, and live `SIGHUP` configuration reload (`POST /processes/{id}/reload`) without disconnecting active listeners.
+- **Remote Mountpoint Relaying (`<relay>`) & Federated Peer Pull**: Feed local mountpoints directly from remote Icecast/HTTP streams (`<relay>` for Icecast 2.3/2.4 and `<upstream>` for Icecast 2.5+) with optional HTTP Basic Auth credentials, on-demand pulling, and 1-click Federated Peer mountpoint selection.
 - **Audience & Telemetry Monitoring**: Real-time `/status-json.xsl` and `/admin/stats.xml` telemetry polling directly into service cards and preview modal.
 - **Automated Native Log Rotation & Lifecycle**: Configurable `<logsize>` and `<logarchive>` native rotation coupled with system scheduled tasks (`system://log_rotate`) for automated `.gz` compression, retention purging, and orphan cleanup.
 - **FFmpeg Output Hub Integration**: 1-click Icecast destination assistant auto-negotiating container format and MIME types according to audio codecs (MP3, AAC, Opus, FLAC) with broadcast metadata tags (`-ice_name`, `-ice_genre`, `-ice_description`).

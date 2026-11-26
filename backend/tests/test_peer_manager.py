@@ -268,8 +268,34 @@ class TestPeerManager(unittest.TestCase):
         self.assertIsNotNone(ice_entry)
         self.assertTrue(ice_entry["is_legacy"])
         self.assertTrue(ice_entry["protocols"]["is_legacy"])
+        self.assertTrue(ice_entry["protocols"]["http_enabled"])
         self.assertFalse(ice_entry["protocols"]["ssl_enabled"])
         self.assertEqual(ice_entry["protocols"]["port"], 8000)
+
+        ice_https_only = Service(
+            name="HTTPS Only Icecast 2.5",
+            service_type="icecast_server",
+            config={
+                "icecast_config": {
+                    "http_enabled": False,
+                    "port": 7000,
+                    "ssl_enabled": True,
+                    "ssl_port": 7443,
+                    "mounts": [{"mount_name": "/secure.mp3"}],
+                }
+            },
+            is_shared_with_peers=True,
+            allow_peer_lease=False,
+            status="running",
+        )
+        self.session.add(ice_https_only)
+        self.session.commit()
+        catalog2 = self.peer_mgr.get_shared_catalog(self.session)
+        ssl_entry = next((s for s in catalog2 if s["id"] == ice_https_only.id), None)
+        self.assertIsNotNone(ssl_entry)
+        self.assertFalse(ssl_entry["protocols"]["http_enabled"])
+        self.assertTrue(ssl_entry["protocols"]["ssl_enabled"])
+        self.assertEqual(ssl_entry["protocols"]["ssl_port"], 7443)
 
     def test_inbound_lease_resource_locks(self):
         from core.resource_lock_manager import resource_lock_manager
