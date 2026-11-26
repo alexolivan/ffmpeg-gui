@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.75.2] - 2026-11-26
+
+### Fixed
+- **False-Positive `PENDING REBOOT` on Existing Icecast2 & MediaMTX Services (`models.py`, `process_manager.py`)**:
+  - Resolved effective build IDs (`software_build_id or ffmpeg_build_id or build_id`) in `Service.pending_change_mode` so re-saving `IcecastConfigForm`/`MediaMtxConfigForm` (which sends `ffmpeg_build_id` without repeating `software_build_id`) no longer looks like a software build change when the ID matches.
+  - Normalized wildcard `bind_address` values (`None`, `""`, `"0.0.0.0"`, `"::"`) and Icecast mount default fields (`fallback_override`, `relay_enabled`) during config diffing so unchanged production instances deployed prior to `v2.75.0` stay clean (`mode: none`).
+  - Refreshed `last_started_config` with `copy.deepcopy(media_proc.config)` in `ProcessManager.start_process` so runtime build-resolution metadata is captured accurately in the launched snapshot.
+
 ## [2.75.1] - 2026-11-26
 
 ### Added
