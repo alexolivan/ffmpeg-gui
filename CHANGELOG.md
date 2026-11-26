@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.75.5] - 2026-11-26
+
+### Changed
+- **Unified Service Card & Preview Modal Action Controls (`ServiceLifecycleButtons.tsx`, `serviceActionStyles.ts`, `useProcesses.ts`)**:
+  - Extracted `<ServiceLifecycleButtons />` and `getRestartButtonState` / `getReloadButtonState` helpers matching `FfmpegServiceCard` aesthetics across `IcecastServiceCard`, `MediaMtxServiceCard`, `PipeWireServiceCard`, and `DesktopServiceCard`, as well as `IcecastPreviewModal` and `MediaMtxPreviewModal`.
+  - Fixed state priority so active `restarting` and `reloading` phases strictly override pending-change pulse animations immediately upon click and display spinning `<RefreshIcon />` indicators with translucent tinted borders instead of solid blocks.
+  - Added visible click feedback (450 ms minimum spinner window) and a 1.8 s `RELOADED` checkmark acknowledgement (`reloadedAckIds`) in `handleReloadService` after `POST /reload` succeeds.
+
 ## [2.75.4] - 2026-11-26
 
 ### Changed
