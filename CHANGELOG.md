@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.75.0] - 2026-11-26
+
+### Added
+- **Icecast2 Remote Mountpoint Relays (`<relay>` Pull Support)**:
+  - Added per-mountpoint **Feed from Remote Relay** (`relay_enabled`), **Remote Icecast Stream URL** (`relay_url`), and **On-demand** (`relay_on_demand`) toggles in `IcecastConfigForm` with `RELAY` mount badges.
+  - Emits version-aware `<relay>` XML blocks in `_build_icecast_config_and_cmd` (`<server>/<port>/<mount>/<local-mount>` + optional credentials for Icecast 2.3/2.4/KH, and `<upstream type="normal"><uri>...</uri></upstream>` for Icecast 2.5+) alongside local `<mount>` fallback settings.
+  - Filtered relay-fed mountpoints out of FFmpeg output destination selectors (`DestinationPanel`) while keeping them selectable as HTTP audio sources (`InputSourcePanel`).
+- **Live Service Hot-Reload (`MediaMTX` & `Icecast2`)**:
+  - Added `POST /processes/{id}/reload` and `POST /api/services/{id}/reload` (`operate` RBAC level) backed by `ProcessManager.reload_process`: atomically rewrites the active RAM configuration via `os.replace` on `ephemeral_configs[id]` (`mediamtx.yml` hot-watch for MediaMTX; `icecast.xml` + `SIGHUP` for Icecast2) and refreshes `last_started_config` without dropping active listeners or streams.
+  - Added `Service.pending_change_mode` (`'none' | 'reload' | 'restart'`) classifying config changes so `MediaMtxServiceCard`, `IcecastServiceCard`, `MediaMtxPreviewModal`, and `IcecastPreviewModal` highlight the **`Reload`** (`PENDING RELOAD`) action for live-reloadable path/mount updates and reserve **`Restart`** (`PENDING REBOOT`) highlights for ports/bind/TLS/relay structural changes.
+  - Added EN/ES/CA translations and unit tests in `test_icecast_service.py` and `test_service_reload.py`.
+
 ## [2.74.2] - 2026-11-25
 
 ### Changed

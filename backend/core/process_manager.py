@@ -1,4 +1,6 @@
 import asyncio
+import copy
+import signal
 import subprocess
 import psutil
 import logging
@@ -6,6 +8,8 @@ import os
 import re
 import shlex
 import shutil
+import urllib.parse
+import xml.sax.saxutils as saxutils
 from datetime import datetime
 from typing import Dict, Optional, Any, List, Tuple
 import json
@@ -993,6 +997,9 @@ class ProcessManager:
                         shutil.rmtree(ephem, ignore_errors=True)
                     else:
                         os.remove(ephem)
+                        ssl_bundle = f"{ephem}.ssl.pem"
+                        if os.path.exists(ssl_bundle):
+                            os.remove(ssl_bundle)
                 except Exception:
                     pass
             pw_rdir = f"/tmp/ffmpeg-gui/pipewire-{process_id}"
@@ -1253,6 +1260,9 @@ class ProcessManager:
                         shutil.rmtree(ephem, ignore_errors=True)
                     else:
                         os.remove(ephem)
+                        ssl_bundle = f"{ephem}.ssl.pem"
+                        if os.path.exists(ssl_bundle):
+                            os.remove(ssl_bundle)
                 except Exception:
                     pass
 
@@ -1681,7 +1691,76 @@ class ProcessManager:
 
     _build_ffmpeg_stream_cmd = _build_ffmpeg_cmd
 
-    def _build_mediamtx_config_and_cmd(self, media_proc, mediamtx_bin: str, session):
+    @staticmethod
+    def _write_file_atomic(target_path: str, content: str, mode: int = 0o600):
+        """Write text atomically via a temporary sibling file and os.replace."""
+        parent = os.path.dirname(target_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        tmp_path = os.path.join(parent, f".tmp_{os.path.basename(target_path)}_{uuid.uuid4().hex[:8]}")
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            try:
+                os.chmod(tmp_path, mode)
+            except Exception:
+                pass
+            os.replace(tmp_path, target_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+            raise
+
+    @staticmethod
+    def _build_icecast_relay_xml(mount_dict: dict, mount_name: str, is_v25_or_newer: bool) -> Optional[str]:
+        """Build an Icecast2 <relay> XML block from a mountpoint's remote relay URL."""
+        raw_url = str(mount_dict.get("relay_url") or "").strip()
+        if not raw_url:
+            return None
+        normalized_url = raw_url if "://" in raw_url else f"http://{raw_url}"
+        parsed = urllib.parse.urlparse(normalized_url)
+        host = parsed.hostname
+        if not host:
+            return None
+        default_port = 443 if parsed.scheme.lower() == "https" else 80
+        port = parsed.port or default_port
+        remote_mount = parsed.path or "/"
+        if parsed.query:
+            remote_mount = f"{remote_mount}?{parsed.query}"
+        on_demand = 1 if mount_dict.get("relay_on_demand", False) else 0
+        esc = saxutils.escape
+
+        if is_v25_or_newer:
+            return "\n".join([
+                '    <relay>',
+                f'        <local-mount>{esc(mount_name)}</local-mount>',
+                f'        <on-demand>{on_demand}</on-demand>',
+                '        <upstream type="normal">',
+                f'            <uri>{esc(normalized_url)}</uri>',
+                '        </upstream>',
+                '    </relay>',
+            ])
+
+        r_lines = [
+            '    <relay>',
+            f'        <server>{esc(host)}</server>',
+            f'        <port>{int(port)}</port>',
+            f'        <mount>{esc(remote_mount)}</mount>',
+            f'        <local-mount>{esc(mount_name)}</local-mount>',
+            f'        <on-demand>{on_demand}</on-demand>',
+            '        <relay-shoutcast-metadata>1</relay-shoutcast-metadata>',
+        ]
+        if parsed.username:
+            r_lines.append(f'        <username>{esc(urllib.parse.unquote(parsed.username))}</username>')
+        if parsed.password:
+            r_lines.append(f'        <password>{esc(urllib.parse.unquote(parsed.password))}</password>')
+        r_lines.append('    </relay>')
+        return "\n".join(r_lines)
+
+    def _build_mediamtx_config_and_cmd(self, media_proc, mediamtx_bin: str, session, target_path: Optional[str] = None):
         """
         Builds dynamic configuration for MediaMTX in ephemeral RAM (/dev/shm) and returns subprocess command.
         """
@@ -1946,20 +2025,14 @@ class ProcessManager:
         # Choose RAM filesystem (/dev/shm) with fallback to /tmp
         shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.path.isdir("/dev/shm") else "/tmp"
         token = uuid.uuid4().hex[:8]
-        ephem_file = os.path.join(shm_dir, f"ffmpeg_gui_mediamtx_{media_proc.id}_{token}.yml")
+        ephem_file = target_path or os.path.join(shm_dir, f"ffmpeg_gui_mediamtx_{media_proc.id}_{token}.yml")
 
         yaml_content = yaml.dump(config_dict, default_flow_style=False)
-        with open(ephem_file, "w", encoding="utf-8") as f:
-            f.write(yaml_content)
-
-        try:
-            os.chmod(ephem_file, 0o600)
-        except Exception:
-            pass
+        self._write_file_atomic(ephem_file, yaml_content, mode=0o600)
 
         return [mediamtx_bin, ephem_file], ephem_file
 
-    def _build_icecast_config_and_cmd(self, media_proc, icecast_bin: str, session, log_storage_path: Optional[str] = None):
+    def _build_icecast_config_and_cmd(self, media_proc, icecast_bin: str, session, log_storage_path: Optional[str] = None, target_path: Optional[str] = None):
         """
         Generates a customized, isolated icecast.xml configuration and builds
         the command line execution arguments for an Icecast2 server instance.
@@ -1987,6 +2060,7 @@ class ProcessManager:
 
         shm_dir = "/dev/shm" if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK) else "/tmp"
         token = uuid.uuid4().hex[:8]
+        ephem_file = target_path or os.path.join(shm_dir, f"ffmpeg_gui_icecast_{media_proc.id}_{token}.xml")
 
         # Log directory
         if log_storage_path:
@@ -2096,17 +2170,13 @@ class ProcessManager:
                     self.logger.warning(f"[Icecast] Error resolving SSL certificates: {e}")
 
             if server_key and server_cert and os.path.exists(server_key) and os.path.exists(server_cert):
-                bundle_path = os.path.join(shm_dir, f"ffmpeg_gui_icecast_ssl_{media_proc.id}_{token}.pem")
+                bundle_path = f"{ephem_file}.ssl.pem"
                 try:
-                    with open(bundle_path, "w") as f_bundle:
-                        with open(server_cert, "r") as f_c:
-                            f_bundle.write(f_c.read().strip() + "\n\n")
-                        with open(server_key, "r") as f_k:
-                            f_bundle.write(f_k.read().strip() + "\n")
-                    try:
-                        os.chmod(bundle_path, 0o600)
-                    except Exception:
-                        pass
+                    with open(server_cert, "r") as f_c:
+                        cert_txt = f_c.read().strip()
+                    with open(server_key, "r") as f_k:
+                        key_txt = f_k.read().strip()
+                    self._write_file_atomic(bundle_path, f"{cert_txt}\n\n{key_txt}\n", mode=0o600)
 
                     if not is_v25_or_newer:
                         ssl_cert_xml = f"<ssl-certificate>{bundle_path}</ssl-certificate>"
@@ -2140,9 +2210,10 @@ class ProcessManager:
         <port>{port}</port>{bind_address_xml}
     </listen-socket>"""
 
-        # Mountpoints
+        # Mountpoints & Remote Relays
         mounts_list = ice_cfg.get("mounts", [])
         mounts_xml_parts = []
+        relays_xml_parts = []
         if isinstance(mounts_list, list):
             for m in mounts_list:
                 if not isinstance(m, dict):
@@ -2160,20 +2231,26 @@ class ProcessManager:
                 m_burst = m.get("burst_size")
                 m_pass = m.get("source_password", "").strip()
 
-                m_lines = [f'    <mount type="normal">', f'        <mount-name>{m_name}</mount-name>']
+                m_lines = [f'    <mount type="normal">', f'        <mount-name>{saxutils.escape(m_name)}</mount-name>']
                 if m_max:
                     m_lines.append(f'        <max-listeners>{int(m_max)}</max-listeners>')
                 if fallback:
-                    m_lines.append(f'        <fallback-mount>{fallback}</fallback-mount>')
+                    m_lines.append(f'        <fallback-mount>{saxutils.escape(fallback)}</fallback-mount>')
                     m_lines.append(f'        <fallback-override>{1 if fallback_ovr else 0}</fallback-override>')
                 if m_burst:
                     m_lines.append(f'        <burst-size>{int(m_burst)}</burst-size>')
                 if m_pass:
-                    m_lines.append(f'        <password>{m_pass}</password>')
+                    m_lines.append(f'        <password>{saxutils.escape(m_pass)}</password>')
                 m_lines.append('    </mount>')
                 mounts_xml_parts.append("\n".join(m_lines))
 
+                if m.get("relay_enabled"):
+                    relay_xml = self._build_icecast_relay_xml(m, m_name, is_v25_or_newer)
+                    if relay_xml:
+                        relays_xml_parts.append(relay_xml)
+
         mounts_block = "\n".join(mounts_xml_parts)
+        relays_block = "\n".join(relays_xml_parts)
 
         # Resolve logsize from config (KiB)
         logsize_kb = 10240
@@ -2214,6 +2291,7 @@ class ProcessManager:
 {http_socket_xml}
 {ssl_socket_xml}
 {mounts_block}
+{relays_block}
 
     <paths>
         <logdir>{log_dir}</logdir>
@@ -2231,15 +2309,97 @@ class ProcessManager:
     </logging>
 </icecast>
 """
-        ephem_file = os.path.join(shm_dir, f"ffmpeg_gui_icecast_{media_proc.id}_{token}.xml")
-        with open(ephem_file, "w") as f:
-            f.write(xml_content)
-        try:
-            os.chmod(ephem_file, 0o600)
-        except Exception:
-            pass
+        self._write_file_atomic(ephem_file, xml_content, mode=0o600)
 
         return [icecast_bin, "-c", ephem_file], ephem_file
+
+    async def reload_process(self, process_id: int) -> Dict[str, Any]:
+        """
+        Hot-reload configuration in-place for supported infrastructure services
+        (MediaMTX via YAML watch + atomic os.replace, Icecast2 via atomic XML os.replace + SIGHUP)
+        without dropping active listeners or unaffected streams.
+        """
+        proc = self.processes.get(process_id)
+        real_pid = getattr(proc, "pid", None) or self.reattached_pids.get(process_id)
+        if not proc and not real_pid:
+            raise RuntimeError(f"Service {process_id} is not currently running")
+        if proc and getattr(proc, "returncode", None) is not None:
+            raise RuntimeError(f"Service {process_id} is not currently running")
+
+        with self.db_session_factory() as session:
+            from database.models import Service, FfmpegBuild
+            media_proc = session.query(Service).get(process_id)
+            if not media_proc:
+                raise ValueError(f"Service {process_id} not found")
+
+            svc_type = getattr(media_proc, "service_type", "ffmpeg_stream") or "ffmpeg_stream"
+            if svc_type not in ("mediamtx_hub", "icecast_server"):
+                raise ValueError(f"Service type '{svc_type}' does not support live reload")
+
+            target_path = self.ephemeral_configs.get(process_id)
+            if not target_path and real_pid:
+                try:
+                    cmdline = psutil.Process(real_pid).cmdline()
+                    if svc_type == "mediamtx_hub":
+                        for arg in reversed(cmdline):
+                            if arg.endswith(".yml") or arg.endswith(".yaml"):
+                                target_path = arg
+                                break
+                    elif svc_type == "icecast_server":
+                        for idx, arg in enumerate(cmdline):
+                            if arg == "-c" and idx + 1 < len(cmdline):
+                                target_path = cmdline[idx + 1]
+                                break
+                    if target_path:
+                        self.ephemeral_configs[process_id] = target_path
+                except Exception as probe_err:
+                    self.logger.debug(f"[Reload] Failed to inspect cmdline for PID {real_pid}: {probe_err}")
+
+            if not target_path:
+                raise RuntimeError("Active configuration file path could not be resolved; full restart required")
+
+            cfg = media_proc.config or {}
+            build_id = cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+            build = session.query(FfmpegBuild).get(build_id) if build_id else None
+
+            if svc_type == "mediamtx_hub":
+                mediamtx_bin = (
+                    build.binary_path if (build and build.binary_path and os.path.exists(build.binary_path))
+                    else (shutil.which("mediamtx") or "mediamtx")
+                )
+                self._build_mediamtx_config_and_cmd(media_proc, mediamtx_bin, session, target_path=target_path)
+                reload_detail = "MediaMTX YAML config updated atomically for live hot-reload"
+            else:
+                icecast_bin = (
+                    build.binary_path if (build and build.binary_path and os.path.exists(build.binary_path))
+                    else (shutil.which("icecast2") or shutil.which("icecast") or "icecast2")
+                )
+                log_storage_id = cfg.get("log_storage_id")
+                logs_dir = self.get_process_log_storage_path(
+                    process_id=process_id, log_storage_id=log_storage_id, session=session
+                )
+                self._build_icecast_config_and_cmd(
+                    media_proc, icecast_bin, session, log_storage_path=logs_dir, target_path=target_path
+                )
+                if not real_pid:
+                    raise RuntimeError("Icecast2 PID is unavailable for SIGHUP reload")
+                os.kill(real_pid, signal.SIGHUP)
+                reload_detail = f"Icecast2 XML config updated atomically and SIGHUP sent to PID {real_pid}"
+
+            media_proc.last_started_config = {
+                "name": media_proc.name,
+                "config": copy.deepcopy(media_proc.config),
+            }
+            session.commit()
+
+        self.logger.info(f"[Reload #{process_id}] {reload_detail}")
+        if process_id in self.log_buffers:
+            self.log_buffers[process_id].append({
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "level": "INFO",
+                "message": f"[Panel] {reload_detail}",
+            })
+        return {"status": "reloaded", "process_id": process_id, "service_type": svc_type, "detail": reload_detail}
 
     def _reap_orphan_pipewire_for_service(self, service_id: int):
         """

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EngineLogo } from '../common/EngineLogo';
-import { ClipboardIcon, CheckIcon, ShieldIcon } from '../Icons';
+import { ClipboardIcon, CheckIcon, ShieldIcon, LightningIcon } from '../Icons';
 import { copyToClipboard as universalCopy } from '../../utils/clipboard';
 import { useTelemetry } from '../../context/TelemetryContext';
 import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
@@ -11,6 +11,7 @@ interface MediaMtxPreviewModalProps {
   selectedProcess: any;
   telemetry: any[];
   actionPending: Record<number, 'starting' | 'stopping' | 'restarting'>;
+  isReloading?: boolean;
   logs: any[];
   onClose: () => void;
   onEditProcess: (proc: any) => void;
@@ -18,6 +19,7 @@ interface MediaMtxPreviewModalProps {
   onStartService: (id: number) => void;
   onStopService: (id: number, name?: string) => void;
   onRestartService: (id: number, name: string) => void;
+  onReloadService?: (id: number, name?: string) => void;
   API: string;
   settings?: any;
   isCloudHubSession?: boolean;
@@ -44,6 +46,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   selectedProcess,
   telemetry,
   actionPending,
+  isReloading = false,
   logs: externalLogs,
   onClose,
   onEditProcess,
@@ -51,6 +54,7 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
   onStartService,
   onStopService,
   onRestartService,
+  onReloadService,
   API,
   settings,
   isCloudHubSession = false,
@@ -424,18 +428,33 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5 min-h-0 custom-scrollbar">
           {currentProcess.pending_changes && (
-            <div className="bg-brand-orange/10 border border-brand-orange/30 text-brand-orange p-3.5 rounded-xl flex items-center gap-3 animate-pulse">
-              <span className="text-xl">⚠️</span>
-              <div className="text-xs">
-                <span className="font-bold block uppercase tracking-wider mb-0.5">
-                  {t('services.mediamtx.previewModal.pendingRebootTitle', 'Configuration Pending Reboot')}
-                </span>
-                {t(
-                  'services.mediamtx.previewModal.pendingRebootDesc',
-                  'This service has modified configurations that are not yet active in the running instance. Restart the service to apply these changes.'
-                )}
+            currentProcess.pending_change_mode === 'reload' ? (
+              <div className="bg-brand-lime/10 border border-brand-lime/30 text-brand-lime p-3.5 rounded-xl flex items-center gap-3 animate-pulse">
+                <LightningIcon size={18} />
+                <div className="text-xs">
+                  <span className="font-bold block uppercase tracking-wider mb-0.5">
+                    {t('services.mediamtx.previewModal.pendingReloadTitle', 'Configuration Ready for Live Reload')}
+                  </span>
+                  {t(
+                    'services.mediamtx.previewModal.pendingReloadDesc',
+                    'Paths or metadata changed. Click Reload to apply changes on the fly without dropping active streams.'
+                  )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="bg-brand-orange/10 border border-brand-orange/30 text-brand-orange p-3.5 rounded-xl flex items-center gap-3 animate-pulse">
+                <span className="text-xl">⚠️</span>
+                <div className="text-xs">
+                  <span className="font-bold block uppercase tracking-wider mb-0.5">
+                    {t('services.mediamtx.previewModal.pendingRebootTitle', 'Configuration Pending Reboot')}
+                  </span>
+                  {t(
+                    'services.mediamtx.previewModal.pendingRebootDesc',
+                    'This service has modified configurations that are not yet active in the running instance. Restart the service to apply these changes.'
+                  )}
+                </div>
+              </div>
+            )
           )}
 
           {/* Telemetry Strip */}
@@ -1371,11 +1390,32 @@ export const MediaMtxPreviewModal: React.FC<MediaMtxPreviewModalProps> = ({
 
             {canOperate && (currentProcess.status === 'running' ? (
               <>
+                {onReloadService && (
+                  <button
+                    disabled={!!actionPending[currentProcess.id] || isReloading}
+                    onClick={() => onReloadService(currentProcess.id, currentProcess.name)}
+                    className={`pill-button hover:scale-[1.02] text-xs font-black py-1.5 px-5 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center cursor-pointer ${
+                      currentProcess.pending_change_mode === 'reload'
+                        ? 'bg-brand-lime text-black shadow-xl shadow-brand-lime/20 animate-pulse'
+                        : 'bg-white/10 hover:bg-white/15 text-brand-lime border border-brand-lime/30'
+                    }`}
+                    title={t('services.reloadService', 'Reload Config (Live)')}
+                  >
+                    {isReloading ? (
+                      <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+                    ) : (
+                      <LightningIcon size={13} />
+                    )}
+                    {isReloading
+                      ? t('services.reloading', 'RELOADING...')
+                      : t('services.reloadButtonLabel', 'RELOAD')}
+                  </button>
+                )}
                 <button
-                  disabled={!!actionPending[currentProcess.id]}
+                  disabled={!!actionPending[currentProcess.id] || isReloading}
                   onClick={() => onRestartService(currentProcess.id, currentProcess.name)}
                   className={`pill-button hover:scale-[1.02] text-black text-xs font-black py-1.5 px-5 transition-all disabled:opacity-50 disabled:pointer-events-none flex items-center gap-1.5 justify-center cursor-pointer ${
-                    currentProcess.pending_changes
+                    currentProcess.pending_changes && currentProcess.pending_change_mode !== 'reload'
                       ? 'bg-brand-orange shadow-xl shadow-brand-orange/20'
                       : 'bg-brand-lime shadow-xl shadow-brand-lime/20'
                   }`}

@@ -424,23 +424,109 @@ class Service(Base):
     def error_message(self, val):
         self.last_error = val
 
+    _MEDIAMTX_RELOADABLE_KEYS = frozenset({
+        "paths", "security",
+        "publish_user", "publishUser", "publish_pass", "publishPass",
+        "read_user", "readUser", "read_pass", "readPass",
+        "log_level", "hls_segment_count", "hls_segment_duration", "hls_storage_id",
+    })
+    _ICECAST_RELOADABLE_KEYS = frozenset({
+        "mounts", "clients_limit", "sources_limit", "burst_size",
+        "hostname", "location", "admin_email",
+        "source_password", "admin_user", "admin_password", "relay_password",
+    })
+
+    @staticmethod
+    def _icecast_relay_signature(ice_cfg: dict) -> list:
+        mounts = ice_cfg.get("mounts") if isinstance(ice_cfg, dict) else None
+        if not isinstance(mounts, list):
+            return []
+        relays = []
+        for m in mounts:
+            if not isinstance(m, dict) or not m.get("relay_enabled"):
+                continue
+            relays.append((
+                str(m.get("mount_name") or "").strip(),
+                str(m.get("relay_url") or "").strip(),
+                bool(m.get("relay_on_demand", False)),
+            ))
+        return sorted(relays)
+
     @property
-    def pending_changes(self) -> bool:
+    def pending_change_mode(self) -> str:
+        """
+        Return 'none', 'reload' (apply live without restart), or 'restart'
+        based on the delta between saved config and last_started_config.
+        """
         if self.status != 'running' or not self.last_started_config:
-            return False
-        
+            return 'none'
+
         current_cfg = self.config or {}
         last_started = self.last_started_config
         started_cfg = last_started.get('config') if isinstance(last_started, dict) and 'config' in last_started else last_started
         if not isinstance(started_cfg, dict):
-            return False
-            
+            return 'none'
+
+        svc_type = getattr(self, 'service_type', None) or 'ffmpeg_stream'
+
+        if svc_type == 'mediamtx_hub':
+            if (
+                current_cfg.get('software_build_id') != started_cfg.get('software_build_id')
+                or current_cfg.get('ffmpeg_build_id') != started_cfg.get('ffmpeg_build_id')
+            ):
+                return 'restart'
+            cur_m = current_cfg.get('mediamtx_config') or {}
+            old_m = started_cfg.get('mediamtx_config') or {}
+            changed_keys = {k for k in set(cur_m) | set(old_m) if cur_m.get(k) != old_m.get(k)}
+            if not changed_keys:
+                return 'none'
+            return 'reload' if changed_keys.issubset(self._MEDIAMTX_RELOADABLE_KEYS) else 'restart'
+
+        if svc_type == 'icecast_server':
+            if (
+                current_cfg.get('software_build_id') != started_cfg.get('software_build_id')
+                or current_cfg.get('ffmpeg_build_id') != started_cfg.get('ffmpeg_build_id')
+                or current_cfg.get('log_storage_id') != started_cfg.get('log_storage_id')
+            ):
+                return 'restart'
+            cur_i = current_cfg.get('icecast_config') or {}
+            old_i = started_cfg.get('icecast_config') or {}
+            changed_keys = {
+                k for k in set(cur_i) | set(old_i)
+                if k != 'has_status_json' and cur_i.get(k) != old_i.get(k)
+            }
+            if not changed_keys:
+                return 'none'
+            if not changed_keys.issubset(self._ICECAST_RELOADABLE_KEYS):
+                return 'restart'
+            if self._icecast_relay_signature(cur_i) != self._icecast_relay_signature(old_i):
+                return 'restart'
+            return 'reload'
+
+        if svc_type == 'pipewire_hub':
+            changed = (
+                current_cfg.get('pipewire_config') != started_cfg.get('pipewire_config')
+                or current_cfg.get('software_build_id') != started_cfg.get('software_build_id')
+                or current_cfg.get('ffmpeg_build_id') != started_cfg.get('ffmpeg_build_id')
+            )
+            return 'restart' if changed else 'none'
+
+        if svc_type == 'desktop':
+            return 'restart' if current_cfg.get('desktop_config') != started_cfg.get('desktop_config') else 'none'
+
+        if svc_type == 'kiosk_browser':
+            return 'restart' if current_cfg.get('kiosk_config') != started_cfg.get('kiosk_config') else 'none'
+
         c_in, s_in = current_cfg.get('input_config'), started_cfg.get('input_config')
         c_out, s_out = current_cfg.get('output_config'), started_cfg.get('output_config')
         c_codec, s_codec = current_cfg.get('codec_config'), started_cfg.get('codec_config')
         c_filter, s_filter = current_cfg.get('filter_config'), started_cfg.get('filter_config')
-        
-        return (c_in != s_in) or (c_out != s_out) or (c_codec != s_codec) or (c_filter != s_filter)
+        changed = (c_in != s_in) or (c_out != s_out) or (c_codec != s_codec) or (c_filter != s_filter)
+        return 'restart' if changed else 'none'
+
+    @property
+    def pending_changes(self) -> bool:
+        return self.pending_change_mode != 'none'
 
 
 class ServiceDependency(Base):
