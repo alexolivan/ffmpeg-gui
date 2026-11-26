@@ -425,7 +425,7 @@ class AuthzContext:
 # =========================================================================
 
 _SERVICE_ACTION_OPERATE_RE = re.compile(
-    r"^/(?:api/)?(?:processes|services)/(\d+)/(?:start|stop|restart|kiosk/clear-cache|pipewire/matrix/reconcile)$"
+    r"^/(?:api/)?(?:processes|services)/(\d+)/(?:start|stop|restart|reload|kiosk/clear-cache|pipewire/matrix/reconcile)$"
 )
 _SERVICE_LIFECYCLE_ADMIN_RE = re.compile(
     r"^/(?:api/)?(?:processes|services)/(\d+)/(?:clone|export)$"
