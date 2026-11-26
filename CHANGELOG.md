@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.75.3] - 2026-11-26
+
+### Fixed
+- **Non-FFmpeg `start_process` Crash (`UnboundLocalError: copy`) (`process_manager.py`)**:
+  - Removed a shadowed local `import copy` inside the FFmpeg branch of `ProcessManager.start_process` (already imported at module scope) that raised `UnboundLocalError` for `icecast_server`, `mediamtx_hub`, `pipewire_hub`, `desktop`, and `kiosk_browser` services when persisting `last_started_config`.
+  - Added regression test `test_start_process_icecast_no_unbound_copy` in `backend/tests/test_service_reload.py` verifying full `start_process` execution for an `icecast_server` configured with a remote relay.
+
 ## [2.75.2] - 2026-11-26
 
 ### Fixed

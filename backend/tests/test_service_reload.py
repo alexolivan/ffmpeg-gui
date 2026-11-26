@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import yaml
 from sqlalchemy import create_engine
@@ -261,6 +261,70 @@ class TestServiceHotReload(unittest.TestCase):
             req = SimpleNamespace(url=SimpleNamespace(path="/processes/50/reload"), method="POST")
             self.assertIsNone(authorize_http_request(req, op_ctx, db))
             self.assertIsNotNone(authorize_http_request(req, mon_ctx, db))
+
+    def test_start_process_icecast_no_unbound_copy(self):
+        with self.SessionLocal() as db:
+            svc = Service(
+                id=60,
+                name="Icecast Relay Boot",
+                service_type="icecast_server",
+                status="stopped",
+                config={
+                    "log_storage_id": None,
+                    "icecast_config": {
+                        "port": 7000,
+                        "mounts": [
+                            {
+                                "mount_name": "/remote.mp3",
+                                "relay_enabled": True,
+                                "relay_url": "http://10.0.0.3:7000/src.mp3",
+                                "relay_username": "relay",
+                                "relay_password": "secret",
+                            }
+                        ],
+                    },
+                },
+            )
+            db.add(svc)
+            db.commit()
+
+        async def _fake_exec(*args, **kwargs):
+            return SimpleNamespace(
+                pid=727272,
+                returncode=None,
+                stdout=None,
+                stderr=None,
+                stdin=None,
+            )
+
+        self.pm.get_process_log_storage_path = lambda **kwargs: self.test_dir
+        try:
+            with (
+                patch("core.process_manager.shutil.which", side_effect=lambda name: "/usr/bin/icecast2" if name == "icecast2" else None),
+                patch("core.process_manager.prepare_process_file_permissions"),
+                patch("core.process_manager.asyncio.create_subprocess_exec", side_effect=_fake_exec),
+                patch.object(self.pm, "_file_log_tailer", new_callable=AsyncMock),
+                patch.object(self.pm, "_log_reader", new_callable=AsyncMock),
+                patch.object(self.pm, "_watchdog", new_callable=AsyncMock),
+            ):
+                asyncio.run(self.pm.start_process(60))
+
+            with self.SessionLocal() as db:
+                refreshed = db.get(Service, 60)
+                self.assertEqual(refreshed.status, "running", msg=f"start_process failed: {refreshed.last_error}")
+                self.assertIsNone(refreshed.last_error)
+                self.assertEqual(refreshed.pending_change_mode, "none")
+
+            ephem_path = self.pm.ephemeral_configs.get(60)
+            self.assertTrue(ephem_path and os.path.exists(ephem_path))
+            with open(ephem_path, "r", encoding="utf-8") as f:
+                xml_txt = f.read()
+            self.assertIn("<relay>", xml_txt)
+            self.assertIn("10.0.0.3", xml_txt)
+        finally:
+            ephem = self.pm.ephemeral_configs.pop(60, None)
+            if ephem and os.path.exists(ephem):
+                os.remove(ephem)
 
 
 if __name__ == "__main__":

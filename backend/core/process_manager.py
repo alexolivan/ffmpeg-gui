@@ -533,7 +533,6 @@ class ProcessManager:
                                 )
 
                     # Resolve and validate paths before starting
-                    import copy
                     val_input = copy.deepcopy(cfg.get("input_config", {}))
                     val_output = copy.deepcopy(cfg.get("output_config", {}))
                     val_filter = copy.deepcopy(cfg.get("filter_config", {}) or {})
