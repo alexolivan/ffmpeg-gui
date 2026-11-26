@@ -449,6 +449,8 @@ class Service(Base):
                 str(m.get("mount_name") or "").strip(),
                 str(m.get("relay_url") or "").strip(),
                 bool(m.get("relay_on_demand", False)),
+                str(m.get("relay_username") or "").strip(),
+                str(m.get("relay_password") or "").strip(),
             ))
         return sorted(relays)
 

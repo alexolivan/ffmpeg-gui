@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.75.1] - 2026-11-26
+
+### Added
+- **Icecast2 Relay Authentication & Federated Peer Source Picker**:
+  - Added optional **Username** (`relay_username`) and **Password** (`relay_password`, masked toggle & RBAC-redacted) fields per relay mountpoint in `IcecastConfigForm`. When only a password is supplied, `_build_icecast_relay_xml` automatically defaults `<username>` to `relay` and emits proper `<username>`/`<password>` XML tags for both Icecast 2.3/2.4/KH and Icecast 2.5+ `<upstream>` blocks.
+  - Added **`Manual URL` | `Federated Peer`** switcher inside the relay configuration modal so operators can pull any Icecast mountpoint from another federated node (`/api/peers/remote-nodes`) with 3 `<SearchableSelect />` clicks (Peer → Icecast server → Mountpoint + TLS option).
+
 ## [2.75.0] - 2026-11-26
 
 ### Added
