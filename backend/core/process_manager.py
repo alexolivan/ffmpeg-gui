@@ -1716,7 +1716,7 @@ class ProcessManager:
 
     @staticmethod
     def _build_icecast_relay_xml(mount_dict: dict, mount_name: str, is_v25_or_newer: bool) -> Optional[str]:
-        """Build an Icecast2 <relay> XML block from a mountpoint's remote relay URL."""
+        """Build an Icecast2 <relay> XML block from a mountpoint's remote relay config."""
         raw_url = str(mount_dict.get("relay_url") or "").strip()
         if not raw_url:
             return None
@@ -1725,7 +1725,8 @@ class ProcessManager:
         host = parsed.hostname
         if not host:
             return None
-        default_port = 443 if parsed.scheme.lower() == "https" else 80
+        scheme = (parsed.scheme or "http").lower()
+        default_port = 443 if scheme == "https" else 80
         port = parsed.port or default_port
         remote_mount = parsed.path or "/"
         if parsed.query:
@@ -1733,16 +1734,37 @@ class ProcessManager:
         on_demand = 1 if mount_dict.get("relay_on_demand", False) else 0
         esc = saxutils.escape
 
+        # Resolve upstream credentials: explicit form fields take precedence over URL user:pass@;
+        # when a password is supplied without username, Icecast2's standard relay username is "relay".
+        explicit_user = str(mount_dict.get("relay_username") or "").strip()
+        explicit_pass = str(mount_dict.get("relay_password") or "").strip()
+        url_user = urllib.parse.unquote(parsed.username) if parsed.username else ""
+        url_pass = urllib.parse.unquote(parsed.password) if parsed.password else ""
+
+        eff_user = explicit_user or url_user
+        eff_pass = explicit_pass or url_pass
+        if eff_pass and not eff_user:
+            eff_user = "relay"
+
         if is_v25_or_newer:
-            return "\n".join([
+            netloc_host = f"[{host}]" if ":" in host else host
+            clean_uri = f"{scheme}://{netloc_host}:{int(port)}{remote_mount}"
+            u_lines = [
                 '    <relay>',
                 f'        <local-mount>{esc(mount_name)}</local-mount>',
                 f'        <on-demand>{on_demand}</on-demand>',
                 '        <upstream type="normal">',
-                f'            <uri>{esc(normalized_url)}</uri>',
+                f'            <uri>{esc(clean_uri)}</uri>',
+            ]
+            if eff_user:
+                u_lines.append(f'            <username>{esc(eff_user)}</username>')
+            if eff_pass:
+                u_lines.append(f'            <password>{esc(eff_pass)}</password>')
+            u_lines.extend([
                 '        </upstream>',
                 '    </relay>',
             ])
+            return "\n".join(u_lines)
 
         r_lines = [
             '    <relay>',
@@ -1753,10 +1775,10 @@ class ProcessManager:
             f'        <on-demand>{on_demand}</on-demand>',
             '        <relay-shoutcast-metadata>1</relay-shoutcast-metadata>',
         ]
-        if parsed.username:
-            r_lines.append(f'        <username>{esc(urllib.parse.unquote(parsed.username))}</username>')
-        if parsed.password:
-            r_lines.append(f'        <password>{esc(urllib.parse.unquote(parsed.password))}</password>')
+        if eff_user:
+            r_lines.append(f'        <username>{esc(eff_user)}</username>')
+        if eff_pass:
+            r_lines.append(f'        <password>{esc(eff_pass)}</password>')
         r_lines.append('    </relay>')
         return "\n".join(r_lines)
 

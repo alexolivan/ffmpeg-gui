@@ -93,6 +93,37 @@ class TestServiceHotReload(unittest.TestCase):
         }
         self.assertEqual(ice.pending_change_mode, "restart")
 
+        # Changing relay credentials on a relay mount -> also requires restart
+        ice.last_started_config = {
+            "config": {
+                "icecast_config": {
+                    "port": 7000,
+                    "mounts": [
+                        {
+                            "mount_name": "/a.mp3",
+                            "relay_enabled": True,
+                            "relay_url": "http://remote:8000/src.mp3",
+                            "relay_password": "old",
+                        },
+                    ],
+                }
+            }
+        }
+        ice.config = {
+            "icecast_config": {
+                "port": 7000,
+                "mounts": [
+                    {
+                        "mount_name": "/a.mp3",
+                        "relay_enabled": True,
+                        "relay_url": "http://remote:8000/src.mp3",
+                        "relay_password": "new",
+                    },
+                ],
+            }
+        }
+        self.assertEqual(ice.pending_change_mode, "restart")
+
     def test_mediamtx_atomic_reload_in_place_updates_yaml_and_clears_pending(self):
         yaml_path = os.path.join(self.test_dir, "mediamtx.yml")
         with self.SessionLocal() as db:
