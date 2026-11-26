@@ -437,6 +437,47 @@ class Service(Base):
     })
 
     @staticmethod
+    def _effective_build_id(cfg: dict):
+        if not isinstance(cfg, dict):
+            return None
+        return cfg.get("software_build_id") or cfg.get("ffmpeg_build_id") or cfg.get("build_id")
+
+    @staticmethod
+    def _norm_bind_addr(val) -> str:
+        s = str(val or "").strip()
+        return "" if s in ("", "0.0.0.0", "::") else s
+
+    @classmethod
+    def _normalize_icecast_mounts(cls, mounts) -> list:
+        if not isinstance(mounts, list):
+            return []
+        norm = []
+        for m in mounts:
+            if not isinstance(m, dict):
+                continue
+            m_name = str(m.get("mount_name") or "").strip()
+            if m_name and not m_name.startswith("/"):
+                m_name = "/" + m_name
+            fb = str(m.get("fallback_mount") or "").strip()
+            if fb and not fb.startswith("/"):
+                fb = "/" + fb
+            relay_en = bool(m.get("relay_enabled", False))
+            norm.append({
+                "mount_name": m_name,
+                "max_listeners": m.get("max_listeners") or None,
+                "fallback_mount": fb,
+                "fallback_override": bool(m.get("fallback_override", True)) if fb else True,
+                "burst_size": m.get("burst_size") or None,
+                "source_password": str(m.get("source_password") or "").strip(),
+                "relay_enabled": relay_en,
+                "relay_url": str(m.get("relay_url") or "").strip() if relay_en else "",
+                "relay_on_demand": bool(m.get("relay_on_demand", False)) if relay_en else False,
+                "relay_username": str(m.get("relay_username") or "").strip() if relay_en else "",
+                "relay_password": str(m.get("relay_password") or "").strip() if relay_en else "",
+            })
+        return norm
+
+    @staticmethod
     def _icecast_relay_signature(ice_cfg: dict) -> list:
         mounts = ice_cfg.get("mounts") if isinstance(ice_cfg, dict) else None
         if not isinstance(mounts, list):
@@ -472,31 +513,43 @@ class Service(Base):
         svc_type = getattr(self, 'service_type', None) or 'ffmpeg_stream'
 
         if svc_type == 'mediamtx_hub':
-            if (
-                current_cfg.get('software_build_id') != started_cfg.get('software_build_id')
-                or current_cfg.get('ffmpeg_build_id') != started_cfg.get('ffmpeg_build_id')
-            ):
+            if self._effective_build_id(current_cfg) != self._effective_build_id(started_cfg):
                 return 'restart'
             cur_m = current_cfg.get('mediamtx_config') or {}
             old_m = started_cfg.get('mediamtx_config') or {}
-            changed_keys = {k for k in set(cur_m) | set(old_m) if cur_m.get(k) != old_m.get(k)}
+            changed_keys = set()
+            for k in set(cur_m) | set(old_m):
+                cv, ov = cur_m.get(k), old_m.get(k)
+                if k == 'bind_address':
+                    if self._norm_bind_addr(cv) != self._norm_bind_addr(ov):
+                        changed_keys.add(k)
+                elif cv != ov:
+                    changed_keys.add(k)
             if not changed_keys:
                 return 'none'
             return 'reload' if changed_keys.issubset(self._MEDIAMTX_RELOADABLE_KEYS) else 'restart'
 
         if svc_type == 'icecast_server':
             if (
-                current_cfg.get('software_build_id') != started_cfg.get('software_build_id')
-                or current_cfg.get('ffmpeg_build_id') != started_cfg.get('ffmpeg_build_id')
+                self._effective_build_id(current_cfg) != self._effective_build_id(started_cfg)
                 or current_cfg.get('log_storage_id') != started_cfg.get('log_storage_id')
             ):
                 return 'restart'
             cur_i = current_cfg.get('icecast_config') or {}
             old_i = started_cfg.get('icecast_config') or {}
-            changed_keys = {
-                k for k in set(cur_i) | set(old_i)
-                if k != 'has_status_json' and cur_i.get(k) != old_i.get(k)
-            }
+            changed_keys = set()
+            for k in set(cur_i) | set(old_i):
+                if k == 'has_status_json':
+                    continue
+                cv, ov = cur_i.get(k), old_i.get(k)
+                if k == 'bind_address':
+                    if self._norm_bind_addr(cv) != self._norm_bind_addr(ov):
+                        changed_keys.add(k)
+                elif k == 'mounts':
+                    if self._normalize_icecast_mounts(cv) != self._normalize_icecast_mounts(ov):
+                        changed_keys.add(k)
+                elif cv != ov:
+                    changed_keys.add(k)
             if not changed_keys:
                 return 'none'
             if not changed_keys.issubset(self._ICECAST_RELOADABLE_KEYS):
@@ -508,8 +561,7 @@ class Service(Base):
         if svc_type == 'pipewire_hub':
             changed = (
                 current_cfg.get('pipewire_config') != started_cfg.get('pipewire_config')
-                or current_cfg.get('software_build_id') != started_cfg.get('software_build_id')
-                or current_cfg.get('ffmpeg_build_id') != started_cfg.get('ffmpeg_build_id')
+                or self._effective_build_id(current_cfg) != self._effective_build_id(started_cfg)
             )
             return 'restart' if changed else 'none'
 

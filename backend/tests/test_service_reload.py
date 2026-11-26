@@ -124,6 +124,41 @@ class TestServiceHotReload(unittest.TestCase):
         }
         self.assertEqual(ice.pending_change_mode, "restart")
 
+        # Legacy snapshot drift: software_build_id populated on start_process vs omitted on form save,
+        # plus volatile has_status_json / equivalent bind_address ('0.0.0.0' vs None) must NOT trigger restart!
+        mtx_equiv = Service(
+            id=12,
+            name="MediaMTX Legacy Snapshot",
+            service_type="mediamtx_hub",
+            status="running",
+            config={"ffmpeg_build_id": 5, "mediamtx_config": {"bind_address": "0.0.0.0", "rtsp_port": 8554}},
+            last_started_config={
+                "config": {"software_build_id": 5, "ffmpeg_build_id": 5, "mediamtx_config": {"rtsp_port": 8554}}
+            },
+        )
+        self.assertFalse(mtx_equiv.pending_changes)
+        self.assertEqual(mtx_equiv.pending_change_mode, "none")
+
+        ice_equiv = Service(
+            id=13,
+            name="Icecast Legacy Snapshot",
+            service_type="icecast_server",
+            status="running",
+            config={
+                "ffmpeg_build_id": 6,
+                "icecast_config": {"port": 7000, "bind_address": "0.0.0.0", "mounts": [{"mount_name": "/a.mp3"}]},
+            },
+            last_started_config={
+                "config": {
+                    "software_build_id": 6,
+                    "ffmpeg_build_id": 6,
+                    "icecast_config": {"port": 7000, "has_status_json": True, "mounts": [{"mount_name": "/a.mp3"}]},
+                }
+            },
+        )
+        self.assertFalse(ice_equiv.pending_changes)
+        self.assertEqual(ice_equiv.pending_change_mode, "none")
+
     def test_mediamtx_atomic_reload_in_place_updates_yaml_and_clears_pending(self):
         yaml_path = os.path.join(self.test_dir, "mediamtx.yml")
         with self.SessionLocal() as db:

@@ -573,6 +573,10 @@ class ProcessManager:
                                     pw_provider_id = pw_hubs[0].id
                                     break
 
+                media_proc.last_started_config = {
+                    "name": media_proc.name,
+                    "config": copy.deepcopy(media_proc.config),
+                }
                 session.commit()  # Save changes and release write lock immediately!
                 
             # Ensure log directory exists and prepare file permissions for progress/preview files
