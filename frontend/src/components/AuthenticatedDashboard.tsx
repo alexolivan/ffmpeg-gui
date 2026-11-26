@@ -128,6 +128,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
     handleRestartService,
     handleReloadService,
     reloadingIds,
+    reloadedAckIds,
     handleImportFileChange,
     actionPending,
   } = useProcesses();
@@ -194,6 +195,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             telemetry={telemetry}
             actionPending={actionPending}
             reloadingIds={reloadingIds}
+            reloadAckIds={reloadedAckIds}
             onEditProcess={setEditingProcess}
             onCloneProcess={handleCloneProcess}
             onStartService={handleStartService}
@@ -717,6 +719,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             telemetry={telemetry}
             actionPending={actionPending}
             isReloading={!!reloadingIds[selectedProcess.id]}
+            isReloadAck={!!reloadedAckIds[selectedProcess.id]}
             logs={logs}
             onClose={() => setSelectedProcess(null)}
             onEditProcess={setEditingProcess}
@@ -736,6 +739,7 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             telemetry={telemetry}
             actionPending={actionPending}
             isReloading={!!reloadingIds[selectedProcess.id]}
+            isReloadAck={!!reloadedAckIds[selectedProcess.id]}
             logs={logs}
             onClose={() => setSelectedProcess(null)}
             onEditProcess={setEditingProcess}
