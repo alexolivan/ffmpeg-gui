@@ -19,6 +19,7 @@ import PreviewCmdModal from './modals/PreviewCmdModal';
 import { SourceIcon, GearIcon, KnobsIcon, DestinationIcon, ShieldIcon, ToolsIcon } from './Icons';
 import { AliasField } from './common/AliasField';
 import { SearchableSelect } from './common/SearchableSelect';
+import { findNextAvailableOutputPort, findOutputPortCollision } from '../utils/outputPortCollision';
 
 const VIDEO_ALLOWED_TYPES = ['file', 'desktop', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'v4l2', 'lavfi_video', 'rtmp', 'hls'];
 const AUDIO_ALLOWED_TYPES = ['file', 'srt', 'ndi', 'udp', 'rtp', 'decklink', 'alsa', 'lavfi_audio', 'http_audio', 'rtmp', 'hls', 'pipewire'];
@@ -167,53 +168,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
   }, []);
 
   const getNextAvailablePort = (basePort: number): string => {
-    let port = basePort;
-    const used = new Set<number>();
-    for (const item of existingConfigs) {
-      if (initialConfig) {
-        const isSelfTask = !!isTask === !!item.is_task;
-        if (isSelfTask) {
-          if (initialConfig.id !== undefined && initialConfig.id !== null && item.id === initialConfig.id) continue;
-          if (initialConfig.name && item.name === initialConfig.name) continue;
-        }
-      }
-      const out = item.output_config;
-      if (out && ['udp', 'srt', 'rtp'].includes(out.type)) {
-        const p = Number(out.port);
-        if (p && !isNaN(p)) used.add(p);
-      }
-    }
-    while (used.has(port)) {
-      port++;
-    }
-    return String(port);
-  };
-
-  const checkPortCollision = (portStr: string, hostStr: string): any | null => {
-    const port = Number(portStr);
-    if (!port || isNaN(port)) return null;
-    const host = (hostStr || '').trim() || '127.0.0.1';
-
-    for (const item of existingConfigs) {
-      if (initialConfig) {
-        const isSelfTask = !!isTask === !!item.is_task;
-        if (isSelfTask) {
-          if (initialConfig.id !== undefined && initialConfig.id !== null && item.id === initialConfig.id) continue;
-          if (initialConfig.name && item.name === initialConfig.name) continue;
-        }
-      }
-      const out = item.output_config;
-      if (out && ['udp', 'srt', 'rtp'].includes(out.type)) {
-        const itemPort = Number(out.port);
-        const itemHost = (out.host || '').trim() || '127.0.0.1';
-        if (itemPort === port) {
-          if (host === '0.0.0.0' || itemHost === '0.0.0.0' || host === itemHost) {
-            return item;
-          }
-        }
-      }
-    }
-    return null;
+    return findNextAvailableOutputPort(basePort, existingConfigs, { initialConfig, isTask });
   };
 
   const checkFilePathCollision = (pathStr: string): any | null => {
@@ -279,7 +234,7 @@ const ProcessConfigForm: React.FC<ProcessConfigFormProps> = ({
         if (isNaN(portNum) || !Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
           errors.port = 'Port must be an integer between 1 and 65535';
         } else {
-          const collision = checkPortCollision(portVal, out.host || '');
+          const collision = findOutputPortCollision(out, existingConfigs, { initialConfig, isTask });
           if (collision) {
             errors.port = `Port collision: port ${portVal} is already in use by active configuration "${collision.name}"`;
           }
