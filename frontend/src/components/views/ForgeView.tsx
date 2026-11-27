@@ -15,6 +15,8 @@ import {
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
 import { BuildSdksModal } from '../modals/BuildSdksModal';
+import { CompileConfirmModal } from '../modals/CompileConfirmModal';
+import { RollbackConfirmModal } from '../modals/RollbackConfirmModal';
 import { copyToClipboard } from '../../utils/clipboard';
 import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
 import { canAccessDomain, getDomainLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
@@ -184,7 +186,8 @@ interface ForgeViewProps {
   setEditingBuild: (b: BuildProfile | null) => void;
   handleCreateBuild: (data: any) => Promise<void>;
   handleUpdateBuild: (data: any) => Promise<void>;
-  handleCompile: (id: number) => Promise<void>;
+  handleCompile: (id: number, opts?: { clean?: boolean; maxJobs?: number; lowPriority?: boolean }) => Promise<void>;
+  handleRollback?: (id: number) => Promise<void>;
   handleStopBuild: (id: number) => Promise<void>;
   handleCleanSources: (id: number) => Promise<void>;
   handleValidate: (id: number) => Promise<void>;
@@ -223,6 +226,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   handleCreateBuild,
   handleUpdateBuild,
   handleCompile,
+  handleRollback,
   handleStopBuild,
   handleCleanSources,
   handleValidate,
@@ -245,6 +249,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   const canReadSettings = canAccessDomain(permissions, 'settings', 'monitor');
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [cloningBuild, setCloningBuild] = React.useState<BuildProfile | null>(null);
+  const [compileModalBuild, setCompileModalBuild] = React.useState<BuildProfile | null>(null);
+  const [rollbackModalBuild, setRollbackModalBuild] = React.useState<BuildProfile | null>(null);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
 
   useEffect(() => {
@@ -508,7 +514,11 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 build={build}
                 installedSdks={installedSdks}
                 isAnyBuilding={isAnyBuilding}
-                onCompile={handleCompile}
+                onCompile={(id) => {
+                  const target = builds.find(x => Number(x.id) === Number(id))
+                  if (target) setCompileModalBuild(target)
+                }}
+                onRollback={(b) => setRollbackModalBuild(b)}
                 onStop={handleStopBuild}
                 onValidate={handleValidate}
                 onCleanSources={handleCleanSources}
@@ -552,6 +562,34 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
           buildId={terminalBuild.id}
           buildName={terminalBuild.name}
           onClose={() => { setTerminalBuild(null); refreshBuilds(); refreshDiskInfo() }}
+        />
+      )}
+
+      {/* Compile Confirmation Modal */}
+      {compileModalBuild && (
+        <CompileConfirmModal
+          build={compileModalBuild}
+          cpuCores={diskInfo?.cpu_cores}
+          API={API}
+          onCancel={() => setCompileModalBuild(null)}
+          onConfirm={(opts) => {
+            const targetId = compileModalBuild.id;
+            setCompileModalBuild(null);
+            handleCompile(targetId, opts);
+          }}
+        />
+      )}
+
+      {/* Rollback Confirmation Modal */}
+      {rollbackModalBuild && (
+        <RollbackConfirmModal
+          build={rollbackModalBuild}
+          onCancel={() => setRollbackModalBuild(null)}
+          onConfirm={() => {
+            const targetId = rollbackModalBuild.id;
+            setRollbackModalBuild(null);
+            handleRollback?.(targetId);
+          }}
         />
       )}
 

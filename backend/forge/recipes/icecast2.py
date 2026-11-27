@@ -157,9 +157,10 @@ class IcecastRecipe(BaseRecipe):
                     cwd=igloo_dir
                 )
 
+                jobs = self.runner.get_max_jobs() if self.runner and hasattr(self.runner, "get_max_jobs") else 4
                 await log_callback("Compilando libigloo...\n")
                 await self.runner._run_logged_cmd(
-                    ["make", "-j4"],
+                    ["make", f"-j{jobs}"],
                     log_callback,
                     cwd=igloo_dir
                 )
@@ -209,9 +210,10 @@ class IcecastRecipe(BaseRecipe):
             env=build_env
         )
         
+        jobs = self.runner.get_max_jobs() if self.runner and hasattr(self.runner, "get_max_jobs") else 4
         await log_callback("Compilando Icecast2...\n")
         await self.runner._run_logged_cmd(
-            ["make", "-j4"],
+            ["make", f"-j{jobs}"],
             log_callback,
             cwd=extracted_dir,
             env=build_env

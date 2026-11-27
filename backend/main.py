@@ -5424,12 +5424,29 @@ def update_build(build_id: int, data: BuildUpdate, db: Session = Depends(get_db)
                 shutil.move(old_build_dir, new_build_dir)
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to move build directory: {str(e)}")
+
+        def _rebase_build_path(p: Optional[str]) -> Optional[str]:
+            if not p:
+                return p
+            abs_p = os.path.abspath(p)
+            abs_old = os.path.abspath(old_build_dir)
+            abs_new = os.path.abspath(new_build_dir)
+            if abs_p == abs_old or abs_p.startswith(abs_old + os.sep):
+                return abs_new + abs_p[len(abs_old):]
+            return p
+
         build.storage_id = data.storage_id
-        build.install_path = build_manager.get_install_path(build_id, builds_root=new_storage_path)
-        if build.ffmpeg_binary:
-            build.ffmpeg_binary = os.path.join(build.install_path, "bin", "ffmpeg")
-        if build.ffprobe_binary:
-            build.ffprobe_binary = os.path.join(build.install_path, "bin", "ffprobe")
+        build.install_path = _rebase_build_path(build.install_path) or build_manager.get_install_path(build_id, builds_root=new_storage_path)
+        if build.binary_path:
+            build.binary_path = _rebase_build_path(build.binary_path)
+        if isinstance(getattr(build, "previous_revision", None), dict):
+            from sqlalchemy.orm.attributes import flag_modified
+            rev_copy = dict(build.previous_revision)
+            for k in ("install_path", "binary_path", "ffprobe_binary"):
+                if rev_copy.get(k):
+                    rev_copy[k] = _rebase_build_path(rev_copy[k])
+            build.previous_revision = rev_copy
+            flag_modified(build, "previous_revision")
 
     if data.name is not None:
         # Check uniqueness per software_type
@@ -5510,8 +5527,14 @@ def delete_build(build_id: int, db: Session = Depends(get_db)):
 
 @app.post("/builds/{build_id}/compile")
 async def compile_build(build_id: int, background_tasks: BackgroundTasks,
-                        clean: bool = False, db: Session = Depends(get_db)):
-    """Start compilation of a build profile."""
+                        clean: bool = False,
+                        max_jobs: Optional[int] = None,
+                        low_priority: bool = True,
+                        db: Session = Depends(get_db)):
+    """Start compilation of a build profile in an isolated staging revision."""
+    import copy
+    from core.forge_revisions import build_recipe_snapshot
+
     build = db.query(FfmpegBuild).get(build_id)
     if not build:
         raise HTTPException(status_code=404, detail="Build profile not found")
@@ -5526,10 +5549,40 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                 detail=f"Thermal protection active: build halted due to critical hardware temperature ({snap.get('max_temp_c')}°C >= {hardware_health_manager.critical_threshold_c}°C)"
             )
 
+    stype = build.software_type or "ffmpeg"
+    had_ready_binary = (
+        build.status == "ready"
+        and bool(build.binary_path)
+        and os.path.isfile(build.binary_path)
+    )
+    prev_raw_opts = copy.deepcopy(build.build_options or {})
+    prev_raw_sdks = copy.deepcopy(build.sdk_paths) if build.sdk_paths else None
+    prev_snapshot = build.compiled_snapshot or (
+        build_recipe_snapshot(build.version_tag, prev_raw_opts, prev_raw_sdks, stype)
+        if had_ready_binary
+        else None
+    )
+    prev_state = {
+        "install_path": build.install_path,
+        "binary_path": build.binary_path,
+        "ffprobe_binary": build.ffprobe_binary,
+        "version_tag": build.version_tag,
+        "version_output": build.version_output,
+        "built_at": build.built_at.isoformat() if build.built_at else None,
+        "snapshot": prev_snapshot,
+        "raw_build_options": prev_raw_opts,
+        "raw_sdk_paths": prev_raw_sdks,
+    } if had_ready_binary else None
+
+    target_version_tag = build.version_tag
+    target_srt_version = build.srt_version
+    target_raw_opts = copy.deepcopy(build.build_options or {})
+    target_raw_sdks = copy.deepcopy(build.sdk_paths) if build.sdk_paths else None
 
     # Mark as building
     build.status = "building"
     build.build_log_summary = None
+    build.last_compile_error = None
     if clean:
         build.sources_cleaned = False
     db.commit()
@@ -5571,42 +5624,62 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
             try:
                 result = await build_manager.run_build(
                     build_id=build_id,
-                    ffmpeg_version=build.ffmpeg_version,
-                    srt_version=build.srt_version,
-                    options=build.build_options,
-                    sdk_paths=build.sdk_paths,
+                    ffmpeg_version=target_version_tag,
+                    srt_version=target_srt_version,
+                    options=copy.deepcopy(target_raw_opts),
+                    sdk_paths=copy.deepcopy(target_raw_sdks),
                     sources_cleaned=clean or build.sources_cleaned,
                     log_callback=_log_callback,
                     auto_clean=build.auto_clean or False,
                     builds_root=storage_path,
-                    software_type=build.software_type or "ffmpeg",
+                    software_type=stype,
+                    max_jobs=max_jobs,
+                    low_priority=low_priority,
+                    clean_sources_first=clean,
                 )
                 # Persist results to DB
                 with SessionLocal() as session:
+                    from sqlalchemy.orm.attributes import flag_modified
                     db_build = session.query(FfmpegBuild).get(build_id)
                     if result.get("success"):
+                        if had_ready_binary and prev_state and prev_state.get("install_path") != result.get("install_path"):
+                            db_build.previous_revision = prev_state
+                            flag_modified(db_build, "previous_revision")
+
                         db_build.status = "ready"
-                        db_build.ffmpeg_binary = result.get("ffmpeg_binary")
-                        db_build.ffprobe_binary = result.get("ffprobe_binary")
-                        db_build.ffmpeg_version_output = result.get("version_output")
+                        db_build.install_path = result.get("install_path") or db_build.install_path
                         db_build.binary_path = result.get("binary_path")
                         db_build.version_output = result.get("version_output")
                         if result.get("version_tag"):
                             db_build.ffmpeg_version = result.get("version_tag")
                             db_build.version_tag = result.get("version_tag")
-                        db_build.disk_usage_mb = result.get("disk_usage_mb")
                         db_build.built_at = datetime.datetime.utcnow()
-                        db_build.sources_cleaned = db_build.auto_clean  # If auto_clean was true, sources are now cleaned
+                        db_build.sources_cleaned = bool(db_build.auto_clean)
+                        db_build.last_compile_error = None
+                        db_build.build_log_summary = None
                         if result.get("build_options"):
-                            from sqlalchemy.orm.attributes import flag_modified
                             db_build.build_options = result.get("build_options")
                             flag_modified(db_build, "build_options")
                         if result.get("sdk_paths"):
-                            # SQLAlchemy flag mutation for JSON fields
-                            from sqlalchemy.orm.attributes import flag_modified
                             db_build.sdk_paths = result.get("sdk_paths")
                             flag_modified(db_build, "sdk_paths")
-                        
+
+                        db_build.compiled_snapshot = build_recipe_snapshot(
+                            db_build.version_tag,
+                            db_build.build_options,
+                            db_build.sdk_paths,
+                            db_build.software_type or "ffmpeg",
+                        )
+                        flag_modified(db_build, "compiled_snapshot")
+
+                        keep_paths = [
+                            db_build.install_path,
+                            db_build.previous_revision.get("install_path") if isinstance(db_build.previous_revision, dict) else None,
+                        ]
+                        build_manager.cleanup_old_revisions(build_id, keep_paths=keep_paths, builds_root=storage_path)
+                        disk_mb = build_manager.get_disk_usage(build_id, storage_path)
+                        db_build.disk_usage_mb = disk_mb
+
                         # Set default if no other ready build exists for this engine
                         existing_default = session.query(FfmpegBuild).filter(
                             FfmpegBuild.software_type == db_build.software_type,
@@ -5622,13 +5695,19 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                             build_name=db_build.name,
                             success=True,
                             version_output=result.get("version_output"),
-                            disk_usage_mb=result.get("disk_usage_mb"),
+                            disk_usage_mb=disk_mb,
                             auto_clean=bool(db_build.auto_clean)
                         )
                     else:
-                        db_build.status = "failed"
-                        db_build.build_log_summary = result.get("error", "Unknown error")
-                        notify_build_result(build_id=build_id, build_name=db_build.name, success=False, error_msg=result.get("error", "Unknown error"))
+                        error_msg = result.get("error", "Unknown error")
+                        if had_ready_binary and prev_state and prev_state.get("binary_path") and os.path.isfile(prev_state["binary_path"]):
+                            db_build.status = "ready"
+                        else:
+                            db_build.status = "failed"
+                        db_build.last_compile_error = error_msg
+                        db_build.build_log_summary = error_msg
+                        db_build.disk_usage_mb = build_manager.get_disk_usage(build_id, storage_path)
+                        notify_build_result(build_id=build_id, build_name=db_build.name, success=False, error_msg=error_msg)
                     session.commit()
             except Exception as e:
                 logger.error(f"Build {build_id} failed with exception: {str(e)}")
@@ -5636,8 +5715,13 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                 with SessionLocal() as session:
                     db_build = session.query(FfmpegBuild).get(build_id)
                     if db_build:
-                        db_build.status = "failed"
+                        if had_ready_binary and prev_state and prev_state.get("binary_path") and os.path.isfile(prev_state["binary_path"]):
+                            db_build.status = "ready"
+                        else:
+                            db_build.status = "failed"
+                        db_build.last_compile_error = str(e)
                         db_build.build_log_summary = str(e)
+                        db_build.disk_usage_mb = build_manager.get_disk_usage(build_id, storage_path)
                         session.commit()
                         notify_build_result(build_id=build_id, build_name=db_build.name, success=False, error_msg=str(e))
                     else:
@@ -5652,16 +5736,21 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
 
 @app.post("/builds/{build_id}/stop")
 async def stop_build(build_id: int, db: Session = Depends(get_db)):
-    """Stop a running compilation."""
+    """Stop a running compilation, preserving existing working binaries if present."""
     build = db.query(FfmpegBuild).get(build_id)
     if not build:
         raise HTTPException(status_code=404, detail="Build profile not found")
+
+    has_active_bin = bool(build.binary_path and os.path.isfile(build.binary_path))
 
     # Case A: Build is active in build manager memory
     if build_manager.active_build_id == build_id:
         success = await build_manager.stop_build()
         if success:
-            build.status = "failed"
+            db.refresh(build)
+            has_active_bin = bool(build.binary_path and os.path.isfile(build.binary_path))
+            build.status = "ready" if has_active_bin else "failed"
+            build.last_compile_error = "Build aborted by user"
             build.build_log_summary = "Build aborted by user"
             db.commit()
             return {"status": "ok"}
@@ -5670,13 +5759,75 @@ async def stop_build(build_id: int, db: Session = Depends(get_db)):
 
     # Case B: Build is not active in memory, but database status is 'building' (stale state)
     if build.status == "building":
-        build.status = "failed"
+        build.status = "ready" if has_active_bin else "failed"
+        build.last_compile_error = "Build aborted by user (stale status reset)"
         build.build_log_summary = "Build aborted by user (stale status reset)"
         db.commit()
         return {"status": "ok", "message": "Stale build state reset"}
 
     # Case C: Build is neither active nor in building status in database
     raise HTTPException(status_code=409, detail="This build is not currently compiling")
+
+
+@app.post("/builds/{build_id}/rollback")
+def rollback_build(build_id: int, db: Session = Depends(get_db)):
+    """Restore the immediately preceding compiled revision and clean sources."""
+    from core.forge_revisions import build_recipe_snapshot, is_revision_path_valid
+    from sqlalchemy.orm.attributes import flag_modified
+
+    build = db.query(FfmpegBuild).get(build_id)
+    if not build:
+        raise HTTPException(status_code=404, detail="Build profile not found")
+    if build.status == "building":
+        raise HTTPException(status_code=409, detail="Cannot rollback while build is compiling")
+
+    prev = getattr(build, "previous_revision", None)
+    if not is_revision_path_valid(prev):
+        raise HTTPException(status_code=409, detail="No valid previous revision available for rollback")
+
+    storage_path = build.storage.path if build.storage else None
+    restored_install = prev["install_path"]
+    restored_binary = prev["binary_path"]
+    restored_tag = prev.get("version_tag") or build.version_tag
+    restored_opts = prev.get("raw_build_options") if isinstance(prev.get("raw_build_options"), dict) else {}
+    restored_sdks = prev.get("raw_sdk_paths") if isinstance(prev.get("raw_sdk_paths"), dict) else None
+    restored_snap = prev.get("snapshot") or build_recipe_snapshot(
+        restored_tag, restored_opts, restored_sdks, build.software_type or "ffmpeg"
+    )
+    restored_built_at = None
+    if prev.get("built_at"):
+        try:
+            restored_built_at = datetime.datetime.fromisoformat(str(prev["built_at"]))
+        except Exception:
+            restored_built_at = datetime.datetime.utcnow()
+
+    build.install_path = restored_install
+    build.binary_path = restored_binary
+    build.version_tag = restored_tag
+    build.version_output = prev.get("version_output")
+    build.built_at = restored_built_at or datetime.datetime.utcnow()
+    build.build_options = restored_opts
+    build.sdk_paths = restored_sdks
+    build.compiled_snapshot = restored_snap
+    build.previous_revision = None
+    build.last_compile_error = None
+    build.build_log_summary = None
+    build.status = "ready"
+
+    for json_col in ("build_options", "sdk_paths", "compiled_snapshot", "previous_revision"):
+        try:
+            flag_modified(build, json_col)
+        except Exception:
+            pass
+
+    build_manager.clean_sources(build_id, builds_root=storage_path)
+    build.sources_cleaned = True
+    build_manager.cleanup_old_revisions(build_id, keep_paths=[restored_install], builds_root=storage_path)
+    build.disk_usage_mb = build_manager.get_disk_usage(build_id, storage_path)
+
+    db.commit()
+    db.refresh(build)
+    return {"status": "ok", "build": _serialize_build(build)}
 
 @app.post("/builds/{build_id}/set-default")
 def set_default_build(build_id: int, db: Session = Depends(get_db)):
@@ -8165,13 +8316,16 @@ async def get_task_preview(execution_id: int, request: Request, db: Session = De
 
 def _serialize_build(build: FfmpegBuild) -> dict:
     """Convert a FfmpegBuild ORM object to a JSON-safe dict."""
+    from core.forge_revisions import build_recipe_snapshot, compute_recipe_diff, is_revision_path_valid
+
     disk_mb = build.disk_usage_mb
     if (disk_mb is None or disk_mb == 0) and build.status == 'ready':
         storage_path = build.storage.path if build.storage else None
         disk_mb = build_manager.get_disk_usage(build.id, builds_root=storage_path)
 
+    stype = build.software_type or "ffmpeg"
     from forge.recipes import get_recipe_version
-    recipe_version = get_recipe_version(build.software_type or "ffmpeg")
+    recipe_version = get_recipe_version(stype)
     is_outdated = False
     if recipe_version and build.status == "ready":
         current_ver = build.version_tag or build.ffmpeg_version or "1.0.0"
@@ -8186,6 +8340,49 @@ def _serialize_build(build: FfmpegBuild) -> dict:
             is_outdated = version.parse(str(current_ver)) < version.parse(str(recipe_version))
         except Exception:
             is_outdated = str(current_ver) != str(recipe_version)
+
+    source_type = getattr(build, "source_type", "compiled") or "compiled"
+    current_snapshot = build_recipe_snapshot(
+        build.version_tag,
+        build.build_options,
+        build.sdk_paths,
+        stype,
+    )
+    compiled_snapshot = getattr(build, "compiled_snapshot", None)
+    if compiled_snapshot is None and build.status == "ready" and source_type == "compiled":
+        compiled_snapshot = current_snapshot
+
+    pending_changes = (
+        compute_recipe_diff(compiled_snapshot, current_snapshot, stype)
+        if compiled_snapshot
+        else []
+    )
+
+    needs_recompile = False
+    if source_type == "compiled":
+        if build.status in ("pending", "failed") or is_outdated or len(pending_changes) > 0:
+            needs_recompile = True
+
+    prev_rev = getattr(build, "previous_revision", None)
+    can_rollback = is_revision_path_valid(prev_rev)
+    rollback_info = None
+    if can_rollback:
+        prev_snap = prev_rev.get("snapshot") or build_recipe_snapshot(
+            prev_rev.get("version_tag"),
+            prev_rev.get("raw_build_options"),
+            prev_rev.get("raw_sdk_paths"),
+            stype,
+        )
+        rollback_info = {
+            "version_tag": prev_rev.get("version_tag"),
+            "built_at": prev_rev.get("built_at"),
+            "snapshot": prev_snap,
+            "diff_from_current": compute_recipe_diff(
+                compiled_snapshot or current_snapshot,
+                prev_snap,
+                stype,
+            ),
+        }
 
     return {
         "id": build.id,
@@ -8207,8 +8404,8 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "created_at": build.created_at.isoformat() if build.created_at else None,
         "built_at": build.built_at.isoformat() if build.built_at else None,
         "storage_id": build.storage_id,
-        "software_type": build.software_type or "ffmpeg",
-        "source_type": getattr(build, "source_type", "compiled") or "compiled",
+        "software_type": stype,
+        "source_type": source_type,
         "system_path": getattr(build, "system_path", None),
         "is_managed": getattr(build, "is_managed", True),
         "version_tag": build.version_tag,
@@ -8216,6 +8413,12 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "version_output": build.version_output,
         "recipe_version": recipe_version,
         "is_outdated": is_outdated,
+        "compiled_snapshot": compiled_snapshot,
+        "pending_changes": pending_changes,
+        "needs_recompile": needs_recompile,
+        "can_rollback": can_rollback,
+        "rollback_info": rollback_info,
+        "last_compile_error": getattr(build, "last_compile_error", None),
     }
 
 
