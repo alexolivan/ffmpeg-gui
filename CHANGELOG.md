@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.76.0] - 2026-11-27
+
+### Added
+- **Symmetrical NVENC & VAAPI Host Hardware Introspection & Forge Smoke Validation (`hw_probe.py`, `ffmpeg.py`, `build_manager.py`, `BuildFormModal.tsx`, `ForgeView.tsx`)**:
+  - Added timeless host GPU probing (`detect_host_nvenc_api_version` via `NvEncodeAPIGetMaxSupportedVersion` in `libnvidia-encode.so.1`, and `detect_host_vaapi_render_node` for Intel/AMD `/dev/dri/renderD*` nodes), exposed in `GET /system/capabilities` (`nvenc.api_version`, `vaapi.render_node`).
+  - Updated `BuildManager.get_ffnvcodec_tag` and Forge `BuildFormModal` defaults to clamp `nv-codec-headers` selections automatically against the host driver's NVENC API ceiling without hardcoded driver tables.
+  - Added symmetrical non-blocking pre-compile advisories in `BuildFormModal` for both **VAAPI** and **NVENC** (plus a 1-click compatible SDK tag switcher when the chosen `nv-codec-headers` tag exceeds host NVENC API support).
+  - Added 1-frame runtime smoke encodes (`h264_nvenc` and `h264_vaapi` → `-f null -`) at the end of FFmpeg compilation and inside `GET /builds/{build_id}/validate` / `ForgeView` validation modal (`hw_checks`, `has_warnings`).
+
 ## [2.75.6] - 2026-11-27
 
 ### Fixed
