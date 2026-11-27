@@ -144,7 +144,7 @@ def extract_ports_from_service(
             if port:
                 try:
                     p_num = int(port)
-                    if inp_type == "srt" and mode not in ["caller"]:
+                    if inp_type == "srt" and not inp.get("is_mediamtx") and mode not in ["caller"]:
                         ports.append((p_num, "FFmpeg In Listener (SRT)", service_name, service_id, "udp"))
                     elif inp_type in ["udp", "rtp"]:
                         ports.append((p_num, f"FFmpeg In ({inp_type.upper()})", service_name, service_id, "udp"))
@@ -170,7 +170,7 @@ def extract_ports_from_service(
                 mode = str(out.get("mode", "")).lower()
                 try:
                     p_num = int(out["port"])
-                    if out_type == "srt" and mode in ["listener", "listen"]:
+                    if out_type == "srt" and not out.get("is_mediamtx") and mode in ["listener", "listen"]:
                         ports.append((p_num, "FFmpeg Out Listener (SRT)", service_name, service_id, "udp"))
                     elif out_type == "tcp" and mode in ["listener", "listen"]:
                         ports.append((p_num, "FFmpeg Out Listener (TCP)", service_name, service_id, "tcp"))
