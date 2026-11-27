@@ -14,16 +14,18 @@ from database.models import ScheduledTask, TaskExecution, TaskExecutionLog, Ffmp
 from utils.process_utils import cleanup_rogue_processes, prepare_process_file_permissions, cleanup_task_progress_files
 
 class TaskManager:
-    def __init__(self, db_session_factory, ffmpeg_path="ffmpeg", process_manager=None):
+    def __init__(self, db_session_factory, ffmpeg_path="ffmpeg", process_manager=None, build_manager=None):
         self.db_session_factory = db_session_factory
         self.ffmpeg_path = ffmpeg_path
         self.process_manager = process_manager
+        self.build_manager = build_manager
         self.logger = logging.getLogger("TaskManager")
         self.running_processes = {}
         self.last_activity = {}
         self._last_status_commit = {}
         self._notified_failed_executions = set()
         self._aborted_executions = set()
+        self._active_forge_exec_id: Optional[int] = None
         self._last_log_cleanup_ts = 0.0
         self._log_monitor_task = None
 
@@ -347,6 +349,11 @@ class TaskManager:
 
     async def stop_execution(self, execution_id: int, status="stopped", error_msg=None):
         self._aborted_executions.add(execution_id)
+        if self._active_forge_exec_id == execution_id and self.build_manager and getattr(self.build_manager, "is_building", False):
+            try:
+                await self.build_manager.stop_build()
+            except Exception as exc:
+                self.logger.error(f"Failed stopping active Forge build for execution {execution_id}: {exc}")
         proc = self.running_processes.get(execution_id)
         if proc:
             if proc.stdin:
@@ -609,6 +616,16 @@ class TaskManager:
                 if not ok:
                     status = 'error'
                     error_msg = "One or more services failed to restart"
+            elif command == "system://forge_build":
+                input_cfg = {}
+                with self.db_session_factory() as session:
+                    ex = session.query(TaskExecution).get(execution_id)
+                    if ex and ex.task and ex.task.input_config:
+                        input_cfg = ex.task.input_config
+                ok = await self._execute_forge_build(execution_id, input_cfg, log_info, log_warn, log_error)
+                if not ok:
+                    status = 'error'
+                    error_msg = "One or more Forge build profiles failed to compile"
             else:
                 raise ValueError(f"Unknown system command: {command}")
         except Exception as e:
@@ -722,6 +739,124 @@ class TaskManager:
                     elapsed += step
 
         log_info(f"Service maintenance restart sequence finished {'with errors' if not all_success else 'successfully'}.")
+        return all_success
+
+    async def _execute_forge_build(self, execution_id: int, input_config: dict, log_info, log_warn, log_error) -> bool:
+        """Execute scheduled Forge compilations (nightly/deferred) sequentially."""
+        from core.forge_executor import build_needs_recompile, execute_forge_build_pipeline
+        from database.models import SoftwareBuild
+
+        if not self.build_manager:
+            log_error("BuildManager is not available on TaskManager.")
+            return False
+
+        raw_bids = input_config.get("build_ids")
+        target_mode = input_config.get("target_mode") or ("all_pending" if not raw_bids else "selected")
+        only_if_pending = True if target_mode == "all_pending" else bool(input_config.get("only_if_pending", True))
+        max_jobs = input_config.get("max_jobs")
+        low_priority = bool(input_config.get("low_priority", True))
+        clean = bool(input_config.get("clean", True))
+
+        candidates: list[tuple[int, str]] = []
+        with self.db_session_factory() as session:
+            if target_mode == "all_pending":
+                all_compiled = (
+                    session.query(SoftwareBuild)
+                    .filter(SoftwareBuild.source_type == "compiled")
+                    .order_by(SoftwareBuild.id.asc())
+                    .all()
+                )
+                for b in all_compiled:
+                    needs, _, _ = build_needs_recompile(b)
+                    if needs:
+                        candidates.append((b.id, b.name))
+            else:
+                req_ids = raw_bids if isinstance(raw_bids, list) else []
+                for raw_bid in req_ids:
+                    try:
+                        bid = int(raw_bid)
+                    except (TypeError, ValueError):
+                        log_warn(f"Invalid build ID '{raw_bid}' in Forge task (skipped).")
+                        continue
+                    b = session.query(SoftwareBuild).get(bid)
+                    if not b:
+                        log_warn(f"Build profile #{bid} not found (skipped).")
+                        continue
+                    if (getattr(b, "source_type", "compiled") or "compiled") != "compiled":
+                        log_warn(f"Build profile '{b.name}' (#{bid}) is not Forge-compiled (skipped).")
+                        continue
+                    if only_if_pending:
+                        needs, _, _ = build_needs_recompile(b)
+                        if not needs:
+                            log_info(f"Skipping '{b.name}' (#{bid}): already up-to-date with active recipe.")
+                            continue
+                    candidates.append((b.id, b.name))
+
+        if not candidates:
+            log_info("All target Forge profiles are already up-to-date. Nothing to compile.")
+            return True
+
+        log_info(
+            f"Starting Forge scheduled build queue for {len(candidates)} profile(s) "
+            f"(max_jobs={max_jobs or 'auto'}, low_priority={low_priority}, clean={clean})."
+        )
+
+        all_success = True
+        for bid, bname in candidates:
+            if execution_id in self._aborted_executions:
+                log_warn("Scheduled Forge build queue aborted by user.")
+                return False
+
+            if self.build_manager.is_building:
+                log_warn("Waiting because another manual compilation is currently active...")
+                for _ in range(12):
+                    if not self.build_manager.is_building or execution_id in self._aborted_executions:
+                        break
+                    await asyncio.sleep(5)
+                if execution_id in self._aborted_executions:
+                    log_warn("Scheduled Forge build queue aborted by user.")
+                    return False
+                if self.build_manager.is_building:
+                    log_error(f"Timed out waiting for active compilation before '{bname}' (#{bid}).")
+                    all_success = False
+                    break
+
+            log_info(f"Compiling Forge profile '{bname}' (#{bid})...")
+
+            def _forward_stage_log(msg: str):
+                text = (msg or "").strip()
+                if not text:
+                    return
+                if "━━━" in text or text.startswith("FATAL") or text.startswith("ERROR"):
+                    for line in text.splitlines():
+                        line = line.strip()
+                        if line:
+                            if line.startswith(("FATAL", "ERROR")):
+                                log_error(f"[{bname}] {line}")
+                            else:
+                                log_info(f"[{bname}] {line}")
+
+            self._active_forge_exec_id = execution_id
+            try:
+                res = await execute_forge_build_pipeline(
+                    bid,
+                    self.db_session_factory,
+                    self.build_manager,
+                    clean=clean,
+                    max_jobs=max_jobs,
+                    low_priority=low_priority,
+                    extra_log_callback=_forward_stage_log,
+                )
+            finally:
+                if self._active_forge_exec_id == execution_id:
+                    self._active_forge_exec_id = None
+
+            if res.get("success"):
+                log_info(f"Forge profile '{bname}' (#{bid}) compiled and swapped successfully.")
+            else:
+                all_success = False
+                log_error(f"Forge profile '{bname}' (#{bid}) failed: {res.get('error', 'Unknown error')}")
+
         return all_success
 
     @staticmethod
