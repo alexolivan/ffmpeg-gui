@@ -15,6 +15,8 @@ import {
 } from '../Icons';
 import { EngineLogo } from '../common/EngineLogo';
 import { BuildSdksModal } from '../modals/BuildSdksModal';
+import { CompileConfirmModal } from '../modals/CompileConfirmModal';
+import { RollbackConfirmModal } from '../modals/RollbackConfirmModal';
 import { copyToClipboard } from '../../utils/clipboard';
 import { PermissionLevelBadge } from '../common/PermissionLevelBadge';
 import { canAccessDomain, getDomainLevel, hasMinLevel, type EdgePermissionsSummary } from '../../utils/permissions';
@@ -164,8 +166,18 @@ interface ForgeViewProps {
   selectedLinuxDistro: 'debian' | 'fedora' | 'arch';
   setSelectedLinuxDistro: (distro: 'debian' | 'fedora' | 'arch') => void;
   systemTelemetry: any;
-  validationResult: { buildId: number; output: string } | null;
-  setValidationResult: (res: { buildId: number; output: string } | null) => void;
+  validationResult: {
+    buildId: number;
+    output: string;
+    hw_checks?: Array<{ engine: string; status: 'ok' | 'warning' | 'skipped'; message: string }>;
+    has_warnings?: boolean;
+  } | null;
+  setValidationResult: (res: {
+    buildId: number;
+    output: string;
+    hw_checks?: Array<{ engine: string; status: 'ok' | 'warning' | 'skipped'; message: string }>;
+    has_warnings?: boolean;
+  } | null) => void;
   terminalBuild: { id: number; name: string } | null;
   setTerminalBuild: (tb: { id: number; name: string } | null) => void;
   showBuildForm: boolean;
@@ -174,7 +186,12 @@ interface ForgeViewProps {
   setEditingBuild: (b: BuildProfile | null) => void;
   handleCreateBuild: (data: any) => Promise<void>;
   handleUpdateBuild: (data: any) => Promise<void>;
-  handleCompile: (id: number) => Promise<void>;
+  handleCompile: (id: number, opts?: { clean?: boolean; maxJobs?: number; lowPriority?: boolean }) => Promise<void>;
+  handleRollback?: (id: number) => Promise<void>;
+  handleScheduleBuild?: (
+    build: BuildProfile,
+    opts: { clean: boolean; maxJobs: number; lowPriority: boolean; scheduleDatetime: string; repeatDaily: boolean }
+  ) => Promise<void>;
   handleStopBuild: (id: number) => Promise<void>;
   handleCleanSources: (id: number) => Promise<void>;
   handleValidate: (id: number) => Promise<void>;
@@ -213,6 +230,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   handleCreateBuild,
   handleUpdateBuild,
   handleCompile,
+  handleRollback,
+  handleScheduleBuild,
   handleStopBuild,
   handleCleanSources,
   handleValidate,
@@ -235,6 +254,8 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   const canReadSettings = canAccessDomain(permissions, 'settings', 'monitor');
   const [showSdksModal, setShowSdksModal] = React.useState(false);
   const [cloningBuild, setCloningBuild] = React.useState<BuildProfile | null>(null);
+  const [compileModalBuild, setCompileModalBuild] = React.useState<BuildProfile | null>(null);
+  const [rollbackModalBuild, setRollbackModalBuild] = React.useState<BuildProfile | null>(null);
   const [storages, setStorages] = React.useState<any[]>(initialStorages);
 
   useEffect(() => {
@@ -498,7 +519,11 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
                 build={build}
                 installedSdks={installedSdks}
                 isAnyBuilding={isAnyBuilding}
-                onCompile={handleCompile}
+                onCompile={(id) => {
+                  const target = builds.find(x => Number(x.id) === Number(id))
+                  if (target) setCompileModalBuild(target)
+                }}
+                onRollback={(b) => setRollbackModalBuild(b)}
                 onStop={handleStopBuild}
                 onValidate={handleValidate}
                 onCleanSources={handleCleanSources}
@@ -545,6 +570,39 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
         />
       )}
 
+      {/* Compile Confirmation Modal */}
+      {compileModalBuild && (
+        <CompileConfirmModal
+          build={compileModalBuild}
+          cpuCores={diskInfo?.cpu_cores}
+          API={API}
+          onCancel={() => setCompileModalBuild(null)}
+          onConfirm={(opts) => {
+            const targetId = compileModalBuild.id;
+            setCompileModalBuild(null);
+            handleCompile(targetId, opts);
+          }}
+          onSchedule={handleScheduleBuild ? (opts) => {
+            const targetBuild = compileModalBuild;
+            setCompileModalBuild(null);
+            handleScheduleBuild(targetBuild, opts);
+          } : undefined}
+        />
+      )}
+
+      {/* Rollback Confirmation Modal */}
+      {rollbackModalBuild && (
+        <RollbackConfirmModal
+          build={rollbackModalBuild}
+          onCancel={() => setRollbackModalBuild(null)}
+          onConfirm={() => {
+            const targetId = rollbackModalBuild.id;
+            setRollbackModalBuild(null);
+            handleRollback?.(targetId);
+          }}
+        />
+      )}
+
       {/* SDKs Management Modal */}
       <BuildSdksModal
         isOpen={showSdksModal}
@@ -567,11 +625,46 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
       {/* Validation Result Modal */}
       {validationResult && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-8 z-50">
-          <div className="glass-card w-full max-w-2xl p-8 relative">
+          <div className="glass-card w-full max-w-2xl p-8 relative space-y-4">
             <button onClick={() => setValidationResult(null)}
-              className="absolute top-6 right-6 text-text-secondary hover:text-white">✕</button>
-            <h3 className="text-xl font-bold mb-4 text-brand-lime">{t('forge.buildValidation')}</h3>
-            <pre className="bg-black/60 p-6 rounded-2xl font-mono text-xs text-white/80 overflow-auto max-h-96 whitespace-pre-wrap">
+              className="absolute top-6 right-6 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer">✕</button>
+            <h3 className={`text-xl font-bold flex items-center gap-2 ${validationResult.has_warnings ? 'text-brand-orange' : 'text-brand-lime'}`}>
+              <span>{t('forge.buildValidation')}</span>
+              {validationResult.has_warnings && (
+                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-orange/15 border border-brand-orange/30 text-brand-orange">
+                  ⚠️ {t('forge.validationHasWarnings', 'Runtime hardware warnings')}
+                </span>
+              )}
+            </h3>
+
+            {validationResult.hw_checks && validationResult.hw_checks.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                  {t('forge.runtimeHwChecksTitle', 'Runtime Hardware Smoke Tests (NVENC / VAAPI)')}
+                </div>
+                <div className="space-y-1.5">
+                  {validationResult.hw_checks.map((chk, idx) => {
+                    const cls = chk.status === 'ok'
+                      ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                      : chk.status === 'warning'
+                      ? 'bg-brand-orange/10 border-brand-orange/30 text-brand-orange'
+                      : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-[var(--text-secondary)]';
+                    const icon = chk.status === 'ok' ? '✓' : chk.status === 'warning' ? '⚠️' : 'ℹ️';
+                    return (
+                      <div key={`${chk.engine}-${idx}`} className={`p-2.5 rounded-xl border text-xs font-mono flex items-start gap-2 ${cls}`}>
+                        <span className="shrink-0">{icon}</span>
+                        <div>
+                          <span className="font-bold uppercase mr-1.5">[{chk.engine}]</span>
+                          <span>{chk.message}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <pre className="bg-[var(--input-bg)] border border-[var(--glass-border)] p-6 rounded-2xl font-mono text-xs text-[var(--text-primary)] overflow-auto max-h-96 whitespace-pre-wrap">
               {validationResult.output}
             </pre>
           </div>

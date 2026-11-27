@@ -97,6 +97,8 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
     handleCreateBuild,
     handleUpdateBuild,
     handleCompile,
+    handleRollback,
+    handleScheduleBuild,
     handleStopBuild,
     handleCleanSources,
     handleValidate,
@@ -271,6 +273,8 @@ export const AuthenticatedDashboard: React.FC<AuthenticatedDashboardProps> = ({
             handleCreateBuild={handleCreateBuild}
             handleUpdateBuild={handleUpdateBuild}
             handleCompile={handleCompile}
+            handleRollback={handleRollback}
+            handleScheduleBuild={handleScheduleBuild}
             handleStopBuild={handleStopBuild}
             handleCleanSources={handleCleanSources}
             handleValidate={handleValidate}

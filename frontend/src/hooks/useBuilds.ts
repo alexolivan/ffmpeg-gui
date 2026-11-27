@@ -1,17 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { BuildProfile } from '../components/BuildProfileCard';
 import type { BuildFormData } from '../components/BuildFormModal';
+import { datetimeLocalToDailyCron } from '../utils/forgeBuildHelpers';
 
 const API = '';
 
 export function useBuilds(activeView: string) {
   const [builds, setBuilds] = useState<BuildProfile[]>([]);
-  const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number } | null>(null);
+  const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number; cpu_cores?: number } | null>(null);
   const [buildDeps, setBuildDeps] = useState<any>(null);
   const [checkStatus, setCheckStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [capabilities, setCapabilities] = useState<any>(null);
   const [terminalBuild, setTerminalBuild] = useState<{ id: number; name: string } | null>(null);
-  const [validationResult, setValidationResult] = useState<{ buildId: number; output: string } | null>(null);
+  const [validationResult, setValidationResult] = useState<{
+    buildId: number;
+    output: string;
+    hw_checks?: Array<{ engine: string; status: 'ok' | 'warning' | 'skipped'; message: string }>;
+    has_warnings?: boolean;
+  } | null>(null);
   const [showBuildForm, setShowBuildForm] = useState(false);
   const [editingBuild, setEditingBuild] = useState<BuildProfile | null>(null);
   const importRecipeRef = useRef<HTMLInputElement | null>(null);
@@ -88,23 +94,25 @@ export function useBuilds(activeView: string) {
     }
   };
 
-  const handleCompile = async (id: number) => {
+  const handleCompile = async (
+    id: number,
+    opts?: { clean?: boolean; maxJobs?: number; lowPriority?: boolean }
+  ) => {
     const build = builds.find(b => Number(b.id) === Number(id));
-    let clean = false;
-    if (build && (build.status === 'failed' || build.status === 'ready')) {
-      clean = window.confirm(
-        `¿Deseas realizar una compilación limpia (Clean Compile)?\n\nEsto eliminará las fuentes temporales previas y volverá a descargar y compilar todo de cero, lo cual es muy recomendable para solucionar problemas de dependencias.`
-      );
-    }
+    const params = new URLSearchParams();
+    if (opts?.clean) params.set('clean', 'true');
+    if (opts?.maxJobs != null) params.set('max_jobs', String(opts.maxJobs));
+    if (opts?.lowPriority !== undefined) params.set('low_priority', String(opts.lowPriority));
+    const qs = params.toString();
     try {
-      const url = clean ? `${API}/builds/${id}/compile?clean=true` : `${API}/builds/${id}/compile`;
+      const url = qs ? `${API}/builds/${id}/compile?${qs}` : `${API}/builds/${id}/compile`;
       const res = await fetch(url, { method: 'POST' });
       if (!res.ok) {
         if (res.status === 409) {
-          alert("Ya hay otra compilación en curso. Por favor, espera a que termine o cancélala.");
+          alert("Another compilation is already in progress.");
         } else {
           console.error("Server returned error:", res.status);
-          alert("Error al iniciar la compilación. Revisa la consola o los logs del servidor.");
+          alert("Error starting compilation. Check server logs.");
         }
       } else {
         setTerminalBuild({ id, name: build?.name || `Build #${id}` });
@@ -112,6 +120,77 @@ export function useBuilds(activeView: string) {
       refreshBuilds();
     } catch (err) {
       console.error("Fetch failed:", err);
+    }
+  };
+
+  const handleRollback = async (id: number) => {
+    try {
+      const res = await fetch(`${API}/builds/${Number(id)}/rollback`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Rollback failed');
+      } else {
+        refreshBuilds();
+        refreshDiskInfo();
+      }
+    } catch (err) {
+      console.error("Rollback failed:", err);
+    }
+  };
+
+  const handleScheduleBuild = async (
+    build: BuildProfile,
+    opts: {
+      clean: boolean;
+      maxJobs: number;
+      lowPriority: boolean;
+      scheduleDatetime: string;
+      repeatDaily: boolean;
+    }
+  ) => {
+    try {
+      const isRecurring = Boolean(opts.repeatDaily);
+      const payload = {
+        name: `Forge Nightly: ${build.name}`,
+        is_active: true,
+        command: 'system://forge_build',
+        input_config: {
+          type: 'forge_build',
+          target_mode: 'selected',
+          build_ids: [build.id],
+          only_if_pending: isRecurring,
+          max_jobs: opts.maxJobs,
+          low_priority: opts.lowPriority,
+          clean: opts.clean,
+        },
+        output_config: {},
+        codec_config: {},
+        filter_config: null,
+        ffmpeg_build_id: null,
+        schedule_type: isRecurring ? 'recurring' : 'one_shot',
+        schedule_cron: isRecurring ? datetimeLocalToDailyCron(opts.scheduleDatetime) : null,
+        schedule_datetime:
+          !isRecurring && opts.scheduleDatetime
+            ? new Date(opts.scheduleDatetime).toISOString()
+            : null,
+        duration_type: 'input_dependent',
+        duration_seconds: null,
+        duration_end_time: null,
+        retry_policy: null,
+      };
+      const res = await fetch(`${API}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Failed to schedule Forge build task');
+      } else {
+        refreshBuilds();
+      }
+    } catch (err) {
+      console.error('Schedule build failed:', err);
     }
   };
 
@@ -136,7 +215,12 @@ export function useBuilds(activeView: string) {
     try {
       const res = await fetch(`${API}/builds/${Number(id)}/validate`);
       const data = await res.json();
-      setValidationResult({ buildId: Number(id), output: data.output || data.error || 'Unknown' });
+      setValidationResult({
+        buildId: Number(id),
+        output: data.output || data.error || 'Unknown',
+        hw_checks: Array.isArray(data.hw_checks) ? data.hw_checks : [],
+        has_warnings: Boolean(data.has_warnings),
+      });
     } catch (err) {
       console.error("Validation failed:", err);
     }
@@ -258,6 +342,8 @@ export function useBuilds(activeView: string) {
     handleCreateBuild,
     handleUpdateBuild,
     handleCompile,
+    handleRollback,
+    handleScheduleBuild,
     handleStopBuild,
     handleCleanSources,
     handleValidate,

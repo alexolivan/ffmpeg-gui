@@ -252,10 +252,11 @@ class FFmpegCommandBuilder:
             timeout_param = f"timeout={timeout_us}" if version >= 4.0 else f"rw_timeout={timeout_us}"
             params.append(timeout_param)
 
-        if srt_cfg.get('passphrase'):
-            params.append(f"passphrase={srt_cfg.get('passphrase')}")
-        if srt_cfg.get('pbkeylen'):
-            params.append(f"pbkeylen={srt_cfg.get('pbkeylen')}")
+        if not is_mediamtx:
+            if srt_cfg.get('passphrase'):
+                params.append(f"passphrase={srt_cfg.get('passphrase')}")
+            if srt_cfg.get('pbkeylen'):
+                params.append(f"pbkeylen={srt_cfg.get('pbkeylen')}")
 
         raw_streamid = srt_cfg.get('streamid', '')
         path_id = srt_cfg.get('path_id')

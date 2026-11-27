@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import ProcessConfigForm from './ProcessConfigForm';
 import { ServiceRestartTaskForm } from './modals/ServiceRestartTaskForm';
+import { ForgeBuildTaskForm } from './modals/ForgeBuildTaskForm';
+import { TaskTypePickerModal, type TaskCategory } from './modals/TaskTypePickerModal';
 import { formatInputDesc, formatOutputDesc } from '../utils/formatters';
 import { 
   ImportIcon, 
@@ -13,7 +15,8 @@ import {
   SourceIcon, 
   StopIcon,
   PlayIcon,
-  ServerIcon
+  ServerIcon,
+  ForgeIcon
 } from './Icons';
 import { EngineLogo } from './common/EngineLogo';
 import { PermissionLevelBadge } from './common/PermissionLevelBadge';
@@ -41,7 +44,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newTaskCategory, setNewTaskCategory] = useState<'ffmpeg' | 'service_restart'>('ffmpeg');
+  const [taskCreationStep, setTaskCreationStep] = useState<'picker' | 'form'>('picker');
+  const [newTaskCategory, setNewTaskCategory] = useState<TaskCategory>('ffmpeg');
   const [editingTask, setEditingTask] = useState<any | null>(null);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<any | null>(null);
   const [viewingLogsExecutionId, setViewingLogsExecutionId] = useState<number | null>(null);
@@ -56,7 +60,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const importFileRef = useRef<HTMLInputElement>(null);
 
   const hasVideoTask = (task: any) => {
-    if (task.command?.startsWith('system://') || task.input_config?.type === 'service_restart') {
+    if (
+      task.command?.startsWith('system://') ||
+      task.input_config?.type === 'service_restart' ||
+      task.input_config?.type === 'forge_build'
+    ) {
       return false;
     }
     const isAudioOnlyCodec = task.codec_config?.vcodec === 'none';
@@ -176,7 +184,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const handleEditClick = (task: any) => {
     setEditingTask(task);
     const isRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
-    setNewTaskCategory(isRestart ? 'service_restart' : 'ffmpeg');
+    const isForge = task.command === 'system://forge_build' || task.input_config?.type === 'forge_build';
+    setNewTaskCategory(isRestart ? 'service_restart' : isForge ? 'forge_build' : 'ffmpeg');
+    setTaskCreationStep('form');
     setShowAddModal(true);
   };
 
@@ -251,6 +261,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   const handleCloneTask = async (task: any) => {
     try {
       const isServiceRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
+      const isForgeBuild = task.command === 'system://forge_build' || task.input_config?.type === 'forge_build';
       const res = await fetch(`${API}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -258,7 +269,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
           name: `${task.name} (Copy)`,
           alias: task.alias ? `${task.alias.slice(0, 7)}_copy`.slice(0, 12) : null,
           is_active: task.schedule_type === 'manual' ? true : false,
-          command: task.command || (isServiceRestart ? 'system://service_restart' : null),
+          command: task.command || (isServiceRestart ? 'system://service_restart' : isForgeBuild ? 'system://forge_build' : null),
           input_config: task.input_config,
           output_config: task.output_config || {},
           codec_config: task.codec_config || {},
@@ -381,6 +392,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               onClick={() => {
                 setEditingTask(null);
                 setNewTaskCategory('ffmpeg');
+                setTaskCreationStep('picker');
                 setShowAddModal(true);
               }}
               className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20 flex items-center gap-1.5"
@@ -435,6 +447,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 const exec = liveExec || task.last_execution;
                 const isRunning = exec && (exec.status === 'running' || exec.status === 'retrying');
                 const isServiceRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
+                const isForgeBuild = task.command === 'system://forge_build' || task.input_config?.type === 'forge_build';
                 const taskLvl = getTaskLevel(permissions, task);
                 const canOperateTask = hasMinLevel(taskLvl, 'operate');
                 const canManageTask = hasMinLevel(taskLvl, 'manage');
@@ -456,14 +469,19 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1 shadow-sm shadow-brand-orange/5 hover:bg-brand-orange/[0.05]' 
                           : isServiceRestart
                             ? 'border border-cyan-500/30 rounded-xl bg-cyan-500/[0.02] px-3 my-1 shadow-sm shadow-cyan-500/5 hover:bg-cyan-500/[0.05]'
-                            : 'hover:bg-white/[0.02] rounded-xl'
+                            : isForgeBuild
+                              ? 'border border-brand-orange/30 rounded-xl bg-brand-orange/[0.02] px-3 my-1 shadow-sm shadow-brand-orange/5 hover:bg-brand-orange/[0.05]'
+                              : 'hover:bg-white/[0.02] rounded-xl'
                     }`}
                   >
                     <div className="flex-1 space-y-0.5 min-w-0">
                       <div className="flex items-center gap-3 flex-wrap">
                         <div className="flex items-center gap-2 min-w-0">
-                          {!task.is_system && !isServiceRestart && (
+                          {!task.is_system && !isServiceRestart && !isForgeBuild && (
                             <EngineLogo softwareType="ffmpeg" size={16} API={API} />
+                          )}
+                          {isForgeBuild && (
+                            <ForgeIcon size={16} className="text-brand-orange shrink-0" />
                           )}
                           <h3 className="font-bold text-lg truncate text-[var(--text-primary)]">
                             {task.is_system && (task.name === 'System Log Rotation and Retention Cleanup' || task.command === 'system://log_rotate')
@@ -486,6 +504,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         {isServiceRestart && (
                           <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                             {t('tasks.serviceRestart.badge', 'MAINTENANCE RESTART')}
+                          </span>
+                        )}
+                        {isForgeBuild && (
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
+                            {t('tasks.forgeBuild.badge', 'FORGE BUILD')}
                           </span>
                         )}
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
@@ -587,6 +610,20 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                                 · {t('tasks.serviceRestart.onlyRunningFilter', 'only active')}
                               </span>
                             )}
+                          </p>
+                        ) : isForgeBuild ? (
+                          <p className="truncate text-xs">
+                            <span className="text-text-secondary font-medium">
+                              {t('tasks.forgeBuild.cardTargetLabel', 'Forge Targets:')}{' '}
+                            </span>
+                            <strong className="text-brand-orange font-bold font-mono">
+                              {(task.input_config?.target_mode === 'all_pending' || !(task.input_config?.build_ids?.length))
+                                ? t('tasks.forgeBuild.modeAllPending', 'All Pending Profiles')
+                                : t('tasks.forgeBuild.cardProfilesCount', '{{count}} profile(s)', { count: (task.input_config?.build_ids || []).length })}
+                            </strong>
+                            <span className="text-text-secondary text-[11px] ml-1.5 font-mono">
+                              (-j{task.input_config?.max_jobs || 'auto'})
+                            </span>
                           </p>
                         ) : (
                           <>
@@ -704,7 +741,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <ClipboardIcon size={16} />
                           </button>
 
-                          {!isServiceRestart && canConvertService && (
+                          {!isServiceRestart && !isForgeBuild && canConvertService && (
                             <button 
                               disabled={taskTriggerPending[task.id]}
                               onClick={async () => {
@@ -780,6 +817,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 const isRunning = task.last_execution && (task.last_execution.status === 'running' || task.last_execution.status === 'retrying');
                 const exec = task.last_execution;
                 const isServiceRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
+                const isForgeBuild = task.command === 'system://forge_build' || task.input_config?.type === 'forge_build';
                 const taskLvl = getTaskLevel(permissions, task);
                 const canOperateTask = hasMinLevel(taskLvl, 'operate');
                 const canManageTask = hasMinLevel(taskLvl, 'manage');
@@ -801,7 +839,9 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                           ? 'border border-white/10 rounded-xl bg-white/[0.01] px-3 my-1 hover:bg-white/[0.03]'
                           : isServiceRestart
                             ? 'border border-cyan-500/20 rounded-xl bg-cyan-500/[0.01] px-3 my-1 hover:bg-cyan-500/[0.03]'
-                            : 'hover:bg-white/[0.02] rounded-xl'
+                            : isForgeBuild
+                              ? 'border border-brand-orange/20 rounded-xl bg-brand-orange/[0.01] px-3 my-1 hover:bg-brand-orange/[0.03]'
+                              : 'hover:bg-white/[0.02] rounded-xl'
                     }`}
                   >
                     <div className="flex-1 space-y-0.5 min-w-0">
@@ -828,6 +868,11 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         {isServiceRestart && (
                           <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                             {t('tasks.serviceRestart.badge', 'MAINTENANCE RESTART')}
+                          </span>
+                        )}
+                        {isForgeBuild && (
+                          <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-brand-orange/15 text-brand-orange border border-brand-orange/30">
+                            {t('tasks.forgeBuild.badge', 'FORGE BUILD')}
                           </span>
                         )}
                         <span className="text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider bg-[var(--input-bg)] text-text-secondary border border-[var(--glass-border)]">
@@ -917,6 +962,20 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                                 · {t('tasks.serviceRestart.onlyRunningFilter', 'only active')}
                               </span>
                             )}
+                          </p>
+                        ) : isForgeBuild ? (
+                          <p className="truncate text-xs">
+                            <span className="text-text-secondary font-medium">
+                              {t('tasks.forgeBuild.cardTargetLabel', 'Forge Targets:')}{' '}
+                            </span>
+                            <strong className="text-brand-orange font-bold font-mono">
+                              {(task.input_config?.target_mode === 'all_pending' || !(task.input_config?.build_ids?.length))
+                                ? t('tasks.forgeBuild.modeAllPending', 'All Pending Profiles')
+                                : t('tasks.forgeBuild.cardProfilesCount', '{{count}} profile(s)', { count: (task.input_config?.build_ids || []).length })}
+                            </strong>
+                            <span className="text-text-secondary text-[11px] ml-1.5 font-mono">
+                              (-j{task.input_config?.max_jobs || 'auto'})
+                            </span>
                           </p>
                         ) : (
                           <>
@@ -1024,7 +1083,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                             <ClipboardIcon size={16} />
                           </button>
 
-                          {!isServiceRestart && canConvertService && (
+                          {!isServiceRestart && !isForgeBuild && canConvertService && (
                             <button 
                               disabled={taskTriggerPending[task.id]}
                               onClick={async () => {
@@ -1121,6 +1180,34 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
             </div>
 
             <div className="space-y-4">
+              {(() => {
+                const isDetailsForge = selectedTaskDetails.task.command === 'system://forge_build' || selectedTaskDetails.task.input_config?.type === 'forge_build';
+                if (!isDetailsForge) return null;
+                const inputCfg = selectedTaskDetails.task.input_config || {};
+                const bids: number[] = Array.isArray(inputCfg.build_ids) ? inputCfg.build_ids : [];
+                return (
+                  <div className="p-4 rounded-xl bg-brand-orange/10 border border-brand-orange/30 text-xs space-y-2">
+                    <div className="flex items-center gap-2 text-brand-orange font-bold uppercase tracking-wider text-[11px]">
+                      <ForgeIcon size={14} /> {t('tasks.forgeBuild.badge', 'FORGE BUILD')}
+                    </div>
+                    <div>
+                      <span className="text-text-secondary">{t('tasks.forgeBuild.cardTargetLabel', 'Forge Targets:')} </span>
+                      <strong className="font-mono text-brand-orange">
+                        {(inputCfg.target_mode === 'all_pending' || bids.length === 0)
+                          ? t('tasks.forgeBuild.modeAllPending', 'All Pending Profiles')
+                          : bids.map(id => `#${id}`).join(', ')}
+                      </strong>
+                    </div>
+                    <div className="flex items-center gap-6 flex-wrap font-mono">
+                      <span>-j{inputCfg.max_jobs || 'auto'}</span>
+                      <span>{inputCfg.low_priority !== false ? 'nice +15 / ionice idle' : 'normal priority'}</span>
+                      <span>{inputCfg.clean ? 'clean sources' : 'incremental'}</span>
+                      {inputCfg.only_if_pending && <span>{t('tasks.forgeBuild.onlyIfPendingBadge', 'only if pending')}</span>}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {(() => {
                 const isDetailsRestart = selectedTaskDetails.task.command === 'system://service_restart' || selectedTaskDetails.task.input_config?.type === 'service_restart';
                 if (!isDetailsRestart) return null;
@@ -1227,7 +1314,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
 
               const isRunning = exec?.status === 'running' || exec?.status === 'retrying';
               const isServiceRestart = taskConfig?.command === 'system://service_restart' || taskConfig?.input_config?.type === 'service_restart';
-              const isSystemTask = Boolean(taskConfig?.is_system || taskConfig?.command?.startsWith('system://') || isServiceRestart);
+              const isForgeBuild = taskConfig?.command === 'system://forge_build' || taskConfig?.input_config?.type === 'forge_build';
+              const isSystemTask = Boolean(taskConfig?.is_system || taskConfig?.command?.startsWith('system://') || isServiceRestart || isForgeBuild);
               const hasVideo = !isSystemTask && hasVideoTask(taskConfig);
               const showPreview = isRunning && hasVideo;
               
@@ -1654,9 +1742,26 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       )}
 
       {/* CREATE / EDIT TASK MODAL */}
-      {showAddModal && (() => {
+      {showAddModal && !editingTask && taskCreationStep === 'picker' && (
+        <TaskTypePickerModal
+          API={API}
+          permissions={permissions}
+          onClose={() => {
+            setShowAddModal(false);
+            setEditingTask(null);
+          }}
+          onSelectTaskType={(category) => {
+            setNewTaskCategory(category);
+            setTaskCreationStep('form');
+          }}
+        />
+      )}
+
+      {showAddModal && (Boolean(editingTask) || taskCreationStep === 'form') && (() => {
         const isEditingServiceRestart = editingTask && (editingTask.command === 'system://service_restart' || editingTask.input_config?.type === 'service_restart');
+        const isEditingForgeBuild = editingTask && (editingTask.command === 'system://forge_build' || editingTask.input_config?.type === 'forge_build');
         const showServiceRestartForm = (editingTask && isEditingServiceRestart) || (!editingTask && newTaskCategory === 'service_restart');
+        const showForgeBuildForm = (editingTask && isEditingForgeBuild) || (!editingTask && newTaskCategory === 'forge_build');
 
         return (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
@@ -1671,48 +1776,43 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 ✕
               </button>
               
-              <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                <h3 className={`text-base font-bold tracking-wide uppercase ${showServiceRestartForm ? 'text-cyan-400' : 'text-brand-lime'}`}>
+              <div className="flex items-center justify-between mb-3 pr-8 flex-shrink-0 gap-3 flex-wrap">
+                <h3 className={`text-base font-bold tracking-wide uppercase ${showForgeBuildForm ? 'text-brand-orange' : showServiceRestartForm ? 'text-cyan-400' : 'text-brand-lime'}`}>
                   {editingTask
                     ? (isEditingServiceRestart
                       ? t('tasks.serviceRestart.titleEdit', 'Edit Service Maintenance Restart Task')
-                      : t('tasks.editTask', 'Edit Scheduled Task'))
+                      : isEditingForgeBuild
+                        ? t('tasks.forgeBuild.titleEdit', 'Edit Forge Nightly / Deferred Build Task')
+                        : t('tasks.editTask', 'Edit Scheduled Task'))
                     : (newTaskCategory === 'service_restart'
                       ? t('tasks.serviceRestart.titleNew', 'New Service Maintenance Restart Task')
-                      : t('tasks.newTask', 'New Scheduled Task'))}
+                      : newTaskCategory === 'forge_build'
+                        ? t('tasks.forgeBuild.titleNew', 'New Forge Nightly / Deferred Build Task')
+                        : t('tasks.newTask', 'New Scheduled Task'))}
                 </h3>
+
+                {!editingTask && (
+                  <button
+                    type="button"
+                    onClick={() => setTaskCreationStep('picker')}
+                    className="px-3 py-1 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] text-[11px] font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-brand-lime/40 transition-colors cursor-pointer"
+                  >
+                    ← {t('tasks.picker.changeType', 'Change Type')}
+                  </button>
+                )}
               </div>
 
-              {!editingTask && (
-                <div className="flex items-center gap-2 mb-3 p-1 rounded-xl bg-white/5 border border-white/5 max-w-fit">
-                  <button
-                    type="button"
-                    onClick={() => setNewTaskCategory('ffmpeg')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                      newTaskCategory === 'ffmpeg'
-                        ? 'bg-brand-lime text-black shadow-md'
-                        : 'text-[var(--text-secondary)] hover:text-white'
-                    }`}
-                  >
-                    <EngineLogo softwareType="ffmpeg" size={14} API={API} />
-                    {t('tasks.serviceRestart.taskTypeMedia', 'FFmpeg Media Task')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewTaskCategory('service_restart')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                      newTaskCategory === 'service_restart'
-                        ? 'bg-cyan-500 text-black shadow-md'
-                        : 'text-[var(--text-secondary)] hover:text-white'
-                    }`}
-                  >
-                    <span>↻</span>
-                    {t('tasks.serviceRestart.taskTypeServiceRestart', 'Service Maintenance Restart')}
-                  </button>
-                </div>
-              )}
-
-              {showServiceRestartForm ? (
+              {showForgeBuildForm ? (
+                <ForgeBuildTaskForm
+                  API={API}
+                  initialConfig={editingTask}
+                  onCancel={() => {
+                    setShowAddModal(false);
+                    setEditingTask(null);
+                  }}
+                  onSubmit={handleSaveTask}
+                />
+              ) : showServiceRestartForm ? (
                 <ServiceRestartTaskForm
                   API={API}
                   initialConfig={editingTask}

@@ -2638,6 +2638,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             read_pass: rPass,
             auth_user: rUser,
             auth_pass: rPass,
+            passphrase: undefined,
+            pbkeylen: undefined,
+            streamid: undefined,
             mode: 'caller',
             stream_action: 'request',
             mediamtx_mode: true,
@@ -2698,6 +2701,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
             read_pass: rPass,
             auth_user: rUser,
             auth_pass: rPass,
+            passphrase: undefined,
+            pbkeylen: undefined,
+            streamid: undefined,
             mode: 'caller',
             stream_action: 'request',
             mediamtx_mode: true,
@@ -2768,6 +2774,10 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                   peer_node_id: undefined,
                   peer_service_id: undefined,
                   mediamtx_target_type: undefined,
+                  read_user: undefined,
+                  read_pass: undefined,
+                  auth_user: undefined,
+                  auth_pass: undefined,
                 })}
               >
                 {t('sources.srtManualDirect', 'Manual Direct SRT')}
@@ -2795,6 +2805,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       host: config.host && config.host !== '127.0.0.1' ? config.host : '',
                       port: config.port || '8890',
                       path_id: config.path_id || 'stream1',
+                      passphrase: undefined,
+                      pbkeylen: undefined,
+                      streamid: undefined,
                     });
                   }
                 }}
@@ -2858,6 +2871,9 @@ const InputSourcePanel: React.FC<InputSourcePanelProps> = ({
                       host: config.host && config.host !== '127.0.0.1' ? config.host : '',
                       port: config.port || '8890',
                       path_id: config.path_id || 'stream1',
+                      passphrase: undefined,
+                      pbkeylen: undefined,
+                      streamid: undefined,
                     })}
                   >
                     <span>🌐</span> {t('sources.externalServer', 'Manual External Server (Unfederated Host)')}

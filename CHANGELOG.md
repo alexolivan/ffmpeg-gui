@@ -5,6 +5,67 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.79.1] - 2026-11-27
+
+### Fixed
+- **False SRT Caller / MediaMTX Port Collision Blocking Multi-Stream Publishing (`outputPortCollision.ts`, `ProcessConfigForm.tsx`, `port_validator.py`)**:
+  - Updated `ProcessConfigForm` via pure helper `findOutputPortCollision` / `findNextAvailableOutputPort` so SRT `mode=caller` and MediaMTX SRT outputs never falsely collide when targeting the same host/port (e.g., multiple FFmpeg feeds publishing distinct `streamid` paths to `srt://127.0.0.1:8890`), while preserving real port collision checks for SRT `mode=listener` and UDP/RTP outputs.
+  - Hardened `extract_ports_from_service` in `port_validator.py` so SRT inputs/outputs with `is_mediamtx=True` are never misclassified as local UDP listeners when `mode` is omitted.
+
+## [2.79.0] - 2026-11-27
+
+### Changed
+- **2-Step Task Creation Picker Modal (`TaskTypePickerModal.tsx`, `ScheduledTasks.tsx`)**:
+  - Replaced the legacy v1.x inline category tab strip inside `ProcessConfigForm` with a dedicated `TaskTypePickerModal` matching `ServiceTypePickerModal` in visual layout, cards grid, theme tokens, RBAC filtering, and keyboard/double-click workflow (`FFmpeg Media Task`, `Service Maintenance Restart`, and `Forge Nightly Build`).
+  - Editing existing tasks opens the target form directly, while creating new tasks adds a `Change Type` back button in the modal header.
+
+## [2.78.0] - 2026-11-27
+
+### Added
+- **Nightly / Deferred Forge Build Tasks (`system://forge_build`) (`forge_executor.py`, `task_manager.py`, `main.py`, `ForgeBuildTaskForm.tsx`, `ScheduledTasks.tsx`)**:
+  - Extracted `execute_forge_build_pipeline` and `build_needs_recompile` so both manual Forge triggers and scheduled background tasks share atomic revision staging, rollback preservation, and CPU/IO throttling (`max_jobs`, `low_priority`, `clean`).
+  - Added `system://forge_build` system task support in `TaskManager` with `all_pending` and `selected` target modes, `only_if_pending` skip-if-synced guard, clean abort propagation, and concise stage logging.
+  - Added a **Forge Nightly Build** category tab in Scheduled Tasks alongside a **Schedule Nightly / Later** shortcut directly inside Forge's `CompileConfirmModal` and scheduled build chips on `BuildProfileCard`.
+
+## [2.77.0] - 2026-11-27
+
+### Added
+- **Forge Atomic Revision Staging & 1-Level Binary Rollback (`forge_revisions.py`, `build_manager.py`, `main.py`, `RollbackConfirmModal.tsx`)**:
+  - Builds now compile and install into isolated per-revision prefixes (`builds/<id>/revisions/rev_<ts>/`) instead of overwriting active binaries in place; running services keep active binaries intact until compilation succeeds.
+  - Failed or aborted recompilations automatically remove the failed staging directory and preserve the previous `ready` build state and working binaries while recording `last_compile_error`.
+  - Added `POST /builds/{build_id}/rollback` plus a diff-aware **Rollback Confirm Modal** showing active vs. backup component versions before restoring the previous binary, wiping temporary `src/`, and syncing the profile recipe.
+- **Profile Divergence Detection & CPU/IO Build Throttling (`db.py` schema `2.8.0`, `CompileConfirmModal.tsx`, `forgeBuildHelpers.ts`)**:
+  - Added `compiled_snapshot`, `previous_revision`, and `last_compile_error` columns to `software_builds` (with automatic backfill for existing `ready` compiled profiles).
+  - Replaced the broken `window.confirm` compile prompt with a themed **Compile Confirm Modal** offering clean cancelation, CPU core limit (`-j1..N`), low CPU/disk priority (`nice +15` / `ionice` idle), clean compile toggle, and pending diff summary.
+  - Parameterized `-j<N>` across `ffmpeg`, `icecast2`, and `pipewire` recipes so host broadcast encoders are protected from build saturation.
+
+### Changed
+- **Forge Profile Card Hierarchy & Safe Button Ordering (`BuildProfileCard.tsx`)**:
+  - Displayed operational binaries in primary badges when `ready`, adding a compact pending-delta strip and subtle `Play` button pulse only when uncompiled changes or failures exist, and reordered buttons to `Validate` → `Default` → `Compile/Recompile` → `Rollback` → secondary tools.
+
+## [2.76.0] - 2026-11-27
+
+### Added
+- **Symmetrical NVENC & VAAPI Host Hardware Introspection & Forge Smoke Validation (`hw_probe.py`, `ffmpeg.py`, `build_manager.py`, `BuildFormModal.tsx`, `ForgeView.tsx`)**:
+  - Added timeless host GPU probing (`detect_host_nvenc_api_version` via `NvEncodeAPIGetMaxSupportedVersion` in `libnvidia-encode.so.1`, and `detect_host_vaapi_render_node` for Intel/AMD `/dev/dri/renderD*` nodes), exposed in `GET /system/capabilities` (`nvenc.api_version`, `vaapi.render_node`).
+  - Updated `BuildManager.get_ffnvcodec_tag` and Forge `BuildFormModal` defaults to clamp `nv-codec-headers` selections automatically against the host driver's NVENC API ceiling without hardcoded driver tables.
+  - Added symmetrical non-blocking pre-compile advisories in `BuildFormModal` for both **VAAPI** and **NVENC** (plus a 1-click compatible SDK tag switcher when the chosen `nv-codec-headers` tag exceeds host NVENC API support).
+  - Added 1-frame runtime smoke encodes (`h264_nvenc` and `h264_vaapi` → `-f null -`) at the end of FFmpeg compilation and inside `GET /builds/{build_id}/validate` / `ForgeView` validation modal (`hw_checks`, `has_warnings`).
+
+## [2.75.6] - 2026-11-27
+
+### Fixed
+- **Stale SRT `passphrase` / `pbkeylen` / `streamid` Leaks in MediaMTX Mode (`ffmpeg_builder.py`, `DestinationPanel.tsx`, `InputSourcePanel.tsx`)**:
+  - Updated `_build_srt_url` to omit `passphrase` and `pbkeylen` query parameters when `is_mediamtx` is active so leftover Manual Direct SRT keys never trigger `ERROR:BADSECRET` handshakes against MediaMTX hubs.
+  - Cleared incompatible stale fields (`passphrase`, `pbkeylen`, `streamid` when switching into MediaMTX Hub; MediaMTX credentials/peer refs when switching back to Manual Direct SRT) in both `DestinationPanel.tsx` and `InputSourcePanel.tsx`.
+- **Live Source `-re` Guardrail When Editing Services (`ProcessConfigForm.tsx`, `AdvancedFlagsFormSection.tsx`)**:
+  - Automatically resets `filters.advanced.realtime` back to `Auto` (`null`) when changing an existing service's primary input from a self-paced source (`file`, `lavfi_*`) to a live stream (`ndi`, `srt`, `decklink`, `alsa`, etc.).
+  - Localized the `-re` control with semantic theme tokens and added an inline warning with a 1-click **Reset to Auto** button when `Always ON` is active on a live source.
+
+### Changed
+- **Context-Aware Codec Recipe Card Tone (`codecRecipeEvaluator.ts`, `DestinationPanel.tsx`)**:
+  - Added read-only `evaluateCodecRecipeStatus` classification so the Broadcast Recipe card shows a calm emerald `Compatible` badge when selected video/audio codecs fit the destination, blue `Tip` for auto-converted/suboptimal choices, and reserves orange `Check codecs` solely for actual destination codec mismatches.
+
 ## [2.75.5] - 2026-11-26
 
 ### Changed

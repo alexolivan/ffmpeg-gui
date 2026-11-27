@@ -29,6 +29,9 @@ class BuildManager:
         self.logger = logging.getLogger("BuildManager")
         self.current_process = None
         self.current_task = None
+        self._active_max_jobs = 4
+        self._active_low_priority = False
+        self._active_staging_path: Optional[str] = None
 
     # ── Path helpers ──────────────────────────────────────────────
 
@@ -41,6 +44,45 @@ class BuildManager:
 
     def get_install_path(self, build_id: int, builds_root: str = None) -> str:
         return os.path.join(self.get_build_path(build_id, builds_root), "install")
+
+    def get_revisions_root(self, build_id: int, builds_root: str = None) -> str:
+        return os.path.join(self.get_build_path(build_id, builds_root), "revisions")
+
+    def get_revision_install_path(
+        self, build_id: int, rev_id: Optional[str] = None, builds_root: str = None
+    ) -> str:
+        if not rev_id:
+            rev_id = f"rev_{datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')}"
+        return os.path.join(self.get_revisions_root(build_id, builds_root), rev_id)
+
+    def sanitize_max_jobs(self, max_jobs: Optional[int]) -> int:
+        host_cores = os.cpu_count() or 4
+        if max_jobs is None:
+            return min(4, max(1, host_cores))
+        try:
+            jobs = int(max_jobs)
+        except (TypeError, ValueError):
+            return min(4, max(1, host_cores))
+        return max(1, min(host_cores, jobs))
+
+    def get_max_jobs(self) -> int:
+        return max(1, int(getattr(self, "_active_max_jobs", 4) or 4))
+
+    def cleanup_old_revisions(
+        self, build_id: int, keep_paths: list[Optional[str]], builds_root: str = None
+    ):
+        """Remove unreferenced staging/superseded revision directories and stale legacy install dir."""
+        keep = {os.path.abspath(p) for p in (keep_paths or []) if p}
+        revs_root = self.get_revisions_root(build_id, builds_root)
+        if os.path.isdir(revs_root):
+            for entry in os.listdir(revs_root):
+                candidate = os.path.abspath(os.path.join(revs_root, entry))
+                if os.path.isdir(candidate) and candidate not in keep:
+                    shutil.rmtree(candidate, ignore_errors=True)
+
+        legacy_install = os.path.abspath(self.get_install_path(build_id, builds_root))
+        if os.path.exists(legacy_install) and legacy_install not in keep:
+            shutil.rmtree(legacy_install, ignore_errors=True)
 
     # ── System dependency pre-flight ──────────────────────────────
 
@@ -260,32 +302,58 @@ class BuildManager:
             self.logger.error(f"Failed to fetch tags for {repo}: {exc}")
             return []
 
-    def get_ffnvcodec_tag(self, ffmpeg_version: str) -> str | None:
-        """Determine correct ffnvcodec tag based on FFmpeg version."""
+    def get_ffnvcodec_tag(self, ffmpeg_version: str, host_nvenc_api: Optional[str] = None) -> str | None:
+        """Determine correct ffnvcodec tag based on FFmpeg version and host NVENC API ceiling."""
         if not ffmpeg_version or any(dev in ffmpeg_version.lower() for dev in ["master", "dev", "git"]):
             return None
+        try:
+            from core.hw_probe import detect_host_nvenc_api_version, parse_nvenc_api_tuple
+        except ImportError:
+            from backend.core.hw_probe import detect_host_nvenc_api_version, parse_nvenc_api_tuple
+
+        baseline_tag = "n13.0.19.0"
         try:
             # Strip leading alphabetic characters (like 'n' or 'v') to support git tags (e.g. 'n6.0')
             cleaned_version = ffmpeg_version.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
             parts = cleaned_version.split('.')
             major = int(parts[0])
             if major >= 7:
-                return "n13.0.19.0"
+                baseline_tag = "n13.0.19.0"
             elif major == 6:
-                return "n12.1.14.0"
+                baseline_tag = "n12.1.14.0"
             elif major == 5:
-                return "n11.1.5.3"
+                baseline_tag = "n11.1.5.3"
             elif major <= 4:
-                return "n9.1.23.2"
+                baseline_tag = "n9.1.23.2"
         except Exception:
             pass
-        return "n13.0.19.0"
+
+        resolved_api = host_nvenc_api if host_nvenc_api is not None else detect_host_nvenc_api_version()
+        host_tuple = parse_nvenc_api_tuple(resolved_api)
+        base_tuple = parse_nvenc_api_tuple(baseline_tag)
+        if host_tuple and base_tuple and base_tuple > host_tuple:
+            # Clamp downward cleanly to a known tag compatible with the host's NVENC API ceiling
+            fallback_ladder = [
+                ((13, 1), "n13.1.15.0"),
+                ((13, 0), "n13.0.19.0"),
+                ((12, 2), "n12.2.72.0"),
+                ((12, 1), "n12.1.14.0"),
+                ((12, 0), "n12.0.16.1"),
+                ((11, 1), "n11.1.5.3"),
+                ((9, 1), "n9.1.23.2"),
+            ]
+            for api_ver, tag in fallback_ladder:
+                if api_ver <= host_tuple:
+                    return tag
+            return "n9.1.23.2"
+
+        return baseline_tag
 
 
     # ── Disk information ──────────────────────────────────────────
 
     def get_partition_free_space(self) -> dict:
-        """Return free space (in MB and GB) on the partition hosting builds."""
+        """Return free space (in MB and GB) on the partition hosting builds plus host CPU core count."""
         os.makedirs(self.builds_root, exist_ok=True)
         stat = os.statvfs(self.builds_root)
         free_bytes = stat.f_bavail * stat.f_frsize
@@ -293,6 +361,7 @@ class BuildManager:
             "free_mb": round(free_bytes / (1024 * 1024)),
             "free_gb": round(free_bytes / (1024 * 1024 * 1024), 1),
             "path": self.builds_root,
+            "cpu_cores": os.cpu_count() or 4,
         }
 
     def get_disk_usage(self, build_id: int, builds_root: str = None) -> float:
@@ -318,8 +387,11 @@ class BuildManager:
                         srt_version: str | None, options: dict,
                         sdk_paths: dict | None, sources_cleaned: bool,
                         log_callback, auto_clean: bool = False, builds_root: str = None,
-                        software_type: str = "ffmpeg") -> dict:
-        """Execute the build pipeline using the appropriate recipe."""
+                        software_type: str = "ffmpeg",
+                        max_jobs: Optional[int] = None,
+                        low_priority: bool = True,
+                        clean_sources_first: bool = False) -> dict:
+        """Execute the build pipeline in an isolated staging revision directory."""
         if self.is_building:
             await log_callback("ERROR: Build already in progress\n")
             return {"success": False, "error": "Build already in progress"}
@@ -354,13 +426,24 @@ class BuildManager:
 
         self.is_building = True
         self.active_build_id = build_id
+        self._active_max_jobs = self.sanitize_max_jobs(max_jobs)
+        self._active_low_priority = bool(low_priority)
+        staging_install_path = self.get_revision_install_path(build_id, builds_root=builds_root)
+        self._active_staging_path = staging_install_path
         result = {"success": False}
 
         try:
             src_path = self.get_src_path(build_id, builds_root)
-            install_path = self.get_install_path(build_id, builds_root)
+            if clean_sources_first and os.path.exists(src_path):
+                await log_callback("━━━ CLEAN COMPILE ENABLED: Removing existing sources ━━━\n")
+                shutil.rmtree(src_path, ignore_errors=True)
             os.makedirs(src_path, exist_ok=True)
-            os.makedirs(install_path, exist_ok=True)
+            os.makedirs(staging_install_path, exist_ok=True)
+
+            await log_callback(
+                f"━━━ BUILD RESOURCES: max_jobs={self._active_max_jobs} | "
+                f"low_priority={self._active_low_priority} | staging={staging_install_path} ━━━\n"
+            )
 
             # Instanciar la receta modular correspondiente
             from forge.recipes import get_recipe
@@ -375,11 +458,12 @@ class BuildManager:
                 version_tag=ffmpeg_version,
                 options=options,
                 sdk_paths=sdk_paths,
-                install_path=install_path,
+                install_path=staging_install_path,
                 log_callback=log_callback
             )
 
-            if res.get("success"):
+            binary_path = res.get("binary_path") if isinstance(res, dict) else None
+            if res.get("success") and binary_path and os.path.isfile(binary_path):
                 # ── Auto-limpieza de fuentes si está activado ────────
                 if auto_clean and os.path.exists(src_path):
                     await log_callback("\n━━━ AUTO-CLEAN ENABLED ━━━\n")
@@ -387,39 +471,57 @@ class BuildManager:
                     self.clean_sources(build_id, builds_root)
                     await log_callback("Sources cleaned successfully.\n")
 
+                ffprobe_candidate = os.path.join(staging_install_path, "bin", "ffprobe")
                 result = {
                     "success": True,
-                    "ffmpeg_binary": res.get("binary_path") if software_type == "ffmpeg" else None,
-                    "ffprobe_binary": os.path.join(install_path, "bin", "ffprobe") if software_type == "ffmpeg" and os.path.isfile(os.path.join(install_path, "bin", "ffprobe")) else None,
-                    "binary_path": res.get("binary_path"),
+                    "install_path": staging_install_path,
+                    "ffmpeg_binary": binary_path if software_type == "ffmpeg" else None,
+                    "ffprobe_binary": ffprobe_candidate if software_type == "ffmpeg" and os.path.isfile(ffprobe_candidate) else None,
+                    "binary_path": binary_path,
                     "version_output": res.get("version_output"),
                     "disk_usage_mb": self.get_disk_usage(build_id, builds_root),
                     "sdk_paths": res.get("sdk_paths", sdk_paths),
                     "version_tag": res.get("version_tag"),
+                    "build_options": res.get("build_options", options),
+                    "hw_checks": res.get("hw_checks", []),
                 }
             else:
-                result = {"success": False, "error": res.get("error", "Unknown build error")}
+                shutil.rmtree(staging_install_path, ignore_errors=True)
+                err_detail = res.get("error") if isinstance(res, dict) else None
+                if res.get("success") and not (binary_path and os.path.isfile(binary_path)):
+                    err_detail = f"Compiled binary missing at {binary_path}"
+                result = {"success": False, "error": err_detail or "Unknown build error"}
 
         except Exception as exc:
+            shutil.rmtree(staging_install_path, ignore_errors=True)
             error_msg = str(exc)
             await log_callback(f"\nERROR DURING BUILD: {error_msg}\n")
             result = {"success": False, "error": error_msg, "disk_usage_mb": self.get_disk_usage(build_id, builds_root)}
         finally:
             self.is_building = False
             self.active_build_id = None
+            self._active_max_jobs = 4
+            self._active_low_priority = False
+            self._active_staging_path = None
 
         return result
 
     # ── Build validation ──────────────────────────────────────────
 
-    async def validate_build(self, binary_path: str, software_type: str = "ffmpeg") -> dict:
+    async def validate_build(self, binary_path: str, software_type: str = "ffmpeg", build_options: Optional[dict] = None) -> dict:
         """Validate the compiled binary using its recipe."""
         if not binary_path or not os.path.isfile(binary_path):
             return {"valid": False, "error": f"Binary not found: {binary_path}"}
 
         try:
+            import inspect
             from forge.recipes import get_recipe
             recipe = get_recipe(software_type, self.workspace_root, runner=self)
+            sig = inspect.signature(recipe.validate)
+            if "build_options" in sig.parameters or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            ):
+                return await recipe.validate(binary_path, build_options=build_options)
             return await recipe.validate(binary_path)
         except Exception:
             try:
@@ -505,14 +607,31 @@ class BuildManager:
         custom_env["GIT_ASKPASS"] = "true"
         custom_env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 
+        low_prio = bool(getattr(self, "_active_low_priority", False))
+
+        def _preexec():
+            os.setsid()
+            if low_prio:
+                try:
+                    os.nice(15)
+                except OSError:
+                    pass
+
         self.current_process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=cwd,
             env=custom_env,
-            preexec_fn=os.setsid,
+            preexec_fn=_preexec,
         )
+
+        if low_prio:
+            try:
+                import psutil
+                psutil.Process(self.current_process.pid).ionice(psutil.IOPRIO_CLASS_IDLE)
+            except Exception:
+                pass
 
         while True:
             line = await self.current_process.stdout.readline()

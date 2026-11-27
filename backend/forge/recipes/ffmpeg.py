@@ -1,6 +1,7 @@
 import os
 import shutil
 import asyncio
+from typing import Optional
 from .base import BaseRecipe
 
 class FfmpegRecipe(BaseRecipe):
@@ -41,6 +42,7 @@ class FfmpegRecipe(BaseRecipe):
             except Exception as e:
                 self.logger.error(f"Failed to detect libva version: {e}")
 
+        jobs = self.runner.get_max_jobs() if self.runner and hasattr(self.runner, "get_max_jobs") else 4
         # 2. Compilar LibSRT (si está habilitado)
         srt_version = options.get("srt_version")
         if options.get("libsrt") and srt_version:
@@ -73,7 +75,7 @@ class FfmpegRecipe(BaseRecipe):
                 cwd=srt_build_dir,
             )
             await self.runner._run_logged_cmd(
-                ["make", "-j4"], log_callback, cwd=srt_build_dir
+                ["make", f"-j{jobs}"], log_callback, cwd=srt_build_dir
             )
             await self.runner._run_logged_cmd(
                 ["make", "install"], log_callback, cwd=srt_build_dir
@@ -265,7 +267,7 @@ class FfmpegRecipe(BaseRecipe):
             env=env,
         )
         await self.runner._run_logged_cmd(
-            ["make", "-j4"], log_callback, cwd=ffmpeg_src
+            ["make", f"-j{jobs}"], log_callback, cwd=ffmpeg_src
         )
         await self.runner._run_logged_cmd(
             ["make", "install"], log_callback, cwd=ffmpeg_src
@@ -273,22 +275,135 @@ class FfmpegRecipe(BaseRecipe):
 
         ffmpeg_bin = os.path.join(install_path, "bin", "ffmpeg")
         version_output = ""
+        hw_checks = []
         if os.path.isfile(ffmpeg_bin):
             version_output = await self.runner._get_command_output([ffmpeg_bin, "-version"])
+            hw_checks = await self.run_hw_smoke_tests(ffmpeg_bin, build_options=options)
+            if hw_checks:
+                await log_callback("\n━━━ RUNTIME HARDWARE SMOKE TESTS ━━━\n")
+                for chk in hw_checks:
+                    badge = "✅" if chk["status"] == "ok" else ("⚠️" if chk["status"] == "warning" else "ℹ️")
+                    await log_callback(f"{badge} [{chk['engine'].upper()}] {chk['message']}\n")
 
         return {
             "success": True,
             "binary_path": ffmpeg_bin if os.path.isfile(ffmpeg_bin) else None,
             "version_output": version_output,
+            "hw_checks": hw_checks,
             "sdk_paths": sdk_paths,
             "build_options": options
         }
 
-    async def validate(self, binary_path: str) -> dict:
+    async def _run_smoke_cmd(self, cmd: list[str], timeout_sec: float = 6.0) -> tuple[int, str]:
+        """Run a short 1-frame smoke command and return (returncode, concise output)."""
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            return 124, f"Timed out after {timeout_sec}s"
+        err_text = (stderr or b"").decode("utf-8", errors="replace").strip()
+        out_text = (stdout or b"").decode("utf-8", errors="replace").strip()
+        return proc.returncode or 0, err_text or out_text
+
+    async def run_hw_smoke_tests(self, binary_path: str, build_options: Optional[dict] = None) -> list[dict]:
+        """Symmetrical 1-frame runtime smoke tests for NVENC and VAAPI hardware encoders."""
+        try:
+            from core.hw_probe import detect_host_nvenc_api_version, detect_host_vaapi_render_node
+        except ImportError:
+            from backend.core.hw_probe import detect_host_nvenc_api_version, detect_host_vaapi_render_node
+
+        if isinstance(build_options, dict):
+            check_nvenc = bool(build_options.get("nvenc"))
+            check_vaapi = bool(build_options.get("vaapi"))
+        else:
+            rc_enc, enc_out = await self._run_smoke_cmd([binary_path, "-hide_banner", "-encoders"])
+            enc_text = enc_out if rc_enc == 0 else ""
+            check_nvenc = "h264_nvenc" in enc_text
+            check_vaapi = "h264_vaapi" in enc_text
+
+        checks: list[dict] = []
+
+        if check_nvenc:
+            has_nvidia_gpu = shutil.which("nvidia-smi") is not None or os.path.exists("/dev/nvidia0")
+            if not has_nvidia_gpu:
+                checks.append({
+                    "engine": "nvenc",
+                    "status": "skipped",
+                    "message": "No NVIDIA GPU detected on this host",
+                })
+            else:
+                host_api = detect_host_nvenc_api_version()
+                rc, output = await self._run_smoke_cmd([
+                    binary_path, "-nostdin", "-hide_banner", "-loglevel", "error",
+                    "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
+                    "-frames:v", "1", "-c:v", "h264_nvenc", "-f", "null", "-",
+                ])
+                if rc == 0:
+                    api_suffix = f" (Host API {host_api})" if host_api else ""
+                    checks.append({
+                        "engine": "nvenc",
+                        "status": "ok",
+                        "message": f"h264_nvenc runtime encode OK{api_suffix}",
+                    })
+                else:
+                    lines = [ln.strip() for ln in output.splitlines() if ln.strip()][:2]
+                    checks.append({
+                        "engine": "nvenc",
+                        "status": "warning",
+                        "message": " | ".join(lines) if lines else f"h264_nvenc failed with exit code {rc}",
+                    })
+
+        if check_vaapi:
+            render_node = detect_host_vaapi_render_node()
+            if not render_node:
+                checks.append({
+                    "engine": "vaapi",
+                    "status": "skipped",
+                    "message": "No Intel/AMD VAAPI render node detected on this host",
+                })
+            else:
+                rc, output = await self._run_smoke_cmd([
+                    binary_path, "-nostdin", "-hide_banner", "-loglevel", "error",
+                    "-vaapi_device", render_node,
+                    "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
+                    "-frames:v", "1", "-vf", "format=nv12,hwupload",
+                    "-c:v", "h264_vaapi", "-f", "null", "-",
+                ])
+                if rc == 0:
+                    checks.append({
+                        "engine": "vaapi",
+                        "status": "ok",
+                        "message": f"h264_vaapi runtime encode OK ({render_node})",
+                    })
+                else:
+                    lines = [ln.strip() for ln in output.splitlines() if ln.strip()][:2]
+                    checks.append({
+                        "engine": "vaapi",
+                        "status": "warning",
+                        "message": " | ".join(lines) if lines else f"h264_vaapi failed with exit code {rc}",
+                    })
+
+        return checks
+
+    async def validate(self, binary_path: str, build_options: Optional[dict] = None) -> dict:
         if not binary_path or not os.path.isfile(binary_path):
             return {"valid": False, "error": "El binario de FFmpeg no existe"}
         try:
             output = await self.runner._get_command_output([binary_path, "-version"])
-            return {"valid": True, "output": output}
+            hw_checks = await self.run_hw_smoke_tests(binary_path, build_options=build_options)
+            return {
+                "valid": True,
+                "output": output,
+                "hw_checks": hw_checks,
+                "has_warnings": any(c["status"] == "warning" for c in hw_checks),
+            }
         except Exception as e:
             return {"valid": False, "error": str(e)}

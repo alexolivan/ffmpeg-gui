@@ -260,6 +260,52 @@ class TestSrtMediaMtxCommandGenerator(unittest.TestCase):
         self.assertIn(expected_out, cmd_str)
         self.assertIn("-t 30", cmd_str)
 
+    @patch('utils.process_utils.get_ffmpeg_version')
+    def test_srt_mediamtx_ignores_stale_manual_passphrase_and_pbkeylen(self, mock_version):
+        mock_version.return_value = 5.0
+
+        media_proc = MagicMock()
+        media_proc.id = 106
+        media_proc.type = "service"
+        media_proc.input_config = {
+            'type': 'srt',
+            'mode': 'caller',
+            'host': '127.0.0.1',
+            'port': '8890',
+            'latency': 250,
+            'path_id': 'stream1',
+            'mediamtx_mode': True,
+            'passphrase': 'JuzejiPc48Q6JBt',
+            'pbkeylen': 16,
+            'network_timeout': 15
+        }
+        media_proc.codec_config = {
+            'vcodec': 'libx264',
+            'acodec': 'aac',
+            'video_params': {},
+            'audio_params': {}
+        }
+        media_proc.filter_config = {}
+        media_proc.output_config = {
+            'type': 'srt',
+            'mode': 'caller',
+            'host': '127.0.0.1',
+            'port': '8890',
+            'latency': 200,
+            'path_id': 'stream1',
+            'mediamtx_mode': True,
+            'passphrase': 'JuzejiPc48Q6JBt',
+            'pbkeylen': 16
+        }
+
+        cmd = self.pm._build_ffmpeg_cmd(media_proc, "ffmpeg")
+        cmd_str = " ".join(cmd)
+
+        self.assertNotIn("passphrase=", cmd_str)
+        self.assertNotIn("pbkeylen=", cmd_str)
+        self.assertIn("srt://127.0.0.1:8890?mode=caller&latency=250&timeout=15000000&streamid=#!::r=stream1,m=request", cmd_str)
+        self.assertIn("srt://127.0.0.1:8890?mode=caller&latency=200&streamid=#!::r=stream1,m=publish", cmd_str)
+
 
 if __name__ == '__main__':
     unittest.main()
