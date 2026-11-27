@@ -250,6 +250,12 @@ def init_db():
                 conn.execute(text("ALTER TABLE software_builds ADD COLUMN system_path VARCHAR(512) DEFAULT NULL"))
             if "is_managed" not in build_columns:
                 conn.execute(text("ALTER TABLE software_builds ADD COLUMN is_managed BOOLEAN DEFAULT 1 NOT NULL"))
+            if "compiled_snapshot" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN compiled_snapshot JSON DEFAULT NULL"))
+            if "previous_revision" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN previous_revision JSON DEFAULT NULL"))
+            if "last_compile_error" not in build_columns:
+                conn.execute(text("ALTER TABLE software_builds ADD COLUMN last_compile_error TEXT DEFAULT NULL"))
                 
             # Migración para la tabla system_settings
             result = conn.execute(text("PRAGMA table_info(system_settings)"))
@@ -558,6 +564,28 @@ def init_db():
                                 db.add(new_sdk)
                                 logger.info(f"Seeded pre-existing disk SDK: {sdk_type} v{version}")
                 db.commit()
+
+            # Backfill compiled_snapshot for pre-existing ready compiled builds (schema 2.8.0)
+            from database.models import SoftwareBuild
+            from core.forge_revisions import build_recipe_snapshot
+            ready_without_snapshot = db.query(SoftwareBuild).filter(
+                SoftwareBuild.status == "ready",
+                SoftwareBuild.compiled_snapshot.is_(None),
+            ).all()
+            updated_snapshots = 0
+            for b in ready_without_snapshot:
+                if (b.source_type or "compiled") != "compiled":
+                    continue
+                b.compiled_snapshot = build_recipe_snapshot(
+                    b.version_tag,
+                    b.build_options,
+                    b.sdk_paths,
+                    b.software_type or "ffmpeg",
+                )
+                updated_snapshots += 1
+            if updated_snapshots > 0:
+                db.commit()
+                logger.info(f"Backfilled compiled_snapshot for {updated_snapshots} existing Forge build(s)")
         finally:
             db.close()
     except Exception as e:

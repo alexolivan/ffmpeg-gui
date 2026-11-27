@@ -42,6 +42,7 @@ class FfmpegRecipe(BaseRecipe):
             except Exception as e:
                 self.logger.error(f"Failed to detect libva version: {e}")
 
+        jobs = self.runner.get_max_jobs() if self.runner and hasattr(self.runner, "get_max_jobs") else 4
         # 2. Compilar LibSRT (si está habilitado)
         srt_version = options.get("srt_version")
         if options.get("libsrt") and srt_version:
@@ -74,7 +75,7 @@ class FfmpegRecipe(BaseRecipe):
                 cwd=srt_build_dir,
             )
             await self.runner._run_logged_cmd(
-                ["make", "-j4"], log_callback, cwd=srt_build_dir
+                ["make", f"-j{jobs}"], log_callback, cwd=srt_build_dir
             )
             await self.runner._run_logged_cmd(
                 ["make", "install"], log_callback, cwd=srt_build_dir
@@ -266,7 +267,7 @@ class FfmpegRecipe(BaseRecipe):
             env=env,
         )
         await self.runner._run_logged_cmd(
-            ["make", "-j4"], log_callback, cwd=ffmpeg_src
+            ["make", f"-j{jobs}"], log_callback, cwd=ffmpeg_src
         )
         await self.runner._run_logged_cmd(
             ["make", "install"], log_callback, cwd=ffmpeg_src

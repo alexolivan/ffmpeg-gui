@@ -51,6 +51,9 @@ class SoftwareBuild(Base):
     disk_usage_mb = Column(Float, nullable=True)
     build_log_summary = Column(String, nullable=True)
     version_output = Column(String, nullable=True)
+    compiled_snapshot = Column(JSON, nullable=True)
+    previous_revision = Column(JSON, nullable=True)
+    last_compile_error = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     built_at = Column(DateTime, nullable=True)

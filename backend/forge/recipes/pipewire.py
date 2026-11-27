@@ -112,9 +112,10 @@ class PipeWireRecipe(BaseRecipe):
         await self.runner._run_logged_cmd(meson_cmd, log_callback, cwd=repo_dir)
 
         # ── Compilar e instalar con Ninja ──
+        jobs = self.runner.get_max_jobs() if self.runner and hasattr(self.runner, "get_max_jobs") else 4
         await log_callback("Compilando e instalando con Ninja...\n")
         ninja_bin = shutil.which("ninja") or shutil.which("ninja-build") or "ninja"
-        ninja_cmd = [ninja_bin, "-C", build_dir, "install"]
+        ninja_cmd = [ninja_bin, f"-j{jobs}", "-C", build_dir, "install"]
         await self.runner._run_logged_cmd(ninja_cmd, log_callback, cwd=repo_dir)
 
         pipewire_bin = os.path.join(install_path, "bin", "pipewire")
