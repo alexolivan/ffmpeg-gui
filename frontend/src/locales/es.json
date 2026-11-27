@@ -1704,6 +1704,9 @@
     "originalNetworkId": "ID de Red Original (ONID)",
     "serviceId": "ID de Servicio (SID)",
     "recommendedRecipe": "Configuración Estándar Recomendada",
+    "recipeStatusOk": "Compatible",
+    "recipeStatusInfo": "Sugerencia",
+    "recipeStatusWarning": "Revisar códecs",
     "videoCodec": "Códec de Vídeo",
     "audioCodec": "Códec de Audio",
     "containerMuxer": "Contenedor / Multiplexor",
@@ -1978,6 +1981,13 @@
       "enablePreviewDesc": "Genera miniaturas periódicas en memoria/disco para la GUI. Desactívalo en CPUs ajustadas o flujos en vivo exigentes para evitar caídas de velocidad (xruns en ALSA).",
       "flushPackets": "Vaciar Paquetes AVIO",
       "flushPacketsDesc": "Vacía cada paquete codificado al instante (-flush_packets 1) sin retenerlo en RAM, evitando bloqueos y cortes en flujos de audio de bajo bitrate (Icecast/SRT/RTMP).",
+      "realtimeTitle": "Control de Velocidad en Tiempo Real",
+      "realtimeDesc": "Limita la lectura al framerate nativo. Déjalo en Auto (ON solo en file/lavfi; nunca activar en fuentes en vivo).",
+      "realtimeAuto": "Auto",
+      "realtimeOn": "Siempre ON",
+      "realtimeOff": "Siempre OFF",
+      "realtimeLiveWarning": "Activado manualmente sobre una fuente en vivo (NDI/SRT/DeckLink/ALSA). Limitar lectura con -re sobre relojes externos puede provocar pérdida de frames o desincronización.",
+      "realtimeResetAuto": "Pasar a Auto",
       "threadQueueFfmpeg9Note": "FFmpeg 9+ eliminó -thread_queue_size para entradas; este valor se ignora automáticamente en compilaciones FFmpeg 9+."
     }
   },

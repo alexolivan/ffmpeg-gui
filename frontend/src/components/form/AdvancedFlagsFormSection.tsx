@@ -46,33 +46,56 @@ export const AdvancedFlagsFormSection: React.FC<AdvancedFlagsFormSectionProps> =
       </div>
 
       {/* Realtime (-re) */}
-      <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold text-white">
-            Realtime Playback <code className="text-[9px] text-brand-orange bg-white/5 px-1.5 py-0.5 rounded ml-1">-re</code>
-          </span>
-          <span className="text-[10px] text-text-secondary leading-snug">
-            Throttle input read to native framerate. Essential for file/lavfi sources.
-            {realtime === null && (
-              <span className="text-brand-lime ml-1">
-                (auto: {['file', 'lavfi_video', 'lavfi_audio'].includes(inputType) ? 'ON' : 'OFF'})
-              </span>
+      {(() => {
+        const isSelfPacedInput = ['file', 'lavfi_video', 'lavfi_audio'].includes(inputType);
+        const showLiveRealtimeWarning = realtime === true && !isSelfPacedInput;
+        return (
+          <div className="p-2 bg-[var(--input-bg)] rounded-lg border border-[var(--glass-border)] space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-xs font-semibold text-[var(--text-primary)]">
+                  {t('filters.advanced.realtimeTitle', 'Control de Velocidad en Tiempo Real')}{' '}
+                  <code className="text-[9px] text-brand-orange bg-[var(--bg-card)] px-1.5 py-0.5 rounded ml-1 border border-[var(--glass-border)]">-re</code>
+                </span>
+                <span className="text-[10px] text-[var(--text-secondary)] leading-snug">
+                  {t('filters.advanced.realtimeDesc', 'Limita la lectura al framerate nativo. Déjalo en Auto (ON solo en file/lavfi; nunca activar en fuentes en vivo).')}
+                  {realtime === null && (
+                    <span className="text-brand-lime ml-1">
+                      (auto: {isSelfPacedInput ? 'ON' : 'OFF'})
+                    </span>
+                  )}
+                </span>
+              </div>
+              <select
+                className="bg-[var(--bg-card)] border border-[var(--glass-border)] rounded-lg px-2 py-1 text-xs outline-none w-24 text-center text-[var(--text-primary)] shrink-0"
+                value={realtime === null ? 'auto' : realtime ? 'on' : 'off'}
+                onChange={e => {
+                  const val = e.target.value;
+                  onChange({ realtime: val === 'auto' ? null : val === 'on' });
+                }}
+              >
+                <option value="auto">{t('filters.advanced.realtimeAuto', 'Auto')}</option>
+                <option value="on">{t('filters.advanced.realtimeOn', 'Always ON')}</option>
+                <option value="off">{t('filters.advanced.realtimeOff', 'Always OFF')}</option>
+              </select>
+            </div>
+            {showLiveRealtimeWarning && (
+              <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-brand-orange/10 border border-brand-orange/30 text-[10px] text-brand-orange">
+                <span className="leading-snug">
+                  ⚠️ {t('filters.advanced.realtimeLiveWarning', 'Activado manualmente sobre una fuente en vivo (NDI/SRT/DeckLink/ALSA). Limitar lectura con -re sobre relojes externos puede provocar pérdida de frames o desincronización.')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onChange({ realtime: null })}
+                  className="px-2 py-1 rounded bg-brand-orange/20 hover:bg-brand-orange/30 border border-brand-orange/40 font-bold uppercase tracking-wider shrink-0 cursor-pointer"
+                >
+                  {t('filters.advanced.realtimeResetAuto', 'Pasar a Auto')}
+                </button>
+              </div>
             )}
-          </span>
-        </div>
-        <select
-          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs outline-none w-24 text-center"
-          value={realtime === null ? 'auto' : realtime ? 'on' : 'off'}
-          onChange={e => {
-            const val = e.target.value;
-            onChange({ realtime: val === 'auto' ? null : val === 'on' });
-          }}
-        >
-          <option value="auto">Auto</option>
-          <option value="on">Always ON</option>
-          <option value="off">Always OFF</option>
-        </select>
-      </div>
+          </div>
+        );
+      })()}
 
       {/* Video Preview MJPEG Toggle */}
       <div className="flex items-center justify-between p-2 bg-white/5 rounded-lg border border-white/5">

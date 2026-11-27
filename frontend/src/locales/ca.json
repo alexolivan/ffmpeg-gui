@@ -1704,6 +1704,9 @@
     "originalNetworkId": "ID de Xarxa Original (ONID)",
     "serviceId": "ID de Servei (SID)",
     "recommendedRecipe": "Configuració Estàndard Recomanada",
+    "recipeStatusOk": "Compatible",
+    "recipeStatusInfo": "Suggeriment",
+    "recipeStatusWarning": "Revisar còdecs",
     "videoCodec": "Còdec de Vídeo",
     "audioCodec": "Còdec d'Àudio",
     "containerMuxer": "Contenidor / Multiplexor",
@@ -1978,6 +1981,13 @@
       "enablePreviewDesc": "Genera miniatures periòdiques en memòria/disc per a la GUI. Desactiva-ho en CPUs ajustades o fluxos en viu exigents per evitar caigudes de velocitat (xruns a ALSA).",
       "flushPackets": "Buidar Paquets AVIO",
       "flushPacketsDesc": "Buida cada paquet codificat a l'instant (-flush_packets 1) sense retenir-lo en RAM, evitant bloquejos i talls en fluxos d'àudio de baix bitrate (Icecast/SRT/RTMP).",
+      "realtimeTitle": "Control de Velocitat en Temps Real",
+      "realtimeDesc": "Limita la lectura al framerate natiu. Deixa-ho en Auto (ON només a file/lavfi; no activar mai en fonts en viu).",
+      "realtimeAuto": "Auto",
+      "realtimeOn": "Sempre ON",
+      "realtimeOff": "Sempre OFF",
+      "realtimeLiveWarning": "Activat manualment sobre una font en viu (NDI/SRT/DeckLink/ALSA). Limitar lectura amb -re sobre rellotges externs pot provocar pèrdua de frames o desincronització.",
+      "realtimeResetAuto": "Passar a Auto",
       "threadQueueFfmpeg9Note": "FFmpeg 9+ va eliminar -thread_queue_size per a entrades; aquest valor s'ignora automàticament en compilacions FFmpeg 9+."
     }
   },
