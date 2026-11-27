@@ -260,26 +260,52 @@ class BuildManager:
             self.logger.error(f"Failed to fetch tags for {repo}: {exc}")
             return []
 
-    def get_ffnvcodec_tag(self, ffmpeg_version: str) -> str | None:
-        """Determine correct ffnvcodec tag based on FFmpeg version."""
+    def get_ffnvcodec_tag(self, ffmpeg_version: str, host_nvenc_api: Optional[str] = None) -> str | None:
+        """Determine correct ffnvcodec tag based on FFmpeg version and host NVENC API ceiling."""
         if not ffmpeg_version or any(dev in ffmpeg_version.lower() for dev in ["master", "dev", "git"]):
             return None
+        try:
+            from core.hw_probe import detect_host_nvenc_api_version, parse_nvenc_api_tuple
+        except ImportError:
+            from backend.core.hw_probe import detect_host_nvenc_api_version, parse_nvenc_api_tuple
+
+        baseline_tag = "n13.0.19.0"
         try:
             # Strip leading alphabetic characters (like 'n' or 'v') to support git tags (e.g. 'n6.0')
             cleaned_version = ffmpeg_version.lstrip("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
             parts = cleaned_version.split('.')
             major = int(parts[0])
             if major >= 7:
-                return "n13.0.19.0"
+                baseline_tag = "n13.0.19.0"
             elif major == 6:
-                return "n12.1.14.0"
+                baseline_tag = "n12.1.14.0"
             elif major == 5:
-                return "n11.1.5.3"
+                baseline_tag = "n11.1.5.3"
             elif major <= 4:
-                return "n9.1.23.2"
+                baseline_tag = "n9.1.23.2"
         except Exception:
             pass
-        return "n13.0.19.0"
+
+        resolved_api = host_nvenc_api if host_nvenc_api is not None else detect_host_nvenc_api_version()
+        host_tuple = parse_nvenc_api_tuple(resolved_api)
+        base_tuple = parse_nvenc_api_tuple(baseline_tag)
+        if host_tuple and base_tuple and base_tuple > host_tuple:
+            # Clamp downward cleanly to a known tag compatible with the host's NVENC API ceiling
+            fallback_ladder = [
+                ((13, 1), "n13.1.15.0"),
+                ((13, 0), "n13.0.19.0"),
+                ((12, 2), "n12.2.72.0"),
+                ((12, 1), "n12.1.14.0"),
+                ((12, 0), "n12.0.16.1"),
+                ((11, 1), "n11.1.5.3"),
+                ((9, 1), "n9.1.23.2"),
+            ]
+            for api_ver, tag in fallback_ladder:
+                if api_ver <= host_tuple:
+                    return tag
+            return "n9.1.23.2"
+
+        return baseline_tag
 
 
     # ── Disk information ──────────────────────────────────────────
@@ -412,14 +438,20 @@ class BuildManager:
 
     # ── Build validation ──────────────────────────────────────────
 
-    async def validate_build(self, binary_path: str, software_type: str = "ffmpeg") -> dict:
+    async def validate_build(self, binary_path: str, software_type: str = "ffmpeg", build_options: Optional[dict] = None) -> dict:
         """Validate the compiled binary using its recipe."""
         if not binary_path or not os.path.isfile(binary_path):
             return {"valid": False, "error": f"Binary not found: {binary_path}"}
 
         try:
+            import inspect
             from forge.recipes import get_recipe
             recipe = get_recipe(software_type, self.workspace_root, runner=self)
+            sig = inspect.signature(recipe.validate)
+            if "build_options" in sig.parameters or any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            ):
+                return await recipe.validate(binary_path, build_options=build_options)
             return await recipe.validate(binary_path)
         except Exception:
             try:
