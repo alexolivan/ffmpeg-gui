@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.79.1] - 2026-11-27
+
+### Fixed
+- **False SRT Caller / MediaMTX Port Collision Blocking Multi-Stream Publishing (`outputPortCollision.ts`, `ProcessConfigForm.tsx`, `port_validator.py`)**:
+  - Updated `ProcessConfigForm` via pure helper `findOutputPortCollision` / `findNextAvailableOutputPort` so SRT `mode=caller` and MediaMTX SRT outputs never falsely collide when targeting the same host/port (e.g., multiple FFmpeg feeds publishing distinct `streamid` paths to `srt://127.0.0.1:8890`), while preserving real port collision checks for SRT `mode=listener` and UDP/RTP outputs.
+  - Hardened `extract_ports_from_service` in `port_validator.py` so SRT inputs/outputs with `is_mediamtx=True` are never misclassified as local UDP listeners when `mode` is omitted.
+
 ## [2.79.0] - 2026-11-27
 
 ### Changed
