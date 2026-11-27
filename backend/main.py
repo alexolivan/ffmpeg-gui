@@ -365,7 +365,7 @@ from core.task_manager import TaskManager
 from core.scheduler import Scheduler
 from utils.cron_helper import CronHelper
 
-task_manager = TaskManager(db_session_factory=SessionLocal, process_manager=process_manager)
+task_manager = TaskManager(db_session_factory=SessionLocal, process_manager=process_manager, build_manager=build_manager)
 scheduler = Scheduler(db_session_factory=SessionLocal, task_manager=task_manager)
 
 
@@ -5137,7 +5137,8 @@ def list_builds(request: Request = None, db: Session = Depends(get_db)):
         if not ctx.is_owner and not (ctx.has_domain("forge", "monitor") or ctx.has_any_process_level(db, "monitor")):
             return []
     builds = db.query(FfmpegBuild).order_by(FfmpegBuild.created_at.desc()).all()
-    return [_serialize_build(b) for b in builds]
+    sched_map = _get_active_forge_schedule_map(db, builds=builds)
+    return [_serialize_build(b, scheduled_forge_tasks=sched_map) for b in builds]
 
 
 # ── Static /builds/* routes (must be declared BEFORE /builds/{build_id}) ──
@@ -5532,8 +5533,7 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                         low_priority: bool = True,
                         db: Session = Depends(get_db)):
     """Start compilation of a build profile in an isolated staging revision."""
-    import copy
-    from core.forge_revisions import build_recipe_snapshot
+    from core.forge_executor import execute_forge_build_pipeline
 
     build = db.query(FfmpegBuild).get(build_id)
     if not build:
@@ -5549,183 +5549,18 @@ async def compile_build(build_id: int, background_tasks: BackgroundTasks,
                 detail=f"Thermal protection active: build halted due to critical hardware temperature ({snap.get('max_temp_c')}°C >= {hardware_health_manager.critical_threshold_c}°C)"
             )
 
-    stype = build.software_type or "ffmpeg"
-    had_ready_binary = (
-        build.status == "ready"
-        and bool(build.binary_path)
-        and os.path.isfile(build.binary_path)
-    )
-    prev_raw_opts = copy.deepcopy(build.build_options or {})
-    prev_raw_sdks = copy.deepcopy(build.sdk_paths) if build.sdk_paths else None
-    prev_snapshot = build.compiled_snapshot or (
-        build_recipe_snapshot(build.version_tag, prev_raw_opts, prev_raw_sdks, stype)
-        if had_ready_binary
-        else None
-    )
-    prev_state = {
-        "install_path": build.install_path,
-        "binary_path": build.binary_path,
-        "ffprobe_binary": build.ffprobe_binary,
-        "version_tag": build.version_tag,
-        "version_output": build.version_output,
-        "built_at": build.built_at.isoformat() if build.built_at else None,
-        "snapshot": prev_snapshot,
-        "raw_build_options": prev_raw_opts,
-        "raw_sdk_paths": prev_raw_sdks,
-    } if had_ready_binary else None
-
-    target_version_tag = build.version_tag
-    target_srt_version = build.srt_version
-    target_raw_opts = copy.deepcopy(build.build_options or {})
-    target_raw_sdks = copy.deepcopy(build.sdk_paths) if build.sdk_paths else None
-
-    # Mark as building
-    build.status = "building"
-    build.build_log_summary = None
-    build.last_compile_error = None
-    if clean:
-        build.sources_cleaned = False
-    db.commit()
-
-    storage_path = build.storage.path if build.storage else None
-
-    # Prepare log file path
-    build_path = build_manager.get_build_path(build_id, builds_root=storage_path)
-    os.makedirs(build_path, exist_ok=True)
-    log_file_path = os.path.join(build_path, "build.log")
-
-    # Clear the file first
-    try:
-        with open(log_file_path, "w") as f:
-            f.write("")
-    except Exception as e:
-        logger.error(f"Failed to clear build log file: {e}")
-
-    async def _log_callback(msg: str):
-        """Broadcast log lines to all WebSocket clients and write to file."""
-        try:
-            with open(log_file_path, "a") as f:
-                f.write(msg)
-        except Exception as e:
-            logger.error(f"Failed to write to build log file: {e}")
-
-        if build_id in build_ws_connections:
-            dead = []
-            for ws in build_ws_connections[build_id]:
-                try:
-                    await ws.send_text(msg)
-                except Exception:
-                    dead.append(ws)
-            for ws in dead:
-                build_ws_connections[build_id].remove(ws)
-
     async def _run_compile():
         try:
-            try:
-                result = await build_manager.run_build(
-                    build_id=build_id,
-                    ffmpeg_version=target_version_tag,
-                    srt_version=target_srt_version,
-                    options=copy.deepcopy(target_raw_opts),
-                    sdk_paths=copy.deepcopy(target_raw_sdks),
-                    sources_cleaned=clean or build.sources_cleaned,
-                    log_callback=_log_callback,
-                    auto_clean=build.auto_clean or False,
-                    builds_root=storage_path,
-                    software_type=stype,
-                    max_jobs=max_jobs,
-                    low_priority=low_priority,
-                    clean_sources_first=clean,
-                )
-                # Persist results to DB
-                with SessionLocal() as session:
-                    from sqlalchemy.orm.attributes import flag_modified
-                    db_build = session.query(FfmpegBuild).get(build_id)
-                    if result.get("success"):
-                        if had_ready_binary and prev_state and prev_state.get("install_path") != result.get("install_path"):
-                            db_build.previous_revision = prev_state
-                            flag_modified(db_build, "previous_revision")
-
-                        db_build.status = "ready"
-                        db_build.install_path = result.get("install_path") or db_build.install_path
-                        db_build.binary_path = result.get("binary_path")
-                        db_build.version_output = result.get("version_output")
-                        if result.get("version_tag"):
-                            db_build.ffmpeg_version = result.get("version_tag")
-                            db_build.version_tag = result.get("version_tag")
-                        db_build.built_at = datetime.datetime.utcnow()
-                        db_build.sources_cleaned = bool(db_build.auto_clean)
-                        db_build.last_compile_error = None
-                        db_build.build_log_summary = None
-                        if result.get("build_options"):
-                            db_build.build_options = result.get("build_options")
-                            flag_modified(db_build, "build_options")
-                        if result.get("sdk_paths"):
-                            db_build.sdk_paths = result.get("sdk_paths")
-                            flag_modified(db_build, "sdk_paths")
-
-                        db_build.compiled_snapshot = build_recipe_snapshot(
-                            db_build.version_tag,
-                            db_build.build_options,
-                            db_build.sdk_paths,
-                            db_build.software_type or "ffmpeg",
-                        )
-                        flag_modified(db_build, "compiled_snapshot")
-
-                        keep_paths = [
-                            db_build.install_path,
-                            db_build.previous_revision.get("install_path") if isinstance(db_build.previous_revision, dict) else None,
-                        ]
-                        build_manager.cleanup_old_revisions(build_id, keep_paths=keep_paths, builds_root=storage_path)
-                        disk_mb = build_manager.get_disk_usage(build_id, storage_path)
-                        db_build.disk_usage_mb = disk_mb
-
-                        # Set default if no other ready build exists for this engine
-                        existing_default = session.query(FfmpegBuild).filter(
-                            FfmpegBuild.software_type == db_build.software_type,
-                            FfmpegBuild.is_default == True,
-                            FfmpegBuild.status == "ready",
-                            FfmpegBuild.id != db_build.id
-                        ).first()
-                        if not existing_default:
-                            db_build.is_default = True
-
-                        notify_build_result(
-                            build_id=build_id,
-                            build_name=db_build.name,
-                            success=True,
-                            version_output=result.get("version_output"),
-                            disk_usage_mb=disk_mb,
-                            auto_clean=bool(db_build.auto_clean)
-                        )
-                    else:
-                        error_msg = result.get("error", "Unknown error")
-                        if had_ready_binary and prev_state and prev_state.get("binary_path") and os.path.isfile(prev_state["binary_path"]):
-                            db_build.status = "ready"
-                        else:
-                            db_build.status = "failed"
-                        db_build.last_compile_error = error_msg
-                        db_build.build_log_summary = error_msg
-                        db_build.disk_usage_mb = build_manager.get_disk_usage(build_id, storage_path)
-                        notify_build_result(build_id=build_id, build_name=db_build.name, success=False, error_msg=error_msg)
-                    session.commit()
-            except Exception as e:
-                logger.error(f"Build {build_id} failed with exception: {str(e)}")
-                await _log_callback(f"\nFATAL ERROR: {str(e)}\n")
-                with SessionLocal() as session:
-                    db_build = session.query(FfmpegBuild).get(build_id)
-                    if db_build:
-                        if had_ready_binary and prev_state and prev_state.get("binary_path") and os.path.isfile(prev_state["binary_path"]):
-                            db_build.status = "ready"
-                        else:
-                            db_build.status = "failed"
-                        db_build.last_compile_error = str(e)
-                        db_build.build_log_summary = str(e)
-                        db_build.disk_usage_mb = build_manager.get_disk_usage(build_id, storage_path)
-                        session.commit()
-                        notify_build_result(build_id=build_id, build_name=db_build.name, success=False, error_msg=str(e))
-                    else:
-                        notify_build_result(build_id=build_id, build_name=str(build_id), success=False, error_msg=str(e))
+            await execute_forge_build_pipeline(
+                build_id,
+                SessionLocal,
+                build_manager,
+                clean=clean,
+                max_jobs=max_jobs,
+                low_priority=low_priority,
+                ws_connections=build_ws_connections,
+                notify_callback=notify_build_result,
+            )
         finally:
             if build_manager.current_task == asyncio.current_task():
                 build_manager.current_task = None
@@ -8314,8 +8149,56 @@ async def get_task_preview(execution_id: int, request: Request, db: Session = De
 
 # ── Serialization helpers ─────────────────────────────────────────
 
-def _serialize_build(build: FfmpegBuild) -> dict:
+def _get_active_forge_schedule_map(db: Session, builds: Optional[list] = None) -> dict[int, dict]:
+    """Map build_id -> earliest active scheduled forge_build task summary."""
+    from core.forge_executor import build_needs_recompile
+
+    tasks = (
+        db.query(ScheduledTask)
+        .filter(
+            ScheduledTask.is_active == True,
+            ScheduledTask.schedule_type.in_(["one_shot", "recurring"]),
+            ScheduledTask.command == "system://forge_build",
+        )
+        .order_by(ScheduledTask.next_run.asc())
+        .all()
+    )
+    if not tasks:
+        return {}
+
+    target_builds = builds if builds is not None else db.query(FfmpegBuild).all()
+    schedule_map: dict[int, dict] = {}
+    for task in tasks:
+        in_cfg = task.input_config or {}
+        t_mode = in_cfg.get("target_mode") or ("all_pending" if not in_cfg.get("build_ids") else "selected")
+        entry = {
+            "task_id": task.id,
+            "task_name": task.name,
+            "next_run": task.next_run.isoformat() if task.next_run else None,
+            "schedule_type": task.schedule_type,
+            "max_jobs": in_cfg.get("max_jobs"),
+        }
+        if t_mode == "all_pending":
+            for b in target_builds:
+                if (getattr(b, "source_type", "compiled") or "compiled") != "compiled":
+                    continue
+                needs, _, _ = build_needs_recompile(b)
+                if needs and b.id not in schedule_map:
+                    schedule_map[b.id] = entry
+        else:
+            for raw_bid in (in_cfg.get("build_ids") or []):
+                try:
+                    bid = int(raw_bid)
+                except (TypeError, ValueError):
+                    continue
+                if bid not in schedule_map:
+                    schedule_map[bid] = entry
+    return schedule_map
+
+
+def _serialize_build(build: FfmpegBuild, scheduled_forge_tasks: Optional[dict[int, dict]] = None) -> dict:
     """Convert a FfmpegBuild ORM object to a JSON-safe dict."""
+    from core.forge_executor import build_needs_recompile, compute_is_outdated
     from core.forge_revisions import build_recipe_snapshot, compute_recipe_diff, is_revision_path_valid
 
     disk_mb = build.disk_usage_mb
@@ -8324,44 +8207,15 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         disk_mb = build_manager.get_disk_usage(build.id, builds_root=storage_path)
 
     stype = build.software_type or "ffmpeg"
-    from forge.recipes import get_recipe_version
-    recipe_version = get_recipe_version(stype)
-    is_outdated = False
-    if recipe_version and build.status == "ready":
-        current_ver = build.version_tag or build.ffmpeg_version or "1.0.0"
-        if build.version_output:
-            match = re.search(r'v(\d+\.\d+(?:\.\d+)?)', build.version_output)
-            if match:
-                current_ver = match.group(1)
-        if "v" in str(current_ver).lower():
-            current_ver = current_ver.lower().replace("v", "").strip()
-        try:
-            from packaging import version
-            is_outdated = version.parse(str(current_ver)) < version.parse(str(recipe_version))
-        except Exception:
-            is_outdated = str(current_ver) != str(recipe_version)
-
+    is_outdated, recipe_version = compute_is_outdated(build, stype)
     source_type = getattr(build, "source_type", "compiled") or "compiled"
+    needs_recompile, pending_changes, compiled_snapshot = build_needs_recompile(build, stype=stype)
     current_snapshot = build_recipe_snapshot(
         build.version_tag,
         build.build_options,
         build.sdk_paths,
         stype,
     )
-    compiled_snapshot = getattr(build, "compiled_snapshot", None)
-    if compiled_snapshot is None and build.status == "ready" and source_type == "compiled":
-        compiled_snapshot = current_snapshot
-
-    pending_changes = (
-        compute_recipe_diff(compiled_snapshot, current_snapshot, stype)
-        if compiled_snapshot
-        else []
-    )
-
-    needs_recompile = False
-    if source_type == "compiled":
-        if build.status in ("pending", "failed") or is_outdated or len(pending_changes) > 0:
-            needs_recompile = True
 
     prev_rev = getattr(build, "previous_revision", None)
     can_rollback = is_revision_path_valid(prev_rev)
@@ -8419,6 +8273,7 @@ def _serialize_build(build: FfmpegBuild) -> dict:
         "can_rollback": can_rollback,
         "rollback_info": rollback_info,
         "last_compile_error": getattr(build, "last_compile_error", None),
+        "scheduled_build": (scheduled_forge_tasks or {}).get(build.id),
     }
 
 
@@ -8613,6 +8468,21 @@ def create_task(payload: ScheduledTaskCreate, request: Request, db: Session = De
                         status_code=403,
                         detail=f"Insufficient permissions to target service #{raw_sid} in restart task",
                     )
+    elif cmd_val == "system://forge_build" or in_cfg.get("type") == "forge_build":
+        cmd_val = "system://forge_build"
+        t_mode = in_cfg.get("target_mode") or ("all_pending" if not in_cfg.get("build_ids") else "selected")
+        if t_mode not in ("selected", "all_pending"):
+            raise HTTPException(status_code=400, detail="target_mode must be 'selected' or 'all_pending'")
+        if t_mode == "selected":
+            bids = in_cfg.get("build_ids")
+            if not bids or not isinstance(bids, list):
+                raise HTTPException(status_code=400, detail="build_ids must be a non-empty list when target_mode is 'selected'")
+        ctx = AuthzContext.from_request(request)
+        if not ctx.is_owner and not ctx.has_domain("forge", "operate"):
+            raise HTTPException(
+                status_code=403,
+                detail="Insufficient permissions to schedule Forge builds",
+            )
 
     db_task = ScheduledTask(
         name=payload.name,
@@ -8770,6 +8640,8 @@ def clone_task_as_service(task_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Task not found")
     if db_task.command == "system://service_restart" or (db_task.input_config and db_task.input_config.get("type") == "service_restart"):
         raise HTTPException(status_code=400, detail="Service maintenance tasks cannot be cloned as an FFmpeg service")
+    if db_task.command == "system://forge_build" or (db_task.input_config and db_task.input_config.get("type") == "forge_build"):
+        raise HTTPException(status_code=400, detail="Forge scheduled build tasks cannot be cloned as an FFmpeg service")
 
     new_proc_name = f"Copy of {db_task.name}"
     
@@ -8866,6 +8738,10 @@ def import_tasks(payload: dict, db: Session = Depends(get_db)):
         cmd = td.get("command")
         if cmd == "system://service_restart" or (td.get("input_config") and td.get("input_config").get("type") == "service_restart"):
             cmd = "system://service_restart"
+            sanitized_input = td.get("input_config", {})
+            sanitized_output = td.get("output_config", {})
+        elif cmd == "system://forge_build" or (td.get("input_config") and td.get("input_config").get("type") == "forge_build"):
+            cmd = "system://forge_build"
             sanitized_input = td.get("input_config", {})
             sanitized_output = td.get("output_config", {})
         else:
@@ -8988,10 +8864,12 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db
     is_task_admin = ctx.is_owner or has_min_level(ctx.task_level(task), "admin")
     old_is_restart = task.command == "system://service_restart" or (task.input_config or {}).get("type") == "service_restart"
     new_is_restart = effective_cmd == "system://service_restart" or (in_cfg or {}).get("type") == "service_restart"
+    old_is_forge = task.command == "system://forge_build" or (task.input_config or {}).get("type") == "forge_build"
+    new_is_forge = effective_cmd == "system://forge_build" or (in_cfg or {}).get("type") == "forge_build"
     if not is_task_admin:
-        if old_is_restart != new_is_restart:
+        if old_is_restart != new_is_restart or old_is_forge != new_is_forge:
             raise HTTPException(status_code=403, detail="Changing task type requires 'admin' permission")
-        if not old_is_restart:
+        if not old_is_restart and not old_is_forge:
             eff_codec_cfg = update_data.get('codec_config', task.codec_config)
             if (
                 is_video_stream_enabled(in_cfg, eff_codec_cfg) != is_video_stream_enabled(task.input_config, task.codec_config)
@@ -9015,6 +8893,21 @@ def update_task(task_id: int, payload: ScheduledTaskUpdate, request: Request, db
                     )
         if not task.command:
             task.command = "system://service_restart"
+    elif new_is_forge:
+        t_mode = in_cfg.get("target_mode") or ("all_pending" if not in_cfg.get("build_ids") else "selected")
+        if t_mode not in ("selected", "all_pending"):
+            raise HTTPException(status_code=400, detail="target_mode must be 'selected' or 'all_pending'")
+        if 'input_config' in update_data and t_mode == "selected":
+            bids = in_cfg.get("build_ids")
+            if not bids or not isinstance(bids, list):
+                raise HTTPException(status_code=400, detail="build_ids must be a non-empty list when target_mode is 'selected'")
+        if not ctx.is_owner and not ctx.has_domain("forge", "operate"):
+            raise HTTPException(
+                status_code=403,
+                detail="Insufficient permissions to schedule Forge builds",
+            )
+        if not task.command:
+            task.command = "system://forge_build"
     
     sched_changed = ('schedule_type' in update_data or 
                      'schedule_cron' in update_data or 

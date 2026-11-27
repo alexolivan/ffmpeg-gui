@@ -188,6 +188,10 @@ interface ForgeViewProps {
   handleUpdateBuild: (data: any) => Promise<void>;
   handleCompile: (id: number, opts?: { clean?: boolean; maxJobs?: number; lowPriority?: boolean }) => Promise<void>;
   handleRollback?: (id: number) => Promise<void>;
+  handleScheduleBuild?: (
+    build: BuildProfile,
+    opts: { clean: boolean; maxJobs: number; lowPriority: boolean; scheduleDatetime: string; repeatDaily: boolean }
+  ) => Promise<void>;
   handleStopBuild: (id: number) => Promise<void>;
   handleCleanSources: (id: number) => Promise<void>;
   handleValidate: (id: number) => Promise<void>;
@@ -227,6 +231,7 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
   handleUpdateBuild,
   handleCompile,
   handleRollback,
+  handleScheduleBuild,
   handleStopBuild,
   handleCleanSources,
   handleValidate,
@@ -577,6 +582,11 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
             setCompileModalBuild(null);
             handleCompile(targetId, opts);
           }}
+          onSchedule={handleScheduleBuild ? (opts) => {
+            const targetBuild = compileModalBuild;
+            setCompileModalBuild(null);
+            handleScheduleBuild(targetBuild, opts);
+          } : undefined}
         />
       )}
 

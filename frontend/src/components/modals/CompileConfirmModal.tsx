@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { BuildProfile } from '../BuildProfileCard';
 import { EngineLogo } from '../common/EngineLogo';
-import { PlayIcon } from '../Icons';
-import { formatRecipeChangeLabel, getDefaultCompileJobs } from '../../utils/forgeBuildHelpers';
+import { PlayIcon, CalendarIcon } from '../Icons';
+import {
+  formatRecipeChangeLabel,
+  getDefaultCompileJobs,
+  getNextNightlyDatetimeLocal,
+} from '../../utils/forgeBuildHelpers';
 
 interface CompileConfirmModalProps {
   build: BuildProfile;
@@ -11,6 +15,13 @@ interface CompileConfirmModalProps {
   API?: string;
   onCancel: () => void;
   onConfirm: (opts: { clean: boolean; maxJobs: number; lowPriority: boolean }) => void;
+  onSchedule?: (opts: {
+    clean: boolean;
+    maxJobs: number;
+    lowPriority: boolean;
+    scheduleDatetime: string;
+    repeatDaily: boolean;
+  }) => void;
 }
 
 export const CompileConfirmModal: React.FC<CompileConfirmModalProps> = ({
@@ -19,6 +30,7 @@ export const CompileConfirmModal: React.FC<CompileConfirmModalProps> = ({
   API = '',
   onCancel,
   onConfirm,
+  onSchedule,
 }) => {
   const { t } = useTranslation();
   const safeMaxCores = Math.max(1, Math.floor(cpuCores || 4));
@@ -26,16 +38,24 @@ export const CompileConfirmModal: React.FC<CompileConfirmModalProps> = ({
   const pendingChanges = build.pending_changes || [];
   const hasPreviousBuild = build.status === 'ready' || build.status === 'failed';
 
+  const [mode, setMode] = useState<'now' | 'schedule'>('now');
   const [maxJobs, setMaxJobs] = useState<number>(recommendedJobs);
   const [lowPriority, setLowPriority] = useState<boolean>(true);
   const [cleanCompile, setCleanCompile] = useState<boolean>(
     build.status === 'failed' || pendingChanges.length > 0
   );
+  const [scheduleDatetime, setScheduleDatetime] = useState<string>(() =>
+    getNextNightlyDatetimeLocal(3, 0)
+  );
+  const [repeatDaily, setRepeatDaily] = useState<boolean>(false);
 
   useEffect(() => {
+    setMode('now');
     setMaxJobs(getDefaultCompileJobs(safeMaxCores));
     setLowPriority(true);
     setCleanCompile(build.status === 'failed' || (build.pending_changes?.length || 0) > 0);
+    setScheduleDatetime(getNextNightlyDatetimeLocal(3, 0));
+    setRepeatDaily(false);
   }, [build.id, safeMaxCores, build.status, build.pending_changes?.length]);
 
   const engine = (build.software_type || 'ffmpeg').toUpperCase();
@@ -96,7 +116,67 @@ export const CompileConfirmModal: React.FC<CompileConfirmModalProps> = ({
           </div>
         )}
 
+        {onSchedule && (
+          <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)]">
+            <button
+              type="button"
+              onClick={() => setMode('now')}
+              className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                mode === 'now'
+                  ? 'bg-brand-orange text-black'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <PlayIcon size={12} />
+              {t('forge.compileNowTab', 'Compile Now')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('schedule')}
+              className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                mode === 'schedule'
+                  ? 'bg-brand-orange text-black'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <CalendarIcon size={12} />
+              {t('forge.scheduleLaterTab', 'Schedule Nightly / Later')}
+            </button>
+          </div>
+        )}
+
         <div className="space-y-4">
+          {mode === 'schedule' && onSchedule && (
+            <div className="p-3.5 rounded-xl bg-brand-orange/10 border border-brand-orange/30 space-y-3">
+              <div className="space-y-1">
+                <label
+                  htmlFor="forge-schedule-datetime"
+                  className="text-xs font-bold text-[var(--text-primary)] block"
+                >
+                  {t('forge.scheduleDateTimeLabel', 'Scheduled Date & Time (off-peak window)')}
+                </label>
+                <input
+                  id="forge-schedule-datetime"
+                  type="datetime-local"
+                  value={scheduleDatetime}
+                  onChange={(e) => setScheduleDatetime(e.target.value)}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--glass-border)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] focus:border-brand-orange outline-none"
+                />
+              </div>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={repeatDaily}
+                  onChange={(e) => setRepeatDaily(e.target.checked)}
+                  className="mt-0.5 accent-brand-orange w-4 h-4 cursor-pointer"
+                />
+                <span className="text-[11px] text-[var(--text-primary)]">
+                  {t('forge.scheduleRepeatDailyLabel', 'Repeat daily at this time (only compiles when recipe changes are pending)')}
+                </span>
+              </label>
+            </div>
+          )}
+
           {/* CPU Cores Control */}
           <div className="p-3.5 rounded-xl bg-[var(--input-bg)] border border-[var(--glass-border)] space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -185,13 +265,34 @@ export const CompileConfirmModal: React.FC<CompileConfirmModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm({ clean: cleanCompile, maxJobs, lowPriority })}
+            onClick={() => {
+              if (mode === 'schedule' && onSchedule) {
+                onSchedule({
+                  clean: cleanCompile,
+                  maxJobs,
+                  lowPriority,
+                  scheduleDatetime,
+                  repeatDaily,
+                });
+              } else {
+                onConfirm({ clean: cleanCompile, maxJobs, lowPriority });
+              }
+            }}
             className="px-5 py-2 rounded-xl bg-brand-orange text-black text-xs font-black hover:opacity-90 transition-all flex items-center gap-2"
           >
-            <PlayIcon size={14} />
-            {isRecompile
-              ? t('forge.startRecompile', 'Start Recompilation')
-              : t('forge.startCompile', 'Start Compilation')}
+            {mode === 'schedule' && onSchedule ? (
+              <>
+                <CalendarIcon size={14} />
+                {t('forge.confirmScheduleAction', 'Schedule Build Task')}
+              </>
+            ) : (
+              <>
+                <PlayIcon size={14} />
+                {isRecompile
+                  ? t('forge.startRecompile', 'Start Recompilation')
+                  : t('forge.startCompile', 'Start Compilation')}
+              </>
+            )}
           </button>
         </div>
       </div>

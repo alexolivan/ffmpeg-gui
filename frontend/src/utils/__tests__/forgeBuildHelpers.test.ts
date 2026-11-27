@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+  datetimeLocalToDailyCron,
   formatRecipeChangeLabel,
   getCompileButtonState,
   getDefaultCompileJobs,
   getDisplayBadgesFromBuild,
+  getNextNightlyDatetimeLocal,
 } from '../forgeBuildHelpers';
 
 describe('forgeBuildHelpers', () => {
@@ -47,5 +49,16 @@ describe('forgeBuildHelpers', () => {
     );
     expect(formatRecipeChangeLabel({ field: 'vaapi', from: null, to: 'enabled' })).toBe('+VAAPI');
     expect(formatRecipeChangeLabel({ field: 'ndi', from: '6.0.0', to: null })).toBe('-NDI');
+  });
+
+  it('computes next nightly datetime-local and cron expression', () => {
+    const before3am = new Date(2026, 10, 27, 1, 30, 0);
+    expect(getNextNightlyDatetimeLocal(3, 0, before3am)).toBe('2026-11-27T03:00');
+
+    const after3am = new Date(2026, 10, 27, 12, 15, 0);
+    expect(getNextNightlyDatetimeLocal(3, 0, after3am)).toBe('2026-11-28T03:00');
+
+    expect(datetimeLocalToDailyCron('2026-11-28T03:45')).toBe('45 3 * * *');
+    expect(datetimeLocalToDailyCron('invalid')).toBe('0 3 * * *');
   });
 });

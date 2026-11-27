@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { BuildProfile } from '../components/BuildProfileCard';
 import type { BuildFormData } from '../components/BuildFormModal';
+import { datetimeLocalToDailyCron } from '../utils/forgeBuildHelpers';
 
 const API = '';
 
@@ -134,6 +135,62 @@ export function useBuilds(activeView: string) {
       }
     } catch (err) {
       console.error("Rollback failed:", err);
+    }
+  };
+
+  const handleScheduleBuild = async (
+    build: BuildProfile,
+    opts: {
+      clean: boolean;
+      maxJobs: number;
+      lowPriority: boolean;
+      scheduleDatetime: string;
+      repeatDaily: boolean;
+    }
+  ) => {
+    try {
+      const isRecurring = Boolean(opts.repeatDaily);
+      const payload = {
+        name: `Forge Nightly: ${build.name}`,
+        is_active: true,
+        command: 'system://forge_build',
+        input_config: {
+          type: 'forge_build',
+          target_mode: 'selected',
+          build_ids: [build.id],
+          only_if_pending: isRecurring,
+          max_jobs: opts.maxJobs,
+          low_priority: opts.lowPriority,
+          clean: opts.clean,
+        },
+        output_config: {},
+        codec_config: {},
+        filter_config: null,
+        ffmpeg_build_id: null,
+        schedule_type: isRecurring ? 'recurring' : 'one_shot',
+        schedule_cron: isRecurring ? datetimeLocalToDailyCron(opts.scheduleDatetime) : null,
+        schedule_datetime:
+          !isRecurring && opts.scheduleDatetime
+            ? new Date(opts.scheduleDatetime).toISOString()
+            : null,
+        duration_type: 'input_dependent',
+        duration_seconds: null,
+        duration_end_time: null,
+        retry_policy: null,
+      };
+      const res = await fetch(`${API}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Failed to schedule Forge build task');
+      } else {
+        refreshBuilds();
+      }
+    } catch (err) {
+      console.error('Schedule build failed:', err);
     }
   };
 
@@ -286,6 +343,7 @@ export function useBuilds(activeView: string) {
     handleUpdateBuild,
     handleCompile,
     handleRollback,
+    handleScheduleBuild,
     handleStopBuild,
     handleCleanSources,
     handleValidate,
