@@ -18,6 +18,50 @@ export interface RollbackInfo {
   diff_from_current?: RecipeDiffItem[];
 }
 
+export interface ScheduledBuildInfo {
+  task_id: number;
+  task_name: string;
+  next_run?: string | null;
+  schedule_type?: string;
+  max_jobs?: number | null;
+}
+
+export function getNextNightlyDatetimeLocal(
+  hour = 3,
+  minute = 0,
+  now: Date = new Date()
+): string {
+  const target = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    hour,
+    minute,
+    0,
+    0
+  );
+  if (target.getTime() <= now.getTime()) {
+    target.setDate(target.getDate() + 1);
+  }
+  const yyyy = target.getFullYear();
+  const mm = String(target.getMonth() + 1).padStart(2, '0');
+  const dd = String(target.getDate()).padStart(2, '0');
+  const hh = String(target.getHours()).padStart(2, '0');
+  const mi = String(target.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+}
+
+export function datetimeLocalToDailyCron(datetimeLocal: string): string {
+  const match = String(datetimeLocal || '').match(/T(\d{2}):(\d{2})/);
+  if (!match) return '0 3 * * *';
+  const hh = Number(match[1]);
+  const mi = Number(match[2]);
+  if (Number.isNaN(hh) || Number.isNaN(mi) || hh < 0 || hh > 23 || mi < 0 || mi > 59) {
+    return '0 3 * * *';
+  }
+  return `${mi} ${hh} * * *`;
+}
+
 export interface CompileButtonVisualState {
   phase: 'disabled' | 'failed' | 'pending_action' | 'synced';
   className: string;

@@ -22,6 +22,7 @@ import {
   type RecipeDiffItem,
   type RecipeSnapshot,
   type RollbackInfo,
+  type ScheduledBuildInfo,
 } from '../utils/forgeBuildHelpers'
 
 export interface BuildProfile {
@@ -56,6 +57,7 @@ export interface BuildProfile {
   can_rollback?: boolean
   rollback_info?: RollbackInfo | null
   last_compile_error?: string | null
+  scheduled_build?: ScheduledBuildInfo | null
 }
 
 interface BuildProfileCardProps {
@@ -286,6 +288,17 @@ export default function BuildProfileCard({
                   title={formatDate(build.rollback_info.built_at || null)}
                 >
                   ↩ {t('forge.backupRevisionChip', 'Backup')}: {build.rollback_info.version_tag || '—'}
+                </span>
+              </>
+            )}
+            {build.scheduled_build && (
+              <>
+                <span className="opacity-20">|</span>
+                <span
+                  className="text-brand-orange font-bold"
+                  title={`${build.scheduled_build.task_name}${build.scheduled_build.max_jobs ? ` (-j${build.scheduled_build.max_jobs})` : ''}`}
+                >
+                  🕒 {t('forge.scheduledBuildChip', 'Scheduled')}: {build.scheduled_build.next_run ? formatDate(build.scheduled_build.next_run) : build.scheduled_build.task_name}
                 </span>
               </>
             )}
