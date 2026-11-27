@@ -2180,6 +2180,16 @@
       "resourcesTitle": "Límit de Recursos i Opcions de Compilació",
       "cardTargetLabel": "Perfils Forge:",
       "cardProfilesCount": "{{count}} perfil(s)"
+    },
+    "picker": {
+      "title": "Nova Tasca Programada: Seleccionar Tipus",
+      "subtitle": "Tria el flux d'execució o rutina d'automatització per a aquesta tasca programada.",
+      "categoryMedia": "MÈDIA I TRANSCODIFICACIÓ",
+      "categoryOrchestration": "ORQUESTRACIÓ DE SERVEIS",
+      "categoryForge": "AUTOMATITZACIÓ FORGE",
+      "forgeBuildDesc": "Programa compilacions nocturnes o diferides limitant els nuclis CPU i amb baixa prioritat de disc i processador.",
+      "continue": "Continuar",
+      "changeType": "Canviar Tipus"
     }
   },
   "sdks": {
