@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SystemCapabilities } from '../codec/codecRegistry';
+import { evaluateCodecRecipeStatus } from '../../utils/codecRecipeEvaluator';
 import { HlsVariantsForm, type HlsVariant } from './HlsVariantsForm';
 import { ShieldIcon } from '../Icons';
 import { useTelemetry } from '../../context/TelemetryContext';
@@ -976,6 +977,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             publish_pass: pubPass,
             auth_user: pubUser,
             auth_pass: pubPass,
+            passphrase: undefined,
+            pbkeylen: undefined,
+            streamid: undefined,
             mode: 'caller',
             stream_action: 'publish',
             mediamtx_mode: true,
@@ -1043,6 +1047,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
             publish_pass: pubPass,
             auth_user: pubUser,
             auth_pass: pubPass,
+            passphrase: undefined,
+            pbkeylen: undefined,
+            streamid: undefined,
             mode: 'caller',
             stream_action: 'publish',
             mediamtx_mode: true,
@@ -1110,7 +1117,13 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                   stream_action: undefined,
                   path_id: undefined,
                   provider_service_id: undefined,
+                  peer_node_id: undefined,
+                  peer_service_id: undefined,
                   mediamtx_target_type: undefined,
+                  publish_user: undefined,
+                  publish_pass: undefined,
+                  auth_user: undefined,
+                  auth_pass: undefined,
                 })}
               >
                 {t('destinations.srtManualDirect', 'Manual Direct SRT')}
@@ -1136,6 +1149,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       host: config.host && config.host !== '127.0.0.1' ? config.host : '',
                       port: config.port || '8890',
                       path_id: config.path_id || 'stream1',
+                      passphrase: undefined,
+                      pbkeylen: undefined,
+                      streamid: undefined,
                     });
                   }
                 }}
@@ -1199,6 +1215,9 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
                       host: config.host && config.host !== '127.0.0.1' ? config.host : '',
                       port: config.port || '8890',
                       path_id: config.path_id || 'stream1',
+                      passphrase: undefined,
+                      pbkeylen: undefined,
+                      streamid: undefined,
                     })}
                   >
                     <span>🌐</span> {t('destinations.externalServer', 'Manual External Server (Unfederated Host)')}
@@ -4596,12 +4615,18 @@ const DestinationPanel: React.FC<DestinationPanelProps> = ({
       })()}
 
       {/* ── Recommended Broadcast Recipe Card ── */}
-      {renderBroadcastRecipe(config.type, t)}
+      {renderBroadcastRecipe(config.type, codecConfig, hasVideo, hasAudio, t)}
     </div>
   );
 };
 
-const renderBroadcastRecipe = (type: string, t: any) => {
+const renderBroadcastRecipe = (
+  type: string,
+  codecConfig: any,
+  hasVideo: boolean,
+  hasAudio: boolean,
+  t: any
+) => {
   const recipes: Record<string, { title: string; video: string; audio: string; details: string; container: string }> = {
     udp: {
       title: "UDP Multicast (MPEG-TS)",
@@ -4692,10 +4717,42 @@ const renderBroadcastRecipe = (type: string, t: any) => {
   const recipe = recipes[type];
   if (!recipe) return null;
 
+  const status = evaluateCodecRecipeStatus({
+    outputType: type,
+    vcodec: codecConfig?.vcodec,
+    acodec: codecConfig?.acodec,
+    hasVideo,
+    hasAudio,
+  });
+
+  const toneConfig = {
+    ok: {
+      container: 'bg-emerald-500/5 border-emerald-500/20',
+      header: 'text-emerald-400',
+      icon: '✓',
+      badge: t('destinations.recipeStatusOk', 'Compatible'),
+    },
+    info: {
+      container: 'bg-blue-500/5 border-blue-500/20',
+      header: 'text-blue-400',
+      icon: 'ℹ',
+      badge: t('destinations.recipeStatusInfo', 'Sugerencia'),
+    },
+    warning: {
+      container: 'bg-brand-orange/10 border-brand-orange/30',
+      header: 'text-brand-orange',
+      icon: '⚠️',
+      badge: t('destinations.recipeStatusWarning', 'Revisar códecs'),
+    },
+  }[status];
+
   return (
-    <div className="mt-4 p-3 bg-brand-orange/5 border border-brand-orange/15 rounded-xl text-[10px] space-y-1.5 animate-in fade-in duration-200">
-      <div className="flex items-center gap-1.5 font-bold text-brand-orange">
+    <div className={`mt-4 p-3 border rounded-xl text-[10px] space-y-1.5 animate-in fade-in duration-200 ${toneConfig.container}`}>
+      <div className={`flex items-center justify-between gap-2 font-bold ${toneConfig.header}`}>
         <span>{t('destinations.recommendedRecipe')}</span>
+        <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-[var(--input-bg)] border border-[var(--glass-border)]">
+          {toneConfig.icon} {toneConfig.badge}
+        </span>
       </div>
       <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-text-secondary">
         <div>

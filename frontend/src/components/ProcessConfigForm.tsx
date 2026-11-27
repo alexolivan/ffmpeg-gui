@@ -903,6 +903,12 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         finalAudioCodecParams = {};
       }
 
+      const isSelfPacedInput = ['file', 'lavfi_video', 'lavfi_audio'].includes(input1.type);
+      const shouldResetLiveRealtime =
+        prev.input1.type !== input1.type &&
+        !isSelfPacedInput &&
+        prev.filters.advanced.realtime === true;
+
       return {
         ...prev,
         input1,
@@ -912,6 +918,15 @@ const hasNDICodecIncompatibility = isNDIOutput && (
         video_codec_params: finalVideoCodecParams,
         audio_codec_id: finalAudioCodecId,
         audio_codec_params: finalAudioCodecParams,
+        filters: shouldResetLiveRealtime
+          ? {
+              ...prev.filters,
+              advanced: {
+                ...prev.filters.advanced,
+                realtime: null,
+              },
+            }
+          : prev.filters,
       };
     });
   }, [config.has_video, canChangeStreamMode, t]);
