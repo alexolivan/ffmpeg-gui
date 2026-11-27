@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.78.0] - 2026-11-27
+
+### Added
+- **Nightly / Deferred Forge Build Tasks (`system://forge_build`) (`forge_executor.py`, `task_manager.py`, `main.py`, `ForgeBuildTaskForm.tsx`, `ScheduledTasks.tsx`)**:
+  - Extracted `execute_forge_build_pipeline` and `build_needs_recompile` so both manual Forge triggers and scheduled background tasks share atomic revision staging, rollback preservation, and CPU/IO throttling (`max_jobs`, `low_priority`, `clean`).
+  - Added `system://forge_build` system task support in `TaskManager` with `all_pending` and `selected` target modes, `only_if_pending` skip-if-synced guard, clean abort propagation, and concise stage logging.
+  - Added a **Forge Nightly Build** category tab in Scheduled Tasks alongside a **Schedule Nightly / Later** shortcut directly inside Forge's `CompileConfirmModal` and scheduled build chips on `BuildProfileCard`.
+
 ## [2.77.0] - 2026-11-27
 
 ### Added
