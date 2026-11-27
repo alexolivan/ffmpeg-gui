@@ -6,7 +6,7 @@ const API = '';
 
 export function useBuilds(activeView: string) {
   const [builds, setBuilds] = useState<BuildProfile[]>([]);
-  const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number } | null>(null);
+  const [diskInfo, setDiskInfo] = useState<{ free_gb: number; free_mb: number; cpu_cores?: number } | null>(null);
   const [buildDeps, setBuildDeps] = useState<any>(null);
   const [checkStatus, setCheckStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [capabilities, setCapabilities] = useState<any>(null);
@@ -93,23 +93,25 @@ export function useBuilds(activeView: string) {
     }
   };
 
-  const handleCompile = async (id: number) => {
+  const handleCompile = async (
+    id: number,
+    opts?: { clean?: boolean; maxJobs?: number; lowPriority?: boolean }
+  ) => {
     const build = builds.find(b => Number(b.id) === Number(id));
-    let clean = false;
-    if (build && (build.status === 'failed' || build.status === 'ready')) {
-      clean = window.confirm(
-        `¿Deseas realizar una compilación limpia (Clean Compile)?\n\nEsto eliminará las fuentes temporales previas y volverá a descargar y compilar todo de cero, lo cual es muy recomendable para solucionar problemas de dependencias.`
-      );
-    }
+    const params = new URLSearchParams();
+    if (opts?.clean) params.set('clean', 'true');
+    if (opts?.maxJobs != null) params.set('max_jobs', String(opts.maxJobs));
+    if (opts?.lowPriority !== undefined) params.set('low_priority', String(opts.lowPriority));
+    const qs = params.toString();
     try {
-      const url = clean ? `${API}/builds/${id}/compile?clean=true` : `${API}/builds/${id}/compile`;
+      const url = qs ? `${API}/builds/${id}/compile?${qs}` : `${API}/builds/${id}/compile`;
       const res = await fetch(url, { method: 'POST' });
       if (!res.ok) {
         if (res.status === 409) {
-          alert("Ya hay otra compilación en curso. Por favor, espera a que termine o cancélala.");
+          alert("Another compilation is already in progress.");
         } else {
           console.error("Server returned error:", res.status);
-          alert("Error al iniciar la compilación. Revisa la consola o los logs del servidor.");
+          alert("Error starting compilation. Check server logs.");
         }
       } else {
         setTerminalBuild({ id, name: build?.name || `Build #${id}` });
@@ -117,6 +119,21 @@ export function useBuilds(activeView: string) {
       refreshBuilds();
     } catch (err) {
       console.error("Fetch failed:", err);
+    }
+  };
+
+  const handleRollback = async (id: number) => {
+    try {
+      const res = await fetch(`${API}/builds/${Number(id)}/rollback`, { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.detail || 'Rollback failed');
+      } else {
+        refreshBuilds();
+        refreshDiskInfo();
+      }
+    } catch (err) {
+      console.error("Rollback failed:", err);
     }
   };
 
@@ -268,6 +285,7 @@ export function useBuilds(activeView: string) {
     handleCreateBuild,
     handleUpdateBuild,
     handleCompile,
+    handleRollback,
     handleStopBuild,
     handleCleanSources,
     handleValidate,
