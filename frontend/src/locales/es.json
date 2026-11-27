@@ -2180,6 +2180,16 @@
       "resourcesTitle": "Límite de Recursos y Opciones de Compilación",
       "cardTargetLabel": "Perfiles Forge:",
       "cardProfilesCount": "{{count}} perfil(es)"
+    },
+    "picker": {
+      "title": "Nueva Tarea Programada: Seleccionar Tipo",
+      "subtitle": "Elige el flujo de ejecución o rutina de automatización para esta tarea programada.",
+      "categoryMedia": "MEDIA Y TRANSCODIFICACIÓN",
+      "categoryOrchestration": "ORQUESTACIÓN DE SERVICIOS",
+      "categoryForge": "AUTOMATIZACIÓN FORGE",
+      "forgeBuildDesc": "Programa compilaciones nocturnas o diferidas limitando los núcleos CPU y con baja prioridad de disco y procesador.",
+      "continue": "Continuar",
+      "changeType": "Cambiar Tipo"
     }
   },
   "sdks": {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import ProcessConfigForm from './ProcessConfigForm';
 import { ServiceRestartTaskForm } from './modals/ServiceRestartTaskForm';
 import { ForgeBuildTaskForm } from './modals/ForgeBuildTaskForm';
+import { TaskTypePickerModal, type TaskCategory } from './modals/TaskTypePickerModal';
 import { formatInputDesc, formatOutputDesc } from '../utils/formatters';
 import { 
   ImportIcon, 
@@ -23,7 +24,6 @@ import { useTelemetry } from '../context/TelemetryContext';
 import {
   canCreateService,
   canCreateTask,
-  getDomainLevel,
   getTaskLevel,
   hasMinLevel,
   type EdgePermissionsSummary,
@@ -44,7 +44,8 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
   
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newTaskCategory, setNewTaskCategory] = useState<'ffmpeg' | 'service_restart' | 'forge_build'>('ffmpeg');
+  const [taskCreationStep, setTaskCreationStep] = useState<'picker' | 'form'>('picker');
+  const [newTaskCategory, setNewTaskCategory] = useState<TaskCategory>('ffmpeg');
   const [editingTask, setEditingTask] = useState<any | null>(null);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<any | null>(null);
   const [viewingLogsExecutionId, setViewingLogsExecutionId] = useState<number | null>(null);
@@ -185,6 +186,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
     const isRestart = task.command === 'system://service_restart' || task.input_config?.type === 'service_restart';
     const isForge = task.command === 'system://forge_build' || task.input_config?.type === 'forge_build';
     setNewTaskCategory(isRestart ? 'service_restart' : isForge ? 'forge_build' : 'ffmpeg');
+    setTaskCreationStep('form');
     setShowAddModal(true);
   };
 
@@ -390,6 +392,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
               onClick={() => {
                 setEditingTask(null);
                 setNewTaskCategory('ffmpeg');
+                setTaskCreationStep('picker');
                 setShowAddModal(true);
               }}
               className="pill-button bg-brand-lime text-black font-black text-sm py-2.5 px-6 shadow-lg shadow-brand-lime/20 flex items-center gap-1.5"
@@ -1739,12 +1742,26 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
       )}
 
       {/* CREATE / EDIT TASK MODAL */}
-      {showAddModal && (() => {
+      {showAddModal && !editingTask && taskCreationStep === 'picker' && (
+        <TaskTypePickerModal
+          API={API}
+          permissions={permissions}
+          onClose={() => {
+            setShowAddModal(false);
+            setEditingTask(null);
+          }}
+          onSelectTaskType={(category) => {
+            setNewTaskCategory(category);
+            setTaskCreationStep('form');
+          }}
+        />
+      )}
+
+      {showAddModal && (Boolean(editingTask) || taskCreationStep === 'form') && (() => {
         const isEditingServiceRestart = editingTask && (editingTask.command === 'system://service_restart' || editingTask.input_config?.type === 'service_restart');
         const isEditingForgeBuild = editingTask && (editingTask.command === 'system://forge_build' || editingTask.input_config?.type === 'forge_build');
         const showServiceRestartForm = (editingTask && isEditingServiceRestart) || (!editingTask && newTaskCategory === 'service_restart');
         const showForgeBuildForm = (editingTask && isEditingForgeBuild) || (!editingTask && newTaskCategory === 'forge_build');
-        const canOperateForge = hasMinLevel(getDomainLevel(permissions, 'forge'), 'operate');
 
         return (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
@@ -1759,7 +1776,7 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                 ✕
               </button>
               
-              <div className="flex items-center justify-between mb-3 flex-shrink-0">
+              <div className="flex items-center justify-between mb-3 pr-8 flex-shrink-0 gap-3 flex-wrap">
                 <h3 className={`text-base font-bold tracking-wide uppercase ${showForgeBuildForm ? 'text-brand-orange' : showServiceRestartForm ? 'text-cyan-400' : 'text-brand-lime'}`}>
                   {editingTask
                     ? (isEditingServiceRestart
@@ -1773,50 +1790,17 @@ export const ScheduledTasks: React.FC<ScheduledTasksProps> = ({ API, taskExecuti
                         ? t('tasks.forgeBuild.titleNew', 'New Forge Nightly / Deferred Build Task')
                         : t('tasks.newTask', 'New Scheduled Task'))}
                 </h3>
-              </div>
 
-              {!editingTask && (
-                <div className="flex items-center gap-2 mb-3 p-1 rounded-xl bg-white/5 border border-white/5 max-w-fit flex-wrap">
+                {!editingTask && (
                   <button
                     type="button"
-                    onClick={() => setNewTaskCategory('ffmpeg')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                      newTaskCategory === 'ffmpeg'
-                        ? 'bg-brand-lime text-black shadow-md'
-                        : 'text-[var(--text-secondary)] hover:text-white'
-                    }`}
+                    onClick={() => setTaskCreationStep('picker')}
+                    className="px-3 py-1 rounded-lg bg-[var(--input-bg)] border border-[var(--glass-border)] text-[11px] font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-brand-lime/40 transition-colors cursor-pointer"
                   >
-                    <EngineLogo softwareType="ffmpeg" size={14} API={API} />
-                    {t('tasks.serviceRestart.taskTypeMedia', 'FFmpeg Media Task')}
+                    ← {t('tasks.picker.changeType', 'Change Type')}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewTaskCategory('service_restart')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                      newTaskCategory === 'service_restart'
-                        ? 'bg-cyan-500 text-black shadow-md'
-                        : 'text-[var(--text-secondary)] hover:text-white'
-                    }`}
-                  >
-                    <span>↻</span>
-                    {t('tasks.serviceRestart.taskTypeServiceRestart', 'Service Maintenance Restart')}
-                  </button>
-                  {canOperateForge && (
-                    <button
-                      type="button"
-                      onClick={() => setNewTaskCategory('forge_build')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-                        newTaskCategory === 'forge_build'
-                          ? 'bg-brand-orange text-black shadow-md'
-                          : 'text-[var(--text-secondary)] hover:text-white'
-                      }`}
-                    >
-                      <ForgeIcon size={14} />
-                      {t('tasks.forgeBuild.tabLabel', 'Forge Nightly Build')}
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
 
               {showForgeBuildForm ? (
                 <ForgeBuildTaskForm

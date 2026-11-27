@@ -2180,6 +2180,16 @@
       "resourcesTitle": "Resource Throttling & Compilation Options",
       "cardTargetLabel": "Forge Targets:",
       "cardProfilesCount": "{{count}} profile(s)"
+    },
+    "picker": {
+      "title": "Create New Task: Select Type",
+      "subtitle": "Choose the execution workflow or automation routine for this scheduled task.",
+      "categoryMedia": "MEDIA & TRANSCODING",
+      "categoryOrchestration": "SERVICE ORCHESTRATION",
+      "categoryForge": "FORGE AUTOMATION",
+      "forgeBuildDesc": "Schedule deferred or nightly binary compilations with controlled CPU cores and low disk/CPU priority.",
+      "continue": "Continue",
+      "changeType": "Change Type"
     }
   },
   "sdks": {
