@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.75.6] - 2026-11-27
+
+### Fixed
+- **Stale SRT `passphrase` / `pbkeylen` / `streamid` Leaks in MediaMTX Mode (`ffmpeg_builder.py`, `DestinationPanel.tsx`, `InputSourcePanel.tsx`)**:
+  - Updated `_build_srt_url` to omit `passphrase` and `pbkeylen` query parameters when `is_mediamtx` is active so leftover Manual Direct SRT keys never trigger `ERROR:BADSECRET` handshakes against MediaMTX hubs.
+  - Cleared incompatible stale fields (`passphrase`, `pbkeylen`, `streamid` when switching into MediaMTX Hub; MediaMTX credentials/peer refs when switching back to Manual Direct SRT) in both `DestinationPanel.tsx` and `InputSourcePanel.tsx`.
+- **Live Source `-re` Guardrail When Editing Services (`ProcessConfigForm.tsx`, `AdvancedFlagsFormSection.tsx`)**:
+  - Automatically resets `filters.advanced.realtime` back to `Auto` (`null`) when changing an existing service's primary input from a self-paced source (`file`, `lavfi_*`) to a live stream (`ndi`, `srt`, `decklink`, `alsa`, etc.).
+  - Localized the `-re` control with semantic theme tokens and added an inline warning with a 1-click **Reset to Auto** button when `Always ON` is active on a live source.
+
+### Changed
+- **Context-Aware Codec Recipe Card Tone (`codecRecipeEvaluator.ts`, `DestinationPanel.tsx`)**:
+  - Added read-only `evaluateCodecRecipeStatus` classification so the Broadcast Recipe card shows a calm emerald `Compatible` badge when selected video/audio codecs fit the destination, blue `Tip` for auto-converted/suboptimal choices, and reserves orange `Check codecs` solely for actual destination codec mismatches.
+
 ## [2.75.5] - 2026-11-26
 
 ### Changed
