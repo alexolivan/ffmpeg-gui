@@ -164,8 +164,18 @@ interface ForgeViewProps {
   selectedLinuxDistro: 'debian' | 'fedora' | 'arch';
   setSelectedLinuxDistro: (distro: 'debian' | 'fedora' | 'arch') => void;
   systemTelemetry: any;
-  validationResult: { buildId: number; output: string } | null;
-  setValidationResult: (res: { buildId: number; output: string } | null) => void;
+  validationResult: {
+    buildId: number;
+    output: string;
+    hw_checks?: Array<{ engine: string; status: 'ok' | 'warning' | 'skipped'; message: string }>;
+    has_warnings?: boolean;
+  } | null;
+  setValidationResult: (res: {
+    buildId: number;
+    output: string;
+    hw_checks?: Array<{ engine: string; status: 'ok' | 'warning' | 'skipped'; message: string }>;
+    has_warnings?: boolean;
+  } | null) => void;
   terminalBuild: { id: number; name: string } | null;
   setTerminalBuild: (tb: { id: number; name: string } | null) => void;
   showBuildForm: boolean;
@@ -567,11 +577,46 @@ export const ForgeView: React.FC<ForgeViewProps> = ({
       {/* Validation Result Modal */}
       {validationResult && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center p-8 z-50">
-          <div className="glass-card w-full max-w-2xl p-8 relative">
+          <div className="glass-card w-full max-w-2xl p-8 relative space-y-4">
             <button onClick={() => setValidationResult(null)}
-              className="absolute top-6 right-6 text-text-secondary hover:text-white">✕</button>
-            <h3 className="text-xl font-bold mb-4 text-brand-lime">{t('forge.buildValidation')}</h3>
-            <pre className="bg-black/60 p-6 rounded-2xl font-mono text-xs text-white/80 overflow-auto max-h-96 whitespace-pre-wrap">
+              className="absolute top-6 right-6 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer">✕</button>
+            <h3 className={`text-xl font-bold flex items-center gap-2 ${validationResult.has_warnings ? 'text-brand-orange' : 'text-brand-lime'}`}>
+              <span>{t('forge.buildValidation')}</span>
+              {validationResult.has_warnings && (
+                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-brand-orange/15 border border-brand-orange/30 text-brand-orange">
+                  ⚠️ {t('forge.validationHasWarnings', 'Runtime hardware warnings')}
+                </span>
+              )}
+            </h3>
+
+            {validationResult.hw_checks && validationResult.hw_checks.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
+                  {t('forge.runtimeHwChecksTitle', 'Runtime Hardware Smoke Tests (NVENC / VAAPI)')}
+                </div>
+                <div className="space-y-1.5">
+                  {validationResult.hw_checks.map((chk, idx) => {
+                    const cls = chk.status === 'ok'
+                      ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400'
+                      : chk.status === 'warning'
+                      ? 'bg-brand-orange/10 border-brand-orange/30 text-brand-orange'
+                      : 'bg-[var(--input-bg)] border-[var(--glass-border)] text-[var(--text-secondary)]';
+                    const icon = chk.status === 'ok' ? '✓' : chk.status === 'warning' ? '⚠️' : 'ℹ️';
+                    return (
+                      <div key={`${chk.engine}-${idx}`} className={`p-2.5 rounded-xl border text-xs font-mono flex items-start gap-2 ${cls}`}>
+                        <span className="shrink-0">{icon}</span>
+                        <div>
+                          <span className="font-bold uppercase mr-1.5">[{chk.engine}]</span>
+                          <span>{chk.message}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <pre className="bg-[var(--input-bg)] border border-[var(--glass-border)] p-6 rounded-2xl font-mono text-xs text-[var(--text-primary)] overflow-auto max-h-96 whitespace-pre-wrap">
               {validationResult.output}
             </pre>
           </div>

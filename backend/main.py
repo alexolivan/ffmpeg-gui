@@ -3163,33 +3163,38 @@ def get_system_capabilities():
     import shutil
 
     # VAAPI (Intel: 0x8086, AMD: 0x1002)
-    vaapi_available = False
-    vaapi_details = "No VAAPI compatible render nodes (Intel/AMD) found"
-    
-    render_nodes = glob.glob("/sys/class/drm/renderD*")
-    detected_vendors = []
-    for node in render_nodes:
-        vendor_path = os.path.join(node, "device/vendor")
-        if os.path.exists(vendor_path):
-            try:
-                with open(vendor_path, "r") as f:
-                    vendor_id = f.read().strip().lower()
-                detected_vendors.append(vendor_id)
-                # 0x8086 = Intel, 0x1002 = AMD
-                if "0x8086" in vendor_id or "0x1002" in vendor_id:
-                    vaapi_available = True
-                    vaapi_details = f"VAAPI compatible GPU detected (Intel/AMD) on node {os.path.basename(node)}"
-                    break
-            except Exception as e:
-                pass
-                
-    if not vaapi_available and detected_vendors:
-        vaapi_details = f"Render nodes found but no compatible Intel/AMD GPU (vendors: {', '.join(detected_vendors)})"
+    try:
+        from core.hw_probe import detect_host_nvenc_api_version, detect_host_vaapi_render_node
+    except ImportError:
+        from backend.core.hw_probe import detect_host_nvenc_api_version, detect_host_vaapi_render_node
+
+    vaapi_render_node = detect_host_vaapi_render_node()
+    vaapi_available = vaapi_render_node is not None
+    vaapi_details = (
+        f"VAAPI compatible GPU detected (Intel/AMD) on node {os.path.basename(vaapi_render_node)}"
+        if vaapi_render_node
+        else "No VAAPI compatible render nodes (Intel/AMD) found"
+    )
+
+    if not vaapi_available:
+        render_nodes = glob.glob("/sys/class/drm/renderD*")
+        detected_vendors = []
+        for node in render_nodes:
+            vendor_path = os.path.join(node, "device/vendor")
+            if os.path.exists(vendor_path):
+                try:
+                    with open(vendor_path, "r") as f:
+                        detected_vendors.append(f.read().strip().lower())
+                except Exception:
+                    pass
+        if detected_vendors:
+            vaapi_details = f"Render nodes found but no compatible Intel/AMD GPU (vendors: {', '.join(detected_vendors)})"
 
     # NVENC
     has_nvidia_hardware = shutil.which("nvidia-smi") is not None or os.path.exists("/dev/nvidia0")
     libcuda_loadable = False
     libnvenc_loadable = False
+    nvenc_api_version = None
 
     if has_nvidia_hardware:
         import ctypes
@@ -3202,6 +3207,7 @@ def get_system_capabilities():
         try:
             ctypes.CDLL("libnvidia-encode.so.1")
             libnvenc_loadable = True
+            nvenc_api_version = detect_host_nvenc_api_version()
         except Exception:
             pass
 
@@ -3409,6 +3415,7 @@ def get_system_capabilities():
         "vaapi": {
             "available": vaapi_available,
             "details": vaapi_details,
+            "render_node": vaapi_render_node,
             "encoders": vaapi_caps["encoders"],
             "decoders": vaapi_caps["decoders"],
             "vainfo_installed": vainfo_installed,
@@ -3422,6 +3429,7 @@ def get_system_capabilities():
             "gpu_name": nvenc_caps["gpu_name"],
             "gpu_arch": nvenc_caps["gpu_arch"],
             "driver_version": nvenc_caps["driver_version"],
+            "api_version": nvenc_api_version,
             "cuda_version": nvenc_caps["cuda_version"],
             "encoders": nvenc_caps["encoders"],
             "decoders": nvenc_caps["decoders"]
@@ -5743,7 +5751,8 @@ async def validate_build(build_id: int, db: Session = Depends(get_db)):
 
     result = await build_manager.validate_build(
         binary_path=binary_path,
-        software_type=stype
+        software_type=stype,
+        build_options=getattr(build, "build_options", None),
     )
     if result.get("valid"):
         build.version_output = result["output"]

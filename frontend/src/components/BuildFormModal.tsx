@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { BuildProfile } from './BuildProfileCard'
 import { SearchableSelect } from './common/SearchableSelect'
+import { evaluateNvencTagCompatibility, findHighestCompatibleNvencTag } from '../utils/forgeHwHelpers'
 
 interface BuildFormModalProps {
   editBuild: BuildProfile | null
@@ -70,6 +71,7 @@ export default function BuildFormModal({ editBuild, cloneBuild = null, onClose, 
 
   const [srtTags, setSrtTags] = useState<string[]>([])
   const [nvencTags, setNvencTags] = useState<string[]>([])
+  const [hostCapabilities, setHostCapabilities] = useState<any>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Installed SDKs from inventory
@@ -153,17 +155,20 @@ export default function BuildFormModal({ editBuild, cloneBuild = null, onClose, 
     const fetchTags = async () => {
       try {
         if (softwareType === 'ffmpeg') {
-          const [ffRes, srtRes, nvencRes] = await Promise.all([
+          const [ffRes, srtRes, nvencRes, capsRes] = await Promise.all([
             fetch(`${API_BASE}/builds/tags/ffmpeg`),
             fetch(`${API_BASE}/builds/tags/srt`),
             fetch(`${API_BASE}/builds/tags/nvenc`),
+            fetch(`${API_BASE}/system/capabilities`).catch(() => null),
           ])
           const ffData = await ffRes.json()
           const srtData = await srtRes.json()
           const nvencData = await nvencRes.json()
+          const capsData = capsRes && capsRes.ok ? await capsRes.json().catch(() => null) : null
           setSoftwareTags(ffData.tags || [])
           setSrtTags(srtData.tags || [])
           setNvencTags(nvencData.tags || [])
+          if (capsData) setHostCapabilities(capsData)
 
           if (!isEditing) {
             if (ffData.tags?.length > 0 && !ffmpegVersion) setFfmpegVersion(ffData.tags[0])
@@ -171,10 +176,13 @@ export default function BuildFormModal({ editBuild, cloneBuild = null, onClose, 
           }
 
           if (nvencData.tags?.length > 0) {
+            const hostCompatTag = !isEditing && !isCloning && capsData?.nvenc?.api_version
+              ? findHighestCompatibleNvencTag(nvencData.tags, capsData.nvenc.api_version)
+              : null
             setSdkPaths(prev => {
               const currentVal = prev.nvenc_headers
               if (!currentVal || currentVal === 'auto') {
-                return { ...prev, nvenc_headers: nvencData.tags[0] }
+                return { ...prev, nvenc_headers: hostCompatTag || nvencData.tags[0] }
               }
               return prev
             })
@@ -520,6 +528,21 @@ export default function BuildFormModal({ editBuild, cloneBuild = null, onClose, 
                     <input type="checkbox" className="w-3.5 h-3.5 accent-brand-orange" checked={options.vaapi} onChange={e => setOptions({...options, vaapi: e.target.checked})} />
                   </div>
                   <p className="text-[9px] text-text-secondary leading-tight mb-1.5">{t('forge.vaapiDesc', 'Intel/AMD GPU encoding.')}</p>
+                  {options.vaapi && hostCapabilities?.vaapi && (
+                    hostCapabilities.vaapi.available ? (
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] p-1.5 rounded-lg leading-snug mb-1.5">
+                        ✓ {t('forge.hostVaapiReady', {
+                          node: hostCapabilities.vaapi.render_node || '/dev/dri/renderD*',
+                          version: hostCapabilities.vaapi.vaapi_version || hostCapabilities.vaapi.libva_version || 'VAAPI',
+                          defaultValue: 'Host VAAPI ready: {{node}} ({{version}})',
+                        })}
+                      </div>
+                    ) : (
+                      <div className="bg-brand-orange/10 border border-brand-orange/25 text-brand-orange text-[9px] p-1.5 rounded-lg leading-snug mb-1.5">
+                        ⚠️ {t('forge.hostVaapiMissing', 'No Intel/AMD VAAPI render node detected on this host — binary will still compile, but VAAPI runtime tests/streams on this machine will fail.')}
+                      </div>
+                    )
+                  )}
                   {options.vaapi && (buildDeps?.dependencies?.libva?.installed === false || buildDeps?.dependencies?.libdrm?.installed === false) && (
                     <div className="bg-brand-orange/10 border border-brand-orange/20 text-brand-orange text-[9px] p-1.5 rounded-lg leading-snug font-bold">
                       ⚠️ {t('forge.vaapiDepsWarning', 'Missing VAAPI dependencies (libva/libdrm).')}
@@ -565,6 +588,54 @@ export default function BuildFormModal({ editBuild, cloneBuild = null, onClose, 
                           ...nvencTags.map(tag => ({ value: tag, label: tag })),
                         ]}
                       />
+
+                      {hostCapabilities?.nvenc && (
+                        hostCapabilities.nvenc.available ? (() => {
+                          const compat = evaluateNvencTagCompatibility(
+                            sdkPaths.nvenc_headers,
+                            hostCapabilities.nvenc.api_version,
+                            nvencTags
+                          );
+                          return (
+                            <div className="space-y-1.5 pt-0.5">
+                              <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] p-1.5 rounded-lg leading-snug">
+                                ✓ {t('forge.hostNvencReady', {
+                                  gpu: hostCapabilities.nvenc.gpu_name || 'NVIDIA GPU',
+                                  driver: hostCapabilities.nvenc.driver_version || '-',
+                                  api: hostCapabilities.nvenc.api_version || '?',
+                                  defaultValue: 'Host GPU: {{gpu}} · Driver {{driver}} · NVENC API {{api}}',
+                                })}
+                              </div>
+                              {compat.status === 'incompatible' && (
+                                <div className="bg-brand-orange/10 border border-brand-orange/30 text-brand-orange text-[9px] p-2 rounded-lg leading-snug flex items-center justify-between gap-2">
+                                  <span>
+                                    ⚠️ {t('forge.nvencApiMismatchWarning', {
+                                      tag: sdkPaths.nvenc_headers,
+                                      required: compat.selectedApi,
+                                      host: compat.hostApi,
+                                      defaultValue: 'SDK {{tag}} requires NVENC API {{required}}, but the host driver supports up to {{host}}. Compilation will succeed, yet NVENC will fail at runtime.',
+                                    })}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSdkPaths({ ...sdkPaths, nvenc_headers: compat.recommendedTag || 'auto' })}
+                                    className="px-2 py-1 rounded bg-brand-orange/20 hover:bg-brand-orange/30 border border-brand-orange/40 font-bold uppercase tracking-wider shrink-0 cursor-pointer"
+                                  >
+                                    {t('forge.useCompatibleTag', {
+                                      tag: compat.recommendedTag || 'auto',
+                                      defaultValue: 'Use {{tag}}',
+                                    })}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })() : (
+                          <div className="bg-brand-orange/10 border border-brand-orange/25 text-brand-orange text-[9px] p-1.5 rounded-lg leading-snug">
+                            ⚠️ {t('forge.hostNvencMissing', 'No NVIDIA GPU/driver libraries detected on this host — binary will still compile, but NVENC runtime tests/streams on this machine will fail.')}
+                          </div>
+                        )
+                      )}
 
                       {/* Indented NVIDIA CUDA Filters Checkbox */}
                       <div className="pt-1.5 mt-1.5 border-t border-white/5 space-y-1.5 pl-3">

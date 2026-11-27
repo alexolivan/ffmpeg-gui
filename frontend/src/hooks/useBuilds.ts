@@ -11,7 +11,12 @@ export function useBuilds(activeView: string) {
   const [checkStatus, setCheckStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [capabilities, setCapabilities] = useState<any>(null);
   const [terminalBuild, setTerminalBuild] = useState<{ id: number; name: string } | null>(null);
-  const [validationResult, setValidationResult] = useState<{ buildId: number; output: string } | null>(null);
+  const [validationResult, setValidationResult] = useState<{
+    buildId: number;
+    output: string;
+    hw_checks?: Array<{ engine: string; status: 'ok' | 'warning' | 'skipped'; message: string }>;
+    has_warnings?: boolean;
+  } | null>(null);
   const [showBuildForm, setShowBuildForm] = useState(false);
   const [editingBuild, setEditingBuild] = useState<BuildProfile | null>(null);
   const importRecipeRef = useRef<HTMLInputElement | null>(null);
@@ -136,7 +141,12 @@ export function useBuilds(activeView: string) {
     try {
       const res = await fetch(`${API}/builds/${Number(id)}/validate`);
       const data = await res.json();
-      setValidationResult({ buildId: Number(id), output: data.output || data.error || 'Unknown' });
+      setValidationResult({
+        buildId: Number(id),
+        output: data.output || data.error || 'Unknown',
+        hw_checks: Array.isArray(data.hw_checks) ? data.hw_checks : [],
+        has_warnings: Boolean(data.has_warnings),
+      });
     } catch (err) {
       console.error("Validation failed:", err);
     }
