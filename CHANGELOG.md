@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.77.0] - 2026-11-27
+
+### Added
+- **Forge Atomic Revision Staging & 1-Level Binary Rollback (`forge_revisions.py`, `build_manager.py`, `main.py`, `RollbackConfirmModal.tsx`)**:
+  - Builds now compile and install into isolated per-revision prefixes (`builds/<id>/revisions/rev_<ts>/`) instead of overwriting active binaries in place; running services keep active binaries intact until compilation succeeds.
+  - Failed or aborted recompilations automatically remove the failed staging directory and preserve the previous `ready` build state and working binaries while recording `last_compile_error`.
+  - Added `POST /builds/{build_id}/rollback` plus a diff-aware **Rollback Confirm Modal** showing active vs. backup component versions before restoring the previous binary, wiping temporary `src/`, and syncing the profile recipe.
+- **Profile Divergence Detection & CPU/IO Build Throttling (`db.py` schema `2.8.0`, `CompileConfirmModal.tsx`, `forgeBuildHelpers.ts`)**:
+  - Added `compiled_snapshot`, `previous_revision`, and `last_compile_error` columns to `software_builds` (with automatic backfill for existing `ready` compiled profiles).
+  - Replaced the broken `window.confirm` compile prompt with a themed **Compile Confirm Modal** offering clean cancelation, CPU core limit (`-j1..N`), low CPU/disk priority (`nice +15` / `ionice` idle), clean compile toggle, and pending diff summary.
+  - Parameterized `-j<N>` across `ffmpeg`, `icecast2`, and `pipewire` recipes so host broadcast encoders are protected from build saturation.
+
+### Changed
+- **Forge Profile Card Hierarchy & Safe Button Ordering (`BuildProfileCard.tsx`)**:
+  - Displayed operational binaries in primary badges when `ready`, adding a compact pending-delta strip and subtle `Play` button pulse only when uncompiled changes or failures exist, and reordered buttons to `Validate` → `Default` → `Compile/Recompile` → `Rollback` → secondary tools.
+
 ## [2.76.0] - 2026-11-27
 
 ### Added
