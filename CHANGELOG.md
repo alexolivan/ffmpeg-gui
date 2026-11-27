@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.79.0] - 2026-11-27
+
+### Changed
+- **2-Step Task Creation Picker Modal (`TaskTypePickerModal.tsx`, `ScheduledTasks.tsx`)**:
+  - Replaced the legacy v1.x inline category tab strip inside `ProcessConfigForm` with a dedicated `TaskTypePickerModal` matching `ServiceTypePickerModal` in visual layout, cards grid, theme tokens, RBAC filtering, and keyboard/double-click workflow (`FFmpeg Media Task`, `Service Maintenance Restart`, and `Forge Nightly Build`).
+  - Editing existing tasks opens the target form directly, while creating new tasks adds a `Change Type` back button in the modal header.
+
 ## [2.78.0] - 2026-11-27
 
 ### Added
